@@ -1,0 +1,417 @@
+# Task Taxonomy Configuration
+# Defines the project and label structure for AI classification
+# 
+# Projects: Mutually exclusive - ONE per task (WHERE the task lives)
+# Labels: Multi-tag - MULTIPLE per task (WHAT the task is about)
+
+version: "1.0"
+updated: "2025-12-02"
+
+# ============================================================================
+# PROJECTS (Mutually Exclusive - Choose ONE)
+# ============================================================================
+
+projects:
+  - id: work
+    name: "Work"
+    description: "Employment, consulting, client work"
+    color: blue  # Professional, focused
+    examples:
+      - "Follow up with AED about contract renewal"
+      - "Review proposal for client project"
+      - "Schedule meeting with team"
+    keywords:
+      - employment
+      - consulting
+      - client
+      - meeting
+      - proposal
+      - contract
+    notes: "Includes tasks from former employers (MIT, NASA, Prospero) and current clients"
+
+  - id: home-improvement
+    name: "Home Improvement"
+    description: "Building new things, renovations, major house projects"
+    color: orange  # Construction, building projects
+    examples:
+      - "Build shelving unit in garage"
+      - "Install new lighting in kitchen"
+      - "Renovate master bathroom"
+    keywords:
+      - build
+      - install
+      - renovate
+      - construction
+      - DIY project
+      - improvement
+    notes: "Major projects, not routine maintenance. Things you build or add to the house."
+
+  - id: home-maintenance
+    name: "Home Maintenance"
+    description: "Regular upkeep, routine repairs, household tasks"
+    color: green  # Keeping things healthy and running
+    examples:
+      - "Fix leaky faucet"
+      - "Change HVAC filter"
+      - "Clean gutters"
+    keywords:
+      - fix
+      - repair
+      - maintain
+      - clean
+      - replace filter
+      - routine
+    notes: "Keeping things working, not building new things"
+
+  - id: personal-family
+    name: "Personal/Family"
+    description: "Groceries, errands, family coordination, personal appointments"
+    color: red  # Personal, family matters
+    examples:
+      - "Buy groceries"
+      - "Schedule dentist appointment"
+      - "Pick up kids from school"
+    keywords:
+      - groceries
+      - shopping
+      - appointment
+      - family
+      - personal
+      - errands
+    notes: "Day-to-day personal and family tasks"
+
+  - id: speaking-gigs
+    name: "Speaking Gigs"
+    description: "Presentations, talks, conference scheduling, speaker prep"
+    color: magenta  # Creative, special events (purple not supported, using magenta)
+    examples:
+      - "Prepare slides for NASA conference"
+      - "Schedule follow-up call with event organizer"
+      - "Draft talk outline on AI ethics"
+    keywords:
+      - presentation
+      - talk
+      - conference
+      - speaking
+      - slides
+      - keynote
+      - workshop
+    notes: "Everything related to public speaking engagements"
+
+  - id: big-ideas
+    name: "Big Ideas"
+    description: "Long-term aspirational projects - books, tools, ventures"
+    color: violet  # Aspirational, visionary
+    examples:
+      - "Draft chapter for Innovation Engines"
+      - "Outline new product concept"
+      - "Research for book project"
+    keywords:
+      - book
+      - writing
+      - chapter
+      - long-term
+      - aspirational
+      - build product
+      - venture
+    notes: "Major creative/entrepreneurial projects with long time horizons"
+
+  - id: inspiration
+    name: "Inspiration"
+    description: "Ideas worth remembering, content capture, things to process later"
+    color: yellow  # Light bulb moments, bright ideas
+    examples:
+      - "Capture idea: wealth vs leverage"
+      - "Interesting article about AI ethics"
+      - "Quote to remember for later"
+    keywords:
+      - idea
+      - capture
+      - remember
+      - inspiration
+      - note
+      - interesting
+    notes: "Content that could feed speaking gigs OR big ideas. Things that don't have a clear home yet."
+
+  - id: inbox
+    name: "Inbox"
+    description: "Uncategorized tasks awaiting triage"
+    color: grey  # Neutral, unsorted
+    examples:
+      - "Thing I need to figure out"
+      - "Task that needs more context"
+    keywords:
+      - unclear
+      - needs triage
+      - unsorted
+    notes: "Temporary holding area for tasks that need classification"
+
+# ============================================================================
+# LABELS (Multi-tag - Can apply MULTIPLE)
+# ============================================================================
+
+label_categories:
+  
+  # --------------------------------------------------------------------------
+  # Book Projects - Specific books being written
+  # --------------------------------------------------------------------------
+  
+  - category: "Book Projects"
+    description: "Content and tasks related to specific book writing projects"
+    labels:
+      
+      - id: innovation-engines
+        name: "Innovation Engines"
+        description: "Content, research, and tasks for Innovation Engines book"
+        applies_to:
+          - project: big-ideas
+            use: "For chapters, research, and writing tasks"
+          - project: inspiration
+            use: "For ideas that might go into the book"
+          - project: speaking-gigs
+            use: "For talks based on book content"
+        keywords:
+          - innovation
+          - engines
+          - leverage
+          - systems thinking
+
+      - id: curiosity-ai
+        name: "Curiosity in the Age of AI"
+        description: "Content and tasks for Curiosity in the Age of AI book"
+        applies_to:
+          - project: big-ideas
+            use: "For chapters and writing"
+          - project: inspiration
+            use: "For AI-related ideas"
+          - project: speaking-gigs
+            use: "For AI ethics talks"
+        keywords:
+          - AI
+          - curiosity
+          - ethics
+          - artificial intelligence
+
+      - id: hands-off-keyboard
+        name: "Hands Off Keyboard"
+        description: "Content and tasks for Hands Off Keyboard book/podcast"
+        applies_to:
+          - project: big-ideas
+            use: "For content creation"
+          - project: inspiration
+            use: "For episode ideas"
+        keywords:
+          - podcast
+          - keyboard
+          - productivity
+          - automation
+
+  # --------------------------------------------------------------------------
+  # Projects & Contexts - Specific projects, clients, initiatives
+  # --------------------------------------------------------------------------
+  
+  - category: "Projects & Contexts"
+    description: "Specific projects, clients, or initiatives"
+    labels:
+      
+      - id: madi
+        name: "MADI"
+        description: "NASA MADI project"
+        applies_to:
+          - project: work
+            use: "For tasks related to MADI project"
+        keywords:
+          - MADI
+          - NASA project
+
+      - id: aed
+        name: "AED"
+        description: "AED client work"
+        applies_to:
+          - project: work
+            use: "For AED client tasks"
+        keywords:
+          - AED
+          - client
+
+      - id: sera
+        name: "Sera"
+        description: "Sera project/initiative (TBD - clarify with user)"
+        applies_to:
+          - project: big-ideas
+            use: "TBD"
+        keywords:
+          - Sera
+        notes: "TODO: Clarify what Sera represents"
+
+  # --------------------------------------------------------------------------
+  # Activity Types - What kind of work/activity
+  # --------------------------------------------------------------------------
+  
+  - category: "Activity Types"
+    description: "The type of activity or work being done"
+    labels:
+      
+      - id: presentations
+        name: "Presentations"
+        description: "Content and inspiration for presentations/talks"
+        applies_to:
+          - project: speaking-gigs
+            use: "For actual presentation tasks"
+          - project: inspiration
+            use: "For ideas that might become talks"
+          - project: big-ideas
+            use: "For content that overlaps with books"
+        keywords:
+          - presentation
+          - slides
+          - talk
+          - content
+
+      - id: networking
+        name: "Networking"
+        description: "Relationship building, coffee chats, follow-ups"
+        applies_to:
+          - project: work
+            use: "For professional networking"
+          - project: speaking-gigs
+            use: "For speaker/organizer relationships"
+        keywords:
+          - coffee chat
+          - follow up
+          - connect
+          - reach out
+          - networking
+
+  # --------------------------------------------------------------------------
+  # Organizations - For historical context (former employers)
+  # --------------------------------------------------------------------------
+  
+  - category: "Organizations (Context)"
+    description: "Organizations for context and history (most tasks should be in Work project)"
+    labels:
+      
+      - id: mit
+        name: "MIT"
+        description: "Massachusetts Institute of Technology (former employer)"
+        applies_to:
+          - project: work
+            use: "For tasks related to MIT context"
+        keywords:
+          - MIT
+          - Massachusetts Institute of Technology
+        notes: "Former employer - use for historical context"
+
+      - id: nasa
+        name: "NASA"
+        description: "National Aeronautics and Space Administration (former employer)"
+        archived: true
+        applies_to:
+          - project: work
+            use: "For tasks related to NASA context"
+          - project: speaking-gigs
+            use: "For NASA-related presentations"
+        keywords:
+          - NASA
+          - space
+          - government
+        notes: "Former employer - archived, use for historical context only"
+
+      - id: prospero
+        name: "Prospero"
+        description: "Prospero (former employer)"
+        applies_to:
+          - project: work
+            use: "For tasks related to Prospero context"
+        keywords:
+          - Prospero
+        notes: "Former employer - use for historical context"
+
+  # --------------------------------------------------------------------------
+  # Archived - Labels no longer in active use
+  # --------------------------------------------------------------------------
+  
+  - category: "Archived (Deprecated)"
+    description: "Labels that are no longer actively used"
+    labels:
+      
+      - id: education
+        name: "Education"
+        description: "MIT-related education tasks (complete)"
+        status: archived
+        notes: "No longer active - MIT education phase complete"
+
+      - id: job
+        name: "job"
+        description: "Job hunting tasks (complete)"
+        status: archived
+        notes: "No longer active - employment secured"
+
+      - id: big-ideas-label
+        name: "Big Ideas"
+        description: "Redundant with Big Ideas project"
+        status: deprecated
+        notes: "Use Big Ideas project instead"
+
+# ============================================================================
+# AI CLASSIFICATION GUIDELINES
+# ============================================================================
+
+classification_rules:
+  
+  # Project selection (ONE project per task)
+  project_selection:
+    - rule: "Choose the project that represents WHERE the task lives"
+    - rule: "If unclear, default to Inbox and let user reclassify"
+    - rule: "Speaking Gigs takes precedence for actual presentations, even if content comes from books"
+    - rule: "Big Ideas is for creating things, Inspiration is for capturing ideas"
+  
+  # Label selection (0-3 labels per task)
+  label_selection:
+    - rule: "Suggest 0-3 labels that describe WHAT the task is about"
+    - rule: "Book labels (Innovation Engines, etc.) when task relates to that book"
+    - rule: "Activity labels (Presentations, Networking) for the type of work"
+    - rule: "Organization labels (MIT, NASA) for context, not as primary classification"
+    - rule: "Avoid redundant labels - don't add 'Presentations' if already in Speaking Gigs project"
+  
+  # Confidence threshold
+  confidence:
+    - high: ">= 0.85"
+      action: "Auto-apply classification"
+    - medium: "0.70 - 0.84"
+      action: "Suggest with reasoning"
+    - low: "< 0.70"
+      action: "Ask user for clarification"
+
+# ============================================================================
+# MIGRATION & MAINTENANCE
+# ============================================================================
+
+maintenance:
+  review_frequency: "quarterly"
+  next_review: "2025-03-01"
+  
+  actions:
+    - "Review label usage statistics"
+    - "Archive unused labels"
+    - "Consider new labels for emerging patterns"
+    - "Update descriptions based on actual usage"
+    - "Check for label overlap or confusion"
+
+# ============================================================================
+# NOTES
+# ============================================================================
+
+notes: |
+  This taxonomy evolves with your life and work. Update it as:
+  - New projects emerge (e.g., new book, new client)
+  - Old projects complete (archive labels)
+  - Patterns emerge that need new labels
+  - Descriptions need clarification
+  
+  The AI uses this file to:
+  - Understand your project structure
+  - Suggest appropriate classifications
+  - Learn your patterns over time
+  - Generate better prompts
+

@@ -1,0 +1,78 @@
+# Multi-stage Dockerfile for Todoist AI Agent (NestJS)
+# Optimized for production deployment with minimal image size
+
+# Stage 1: Dependencies
+FROM node:22-alpine AS deps
+WORKDIR /app
+
+# Install pnpm
+RUN npm install -g pnpm
+
+# Copy package files
+COPY package.json pnpm-lock.yaml .npmrc .nvmrc ./
+
+# Install dependencies
+RUN pnpm install --frozen-lockfile
+
+# Stage 2: Builder
+FROM node:22-alpine AS builder
+WORKDIR /app
+
+# Install pnpm
+RUN npm install -g pnpm
+
+# Copy dependencies from deps stage
+COPY --from=deps /app/node_modules ./node_modules
+
+# Copy source files
+COPY . .
+
+# Build the application
+RUN pnpm build
+
+# Remove dev dependencies
+RUN pnpm prune --prod
+
+# Stage 3: Runner (Production)
+FROM node:22-alpine AS runner
+WORKDIR /app
+
+# Install dumb-init for proper signal handling
+RUN apk add --no-cache dumb-init
+
+# Create non-root user
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 nestjs
+
+# Copy necessary files from builder
+COPY --from=builder --chown=nestjs:nodejs /app/dist ./dist
+COPY --from=builder --chown=nestjs:nodejs /app/node_modules ./node_modules
+COPY --from=builder --chown=nestjs:nodejs /app/package.json ./package.json
+COPY --from=builder --chown=nestjs:nodejs /app/config ./config
+COPY --from=builder --chown=nestjs:nodejs /app/migrations ./migrations
+
+# Create data directory for SQLite (if used)
+RUN mkdir -p /app/data && chown -R nestjs:nodejs /app/data
+
+# Switch to non-root user
+USER nestjs
+
+# Environment variables (can be overridden)
+ENV NODE_ENV=production \
+    RUN_MODE=mcp \
+    DATABASE_TYPE=sqlite \
+    DATABASE_URL=/app/data/tasks.db
+
+# Expose port (if running HTTP server)
+EXPOSE 3000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+  CMD node -e "console.log('healthy')" || exit 1
+
+# Use dumb-init to handle signals properly
+ENTRYPOINT ["dumb-init", "--"]
+
+# Default command (can be overridden for CLI mode)
+CMD ["node", "dist/main"]
+

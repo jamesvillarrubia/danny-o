@@ -1,0 +1,106 @@
+version: '3.8'
+
+services:
+  # MCP Server mode (default)
+  mcp-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runner
+    container_name: todoist-ai-mcp
+    environment:
+      - NODE_ENV=production
+      - RUN_MODE=mcp
+      - DATABASE_TYPE=postgres
+      - DATABASE_URL=postgresql://tasks:tasks@postgres:5432/tasks
+      - TODOIST_API_KEY=${TODOIST_API_KEY}
+      - CLAUDE_API_KEY=${CLAUDE_API_KEY}
+      - SYNC_INTERVAL=300000
+    volumes:
+      - ./data:/app/data
+      - ./config:/app/config:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - tasks-network
+
+  # CLI mode (for manual commands)
+  cli:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runner
+    container_name: todoist-ai-cli
+    environment:
+      - NODE_ENV=production
+      - RUN_MODE=cli
+      - DATABASE_TYPE=postgres
+      - DATABASE_URL=postgresql://tasks:tasks@postgres:5432/tasks
+      - TODOIST_API_KEY=${TODOIST_API_KEY}
+      - CLAUDE_API_KEY=${CLAUDE_API_KEY}
+    volumes:
+      - ./data:/app/data
+      - ./config:/app/config:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["node", "dist/main", "sync"]
+    networks:
+      - tasks-network
+    profiles:
+      - cli
+
+  # PostgreSQL database
+  postgres:
+    image: postgres:15-alpine
+    container_name: todoist-ai-db
+    environment:
+      - POSTGRES_DB=tasks
+      - POSTGRES_USER=tasks
+      - POSTGRES_PASSWORD=tasks
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tasks"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - tasks-network
+
+  # Optional: pgAdmin for database management
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: todoist-ai-pgadmin
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=admin@tasks.local
+      - PGADMIN_DEFAULT_PASSWORD=admin
+      - PGADMIN_CONFIG_SERVER_MODE=False
+    ports:
+      - "5050:80"
+    volumes:
+      - pgadmin-data:/var/lib/pgadmin
+    depends_on:
+      - postgres
+    restart: unless-stopped
+    networks:
+      - tasks-network
+    profiles:
+      - tools
+
+volumes:
+  postgres-data:
+    driver: local
+  pgadmin-data:
+    driver: local
+
+networks:
+  tasks-network:
+    driver: bridge
+

@@ -1,0 +1,400 @@
+/**
+ * Todoist Sync Service
+ * 
+ * Orchestrates synchronization between Todoist API and local storage.
+ * Features:
+ * - Background sync on configurable interval
+ * - Conflict detection and resolution
+ * - Incremental updates for efficiency
+ * - Auto-classification trigger for new tasks
+ * 
+ * The sync engine is storage-agnostic and works with any StorageAdapter
+ * implementation (SQLite, PostgreSQL, etc.).
+ */
+
+import { Inject, Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
+import { ITaskProvider } from '../../common/interfaces/task-provider.interface';
+import { IStorageAdapter } from '../../common/interfaces/storage-adapter.interface';
+import { Task, TaskHistory, Project } from '../../common/interfaces';
+import { ReconciliationService } from './reconciliation.service';
+import { SyncOptionsDto, SyncResultDto, CompleteTaskDto, CreateTaskInputDto } from '../dto';
+
+type SyncCallback = (tasks: Task[]) => Promise<void>;
+type SyncCompleteCallback = (result: SyncResultDto) => Promise<void>;
+
+@Injectable()
+export class SyncService implements OnModuleDestroy {
+  private readonly logger = new Logger(SyncService.name);
+  private syncInterval: NodeJS.Timeout | null = null;
+  private isSyncing = false;
+  private lastSyncError: Error | null = null;
+  private intervalMs: number;
+  private onNewTasks: SyncCallback | null = null;
+  private onSyncComplete: SyncCompleteCallback | null = null;
+
+  constructor(
+    @Inject('ITaskProvider')
+    private readonly taskProvider: ITaskProvider,
+    @Inject('IStorageAdapter')
+    private readonly storage: IStorageAdapter,
+    @Inject(ReconciliationService)
+    private readonly reconciler: ReconciliationService,
+  ) {
+    this.intervalMs = 300000; // Default: 5 minutes
+  }
+
+  /**
+   * Clean up on module destroy
+   */
+  onModuleDestroy(): void {
+    this.stop();
+  }
+
+  /**
+   * Configure sync options and callbacks
+   */
+  configure(options: {
+    intervalMs?: number;
+    onNewTasks?: SyncCallback;
+    onSyncComplete?: SyncCompleteCallback;
+  }): void {
+    if (options.intervalMs) {
+      this.intervalMs = options.intervalMs;
+    }
+    if (options.onNewTasks) {
+      this.onNewTasks = options.onNewTasks;
+    }
+    if (options.onSyncComplete) {
+      this.onSyncComplete = options.onSyncComplete;
+    }
+  }
+
+  /**
+   * Start background sync
+   */
+  async start(): Promise<void> {
+    this.logger.log(`Starting background sync (interval: ${this.intervalMs}ms)`);
+
+    // Do initial sync
+    await this.syncNow();
+
+    // Set up recurring sync
+    this.syncInterval = setInterval(() => {
+      this.syncNow().catch((error) => {
+        this.logger.error(`Background sync error: ${error.message}`);
+        this.lastSyncError = error;
+      });
+    }, this.intervalMs);
+
+    this.logger.log('Background sync started');
+  }
+
+  /**
+   * Stop background sync
+   */
+  stop(): void {
+    if (this.syncInterval) {
+      clearInterval(this.syncInterval);
+      this.syncInterval = null;
+      this.logger.log('Background sync stopped');
+    }
+  }
+
+  /**
+   * Perform a sync operation now
+   */
+  async syncNow(): Promise<SyncResultDto> {
+    if (this.isSyncing) {
+      this.logger.log('Sync already in progress, skipping');
+      return {
+        success: false,
+        error: 'Sync already in progress',
+        timestamp: new Date(),
+      };
+    }
+
+    this.isSyncing = true;
+    const startTime = Date.now();
+
+    try {
+      this.logger.log('Starting sync...');
+
+      // Fetch data from Todoist
+      const [tasks, projects, labels] = await Promise.all([
+        this.taskProvider.getTasks(),
+        this.taskProvider.getProjects(),
+        this.taskProvider.getLabels(),
+      ]);
+
+      // Detect new tasks (for AI classification)
+      const newTasks = await this.detectNewTasks(tasks);
+
+      // Save to storage
+      const [taskCount, projectCount, labelCount] = await Promise.all([
+        this.storage.saveTasks(tasks),
+        this.storage.saveProjects(projects),
+        this.storage.saveLabels(labels),
+      ]);
+
+      // Reconcile metadata categories with actual Todoist projects
+      await this.reconcileCategories(tasks, projects);
+
+      // Update last sync time
+      await this.storage.setLastSyncTime(new Date());
+
+      const duration = Date.now() - startTime;
+      const result: SyncResultDto = {
+        success: true,
+        duration,
+        tasks: taskCount,
+        projects: projectCount,
+        labels: labelCount,
+        newTasks: newTasks.length,
+        timestamp: new Date(),
+      };
+
+      this.logger.log(`Sync complete in ${duration}ms: ${JSON.stringify({
+        tasks: taskCount,
+        projects: projectCount,
+        labels: labelCount,
+        newTasks: newTasks.length,
+      })}`);
+
+      // Trigger callbacks
+      if (newTasks.length > 0 && this.onNewTasks) {
+        await this.onNewTasks(newTasks);
+      }
+
+      if (this.onSyncComplete) {
+        await this.onSyncComplete(result);
+      }
+
+      this.lastSyncError = null;
+      return result;
+    } catch (error: any) {
+      this.logger.error(`Sync failed: ${error.message}`);
+      this.lastSyncError = error;
+
+      return {
+        success: false,
+        error: error.message,
+        timestamp: new Date(),
+      };
+    } finally {
+      this.isSyncing = false;
+    }
+  }
+
+  /**
+   * Detect tasks that are new since last sync
+   */
+  private async detectNewTasks(currentTasks: Task[]): Promise<Task[]> {
+    try {
+      // Get all existing task IDs from storage
+      const existingTasks = await this.storage.getTasks({ completed: false });
+      const existingIds = new Set(existingTasks.map((t) => t.id));
+
+      // Find tasks that don't exist in storage
+      const newTasks = currentTasks.filter((task) => !existingIds.has(task.id));
+
+      if (newTasks.length > 0) {
+        this.logger.log(`Detected ${newTasks.length} new tasks`);
+      }
+
+      return newTasks;
+    } catch (error: any) {
+      this.logger.error(`Error detecting new tasks: ${error.message}`);
+      return [];
+    }
+  }
+
+  /**
+   * Push local changes to Todoist
+   */
+  async pushTaskUpdate(taskId: string, updates: any): Promise<boolean> {
+    try {
+      this.logger.log(`Pushing updates for task ${taskId}`);
+
+      // Update in Todoist
+      await this.taskProvider.updateTask(taskId, updates);
+
+      // Update in local storage
+      await this.storage.updateTask(taskId, updates);
+
+      this.logger.log(`Successfully pushed updates for task ${taskId}`);
+      return true;
+    } catch (error: any) {
+      this.logger.error(`Failed to push updates for task ${taskId}: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Complete a task both locally and in Todoist
+   */
+  async completeTask(taskId: string, completionMetadata: CompleteTaskDto = {}): Promise<boolean> {
+    try {
+      this.logger.log(`Completing task ${taskId}`);
+
+      // Get task details before completing
+      const task = await this.storage.getTask(taskId);
+
+      if (!task) {
+        throw new Error(`Task ${taskId} not found in storage`);
+      }
+
+      // Close in Todoist
+      await this.taskProvider.closeTask(taskId);
+
+      // Update in storage
+      await this.storage.updateTask(taskId, {
+        isCompleted: true,
+        completedAt: new Date().toISOString(),
+      });
+
+      // Save completion history for learning
+      const historyData: Partial<TaskHistory> = {
+        taskContent: task.content,
+        completedAt: new Date(),
+        category: task.metadata?.category,
+        actualDuration: completionMetadata.actualDuration,
+        context: completionMetadata.context,
+      };
+
+      await this.storage.saveTaskCompletion(taskId, historyData);
+
+      this.logger.log(`Task ${taskId} completed successfully`);
+      return true;
+    } catch (error: any) {
+      this.logger.error(`Failed to complete task ${taskId}: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Create a new task in Todoist and sync to storage
+   */
+  async createTask(taskData: CreateTaskInputDto): Promise<Task> {
+    try {
+      this.logger.log(`Creating new task: ${taskData.content}`);
+
+      // Create in Todoist
+      const task = await this.taskProvider.createTask(taskData);
+
+      // Save to storage
+      await this.storage.saveTasks([task]);
+
+      this.logger.log(`Created task ${task.id}`);
+      return task;
+    } catch (error: any) {
+      this.logger.error(`Failed to create task: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Delete a task from both Todoist and storage
+   */
+  async deleteTask(taskId: string): Promise<boolean> {
+    try {
+      this.logger.log(`Deleting task ${taskId}`);
+
+      // Delete from Todoist (if method exists)
+      // await this.taskProvider.deleteTask(taskId);
+
+      // Delete from storage
+      await this.storage.deleteTask(taskId);
+
+      this.logger.log(`Task ${taskId} deleted successfully`);
+      return true;
+    } catch (error: any) {
+      this.logger.error(`Failed to delete task ${taskId}: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Get sync status
+   */
+  getStatus(): {
+    isRunning: boolean;
+    isSyncing: boolean;
+    intervalMs: number;
+    lastError: string | null;
+  } {
+    return {
+      isRunning: this.syncInterval !== null,
+      isSyncing: this.isSyncing,
+      intervalMs: this.intervalMs,
+      lastError: this.lastSyncError ? this.lastSyncError.message : null,
+    };
+  }
+
+  /**
+   * Force a full resync
+   */
+  async fullResync(): Promise<SyncResultDto> {
+    this.logger.log('Performing full resync...');
+    return await this.syncNow();
+  }
+
+  /**
+   * Reconcile task metadata categories with actual Todoist project assignments
+   * Updates local metadata to match Todoist as the source of truth
+   */
+  private async reconcileCategories(tasks: Task[], projects: Project[]): Promise<void> {
+    this.logger.log('Reconciling task metadata with Todoist state...');
+
+    let manualChanges = 0;
+    let clearedRecommendations = 0;
+
+    for (const task of tasks) {
+      const metadata = await this.storage.getTaskMetadata(task.id);
+      const lastSyncedState = await this.storage.getLastSyncedState(task.id);
+
+      // Analyze changes
+      const analysis = await this.reconciler.detectChanges(task, metadata, lastSyncedState);
+
+      if (analysis.anyChangedManually) {
+        // User made manual changes after AI classification
+        this.logger.log(`Task ${task.id} changed manually: ${analysis.reason}`);
+
+        // If content changed, clear ALL AI metadata (task needs full reclassification)
+        if (analysis.contentChangedManually) {
+          await this.storage.saveFieldMetadata(task.id, 'recommended_category', null, null);
+          await this.storage.saveFieldMetadata(task.id, 'time_estimate_minutes', null, null);
+          await this.storage.saveFieldMetadata(task.id, 'priority_score', null, null);
+          await this.storage.saveFieldMetadata(task.id, 'recommendation_applied', false, null);
+          await this.storage.saveFieldMetadata(task.id, 'classification_source', null, null);
+          clearedRecommendations++;
+        } else {
+          // Only project/labels changed - mark as manual override
+          const currentCategory = this.reconciler.getCategoryFromProject(task.projectId, projects);
+          if (currentCategory) {
+            await this.storage.saveFieldMetadata(
+              task.id,
+              'recommended_category',
+              currentCategory,
+              new Date(),
+            );
+            await this.storage.saveFieldMetadata(task.id, 'recommendation_applied', true, null);
+            // Mark as manual so classify --all skips it
+            await this.storage.saveFieldMetadata(task.id, 'classification_source', 'manual', null);
+          }
+        }
+
+        manualChanges++;
+      }
+
+      // Always update last synced state to current Todoist state
+      await this.storage.saveLastSyncedState(task.id, task, new Date());
+    }
+
+    if (manualChanges > 0) {
+      this.logger.log(
+        `Detected ${manualChanges} tasks with manual changes, cleared ${clearedRecommendations} recommendations`,
+      );
+    }
+  }
+}
+

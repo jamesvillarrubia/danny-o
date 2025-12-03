@@ -1,0 +1,13 @@
+#!/usr/bin/env tsx
+
+/**
+ * CLI Entry Point (Development Mode)
+ * 
+ * Uses tsx to run TypeScript files directly without building.
+ * Fast, reliable, and works perfectly with NestJS!
+ * 
+ * For production, use the built version: node dist/main.js
+ */
+
+import '../src/main';
+

@@ -7,13 +7,8 @@
 
 import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
 import { readFileSync } from 'fs';
-import { resolve, dirname } from 'path';
-import { fileURLToPath } from 'url';
+import { resolve, join } from 'path';
 import * as yaml from 'yaml';
-
-// ES module compatibility
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
 
 export interface TaxonomyProject {
   id: string;
@@ -58,7 +53,8 @@ export class TaxonomyService implements OnModuleInit {
 
   constructor() {
     // Path to taxonomy file in nest config directory
-    this.taxonomyPath = resolve(__dirname, '../../../config/task-taxonomy.yaml');
+    // Use process.cwd() which points to the nest/ directory
+    this.taxonomyPath = join(process.cwd(), 'config/task-taxonomy.yaml');
   }
 
   onModuleInit() {
@@ -73,7 +69,7 @@ export class TaxonomyService implements OnModuleInit {
       const yamlContent = readFileSync(this.taxonomyPath, 'utf8');
       this.taxonomy = yaml.parse(yamlContent);
       this.logger.log(`Loaded taxonomy v${this.taxonomy?.version} from ${this.taxonomyPath}`);
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(`Failed to load taxonomy: ${error.message}`);
       throw new Error(`Could not load task taxonomy: ${error.message}`);
     }
@@ -275,7 +271,7 @@ Return a JSON object with:
 
       this.logger.log('Taxonomy validation passed');
       return { valid: true, errors: [] };
-    } catch (error) {
+    } catch (error: any) {
       return { valid: false, errors: [error.message] };
     }
   }

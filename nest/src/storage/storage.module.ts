@@ -1,16 +1,17 @@
 /**
  * Storage Module
  * 
- * Provides storage adapter with factory pattern for SQLite or PostgreSQL.
+ * Provides unified Kysely storage adapter that works with both SQLite (dev) and PostgreSQL (prod).
  */
 
-import { Module, Global } from '@nestjs/common';
+import { Module, Global, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { homedir } from 'os';
 import { join } from 'path';
-import { SQLiteAdapter } from './adapters/sqlite.adapter';
-import { PostgresAdapter } from './adapters/postgres.adapter';
+import { KyselyAdapter, DatabaseDialect } from './adapters/kysely.adapter';
 import { IStorageAdapter } from '../common/interfaces/storage-adapter.interface';
+
+const logger = new Logger('StorageModule');
 
 @Global()
 @Module({
@@ -18,22 +19,37 @@ import { IStorageAdapter } from '../common/interfaces/storage-adapter.interface'
     {
       provide: 'IStorageAdapter',
       useFactory: async (configService: ConfigService): Promise<IStorageAdapter> => {
-        const databaseType = configService.get<string>('DATABASE_TYPE', 'sqlite');
+        const databaseUrl = configService.get<string>('DATABASE_URL');
+        
+        // Determine dialect from DATABASE_URL or DATABASE_TYPE
+        let dialect: DatabaseDialect;
+        
+        if (databaseUrl && (databaseUrl.startsWith('postgres://') || databaseUrl.startsWith('postgresql://'))) {
+          dialect = 'postgres';
+          logger.log('Using PostgreSQL database (Neon)');
+        } else {
+          dialect = 'sqlite';
+          logger.log('Using SQLite database (local)');
+        }
 
-        let adapter: IStorageAdapter;
+        let adapter: KyselyAdapter;
 
-        if (databaseType === 'postgres') {
-          const databaseUrl = configService.get<string>('DATABASE_URL');
+        if (dialect === 'postgres') {
           if (!databaseUrl) {
             throw new Error('DATABASE_URL is required for PostgreSQL');
           }
-          adapter = new PostgresAdapter(databaseUrl);
+          adapter = new KyselyAdapter({
+            dialect: 'postgres',
+            connectionString: databaseUrl,
+          });
         } else {
           // Default to user's home directory: ~/.danny/data/tasks.db
-          // This ensures danny CLI works from any directory
           const defaultPath = join(homedir(), '.danny', 'data', 'tasks.db');
           const sqlitePath = configService.get<string>('SQLITE_PATH', defaultPath);
-          adapter = new SQLiteAdapter(sqlitePath);
+          adapter = new KyselyAdapter({
+            dialect: 'sqlite',
+            sqlitePath,
+          });
         }
 
         await adapter.initialize();
@@ -45,4 +61,3 @@ import { IStorageAdapter } from '../common/interfaces/storage-adapter.interface'
   exports: ['IStorageAdapter'],
 })
 export class StorageModule {}
-

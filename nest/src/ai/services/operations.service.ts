@@ -729,7 +729,7 @@ Important:
 - Labels: ${task.labels?.join(', ') || 'None'}
 - Time Estimate: ${metadata.timeEstimateMinutes ? `${metadata.timeEstimateMinutes} minutes` : metadata.timeEstimate || 'Not estimated'}
 - Size: ${metadata.size || 'Not sized'}
-- Priority Score: ${metadata.priorityScore || 'Not scored'}
+- Priority Score: ${(metadata as any).priorityScore || 'Not scored'}
 - AI Confidence: ${metadata.aiConfidence ? `${(metadata.aiConfidence * 100).toFixed(0)}%` : 'N/A'}
 - Classification Source: ${metadata.classificationSource || 'N/A'}
 - Energy Level: ${metadata.energyLevel || 'Not set'}
@@ -745,7 +745,7 @@ Project ID: ${task.projectId}
 Priority: ${task.priority}/4 (1=lowest, 4=highest)
 Due Date: ${task.due?.date || 'Not set'}
 Status: ${task.isCompleted ? 'Completed' : 'Active'}
-URL: ${task.url || 'N/A'}
+URL: ${(task as any).url || 'N/A'}
 ${metadataContext}
 
 **Comment History (chronological):**

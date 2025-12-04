@@ -155,4 +155,47 @@ export abstract class IStorageAdapter {
    * Save the Todoist sync token for incremental sync
    */
   abstract setSyncToken(token: string): Promise<void>;
+
+  // ==================== AI Interaction Logging ====================
+
+  /**
+   * Log an AI interaction for analysis and prompt optimization
+   */
+  abstract logAIInteraction(data: {
+    interactionType: string;
+    taskId?: string;
+    inputContext?: any;
+    promptUsed?: string;
+    aiResponse?: any;
+    actionTaken?: string;
+    success: boolean;
+    errorMessage?: string;
+    latencyMs?: number;
+    modelUsed?: string;
+  }): Promise<void>;
+
+  /**
+   * Get AI interactions with optional filters
+   */
+  abstract getAIInteractions(filters?: {
+    interactionType?: string;
+    taskId?: string;
+    success?: boolean;
+    startDate?: Date;
+    endDate?: Date;
+    limit?: number;
+  }): Promise<Array<{
+    id: number;
+    interactionType: string;
+    taskId?: string;
+    inputContext?: any;
+    promptUsed?: string;
+    aiResponse?: any;
+    actionTaken?: string;
+    success: boolean;
+    errorMessage?: string;
+    latencyMs?: number;
+    modelUsed?: string;
+    createdAt: Date;
+  }>>;
 }

@@ -18,7 +18,14 @@ import { ClaudeService } from '../services/claude.service';
 import { SyncService } from '../../task/services/sync.service';
 import { IStorageAdapter } from '../../common/interfaces/storage-adapter.interface';
 import axios from 'axios';
-import Exa from 'exa-js';
+// Exa search is optional - will be null if not installed
+let Exa: any = null;
+try {
+  // Dynamic import to handle missing module
+  Exa = require('exa-js').default;
+} catch {
+  // exa-js not installed - web search will be unavailable
+}
 
 const TASK_PROCESSOR_SYSTEM_PROMPT = `You are a resourceful task management AI assistant with direct access to a Todoist account.
 

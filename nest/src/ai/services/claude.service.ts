@@ -5,14 +5,19 @@
  * Handles API communication, structured output parsing, and error handling.
  */
 
-import { Injectable, Logger, OnModuleInit, Inject } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit, Inject, Optional } from '@nestjs/common';
 import Anthropic from '@anthropic-ai/sdk';
 import { ConfigService } from '@nestjs/config';
 import { PromptsService } from '../prompts/prompts.service';
+import { IStorageAdapter } from '../../common/interfaces';
 
 interface QueryOptions {
   temperature?: number;
   maxTokens?: number;
+  // Logging options
+  interactionType?: string;
+  taskId?: string;
+  inputContext?: any;
 }
 
 interface BatchOptions {
@@ -31,6 +36,7 @@ export class ClaudeService implements OnModuleInit {
   constructor(
     @Inject(ConfigService) private readonly configService: ConfigService,
     @Inject(PromptsService) private readonly promptsService: PromptsService,
+    @Optional() @Inject('IStorageAdapter') private readonly storage?: IStorageAdapter,
   ) {
     // Use the June 2024 version which is more widely available
     // Can be overridden via CLAUDE_MODEL env var
@@ -68,6 +74,8 @@ export class ClaudeService implements OnModuleInit {
    * Send a prompt to Claude and get structured JSON response
    */
   async query(prompt: string, options: QueryOptions = {}): Promise<any> {
+    const startTime = Date.now();
+    
     try {
       this.logger.log('Sending query to Claude...');
 
@@ -94,14 +102,50 @@ export class ClaudeService implements OnModuleInit {
       const jsonMatch = textContent.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
       if (!jsonMatch) {
         this.logger.error(`No JSON found in response: ${textContent}`);
+        
+        // Log failed interaction
+        await this.logInteraction({
+          interactionType: options.interactionType || 'query',
+          taskId: options.taskId,
+          inputContext: options.inputContext,
+          promptUsed: prompt,
+          aiResponse: textContent,
+          success: false,
+          errorMessage: 'AI response did not contain valid JSON',
+          latencyMs: Date.now() - startTime,
+        });
+        
         throw new Error('AI response did not contain valid JSON');
       }
 
       const parsed = JSON.parse(jsonMatch[0]);
+      
+      // Log successful interaction
+      await this.logInteraction({
+        interactionType: options.interactionType || 'query',
+        taskId: options.taskId,
+        inputContext: options.inputContext,
+        promptUsed: prompt,
+        aiResponse: parsed,
+        success: true,
+        latencyMs: Date.now() - startTime,
+      });
+      
       return parsed;
     } catch (error: any) {
+      const latencyMs = Date.now() - startTime;
+      
       if (error.status === 429) {
         this.logger.error('Rate limit exceeded');
+        await this.logInteraction({
+          interactionType: options.interactionType || 'query',
+          taskId: options.taskId,
+          inputContext: options.inputContext,
+          promptUsed: prompt,
+          success: false,
+          errorMessage: 'Rate limit exceeded',
+          latencyMs,
+        });
         throw new Error('AI rate limit exceeded. Please try again later.');
       }
 
@@ -111,6 +155,20 @@ export class ClaudeService implements OnModuleInit {
       }
 
       this.logger.error(`Query failed: ${error.message}`);
+      
+      // Log error (but not for already-handled errors)
+      if (!error.message?.includes('AI response did not contain valid JSON')) {
+        await this.logInteraction({
+          interactionType: options.interactionType || 'query',
+          taskId: options.taskId,
+          inputContext: options.inputContext,
+          promptUsed: prompt,
+          success: false,
+          errorMessage: error.message,
+          latencyMs,
+        });
+      }
+      
       throw error;
     }
   }
@@ -264,6 +322,36 @@ export class ClaudeService implements OnModuleInit {
    */
   private delay(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  /**
+   * Log AI interaction for analysis and prompt optimization
+   */
+  private async logInteraction(data: {
+    interactionType: string;
+    taskId?: string;
+    inputContext?: any;
+    promptUsed?: string;
+    aiResponse?: any;
+    actionTaken?: string;
+    success: boolean;
+    errorMessage?: string;
+    latencyMs?: number;
+  }): Promise<void> {
+    // Only log if storage is available
+    if (!this.storage?.logAIInteraction) {
+      return;
+    }
+
+    try {
+      await this.storage.logAIInteraction({
+        ...data,
+        modelUsed: this.model,
+      });
+    } catch (error: any) {
+      // Don't fail the main operation if logging fails
+      this.logger.warn(`Failed to log AI interaction: ${error.message}`);
+    }
   }
 }
 

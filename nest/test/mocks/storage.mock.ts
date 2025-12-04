@@ -203,6 +203,80 @@ export class MockStorageAdapter implements IStorageAdapter {
     this.syncToken = token;
   }
 
+  // AI Interaction Logging
+  private aiInteractions: Array<{
+    id: number;
+    interactionType: string;
+    taskId?: string;
+    inputContext?: any;
+    promptUsed?: string;
+    aiResponse?: any;
+    actionTaken?: string;
+    success: boolean;
+    errorMessage?: string;
+    latencyMs?: number;
+    modelUsed?: string;
+    createdAt: Date;
+  }> = [];
+
+  async logAIInteraction(data: {
+    interactionType: string;
+    taskId?: string;
+    inputContext?: any;
+    promptUsed?: string;
+    aiResponse?: any;
+    actionTaken?: string;
+    success: boolean;
+    errorMessage?: string;
+    latencyMs?: number;
+    modelUsed?: string;
+  }): Promise<void> {
+    this.aiInteractions.push({
+      id: this.aiInteractions.length + 1,
+      ...data,
+      createdAt: new Date(),
+    });
+  }
+
+  async getAIInteractions(filters?: {
+    interactionType?: string;
+    taskId?: string;
+    success?: boolean;
+    startDate?: Date;
+    endDate?: Date;
+    limit?: number;
+  }): Promise<Array<{
+    id: number;
+    interactionType: string;
+    taskId?: string;
+    inputContext?: any;
+    promptUsed?: string;
+    aiResponse?: any;
+    actionTaken?: string;
+    success: boolean;
+    errorMessage?: string;
+    latencyMs?: number;
+    modelUsed?: string;
+    createdAt: Date;
+  }>> {
+    let results = [...this.aiInteractions];
+    
+    if (filters?.interactionType) {
+      results = results.filter(i => i.interactionType === filters.interactionType);
+    }
+    if (filters?.taskId) {
+      results = results.filter(i => i.taskId === filters.taskId);
+    }
+    if (filters?.success !== undefined) {
+      results = results.filter(i => i.success === filters.success);
+    }
+    if (filters?.limit) {
+      results = results.slice(0, filters.limit);
+    }
+    
+    return results;
+  }
+
   // Helper methods for testing
   clear(): void {
     this.tasks.clear();
@@ -212,6 +286,7 @@ export class MockStorageAdapter implements IStorageAdapter {
     this.labels.clear();
     this.lastSyncTime = null;
     this.syncToken = '*';
+    this.aiInteractions = [];
   }
 
   seedTasks(tasks: Task[]): void {

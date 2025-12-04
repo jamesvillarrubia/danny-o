@@ -15,11 +15,16 @@ import { AIModule } from './ai/ai.module';
 import { MCPModule } from './mcp/mcp.module';
 import { CLIModule } from './cli/cli.module';
 import { HealthModule } from './health/health.module';
+import { ApiModule } from './api/api.module';
+import { SentryModule } from './sentry/sentry.module';
 
 @Module({
   imports: [
     // Global configuration (includes env validation and taxonomy)
     ConfigurationModule,
+
+    // Error tracking (Sentry)
+    SentryModule,
 
     // Storage layer
     StorageModule,
@@ -32,6 +37,9 @@ import { HealthModule } from './health/health.module';
     AIModule,
     MCPModule,
     CLIModule,
+
+    // API layer (HTTP endpoints for Vercel)
+    ApiModule,
 
     // Health checks
     HealthModule,

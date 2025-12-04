@@ -404,7 +404,12 @@ export class TodoistProvider implements ITaskProvider {
         projectId: comment.projectId,
         content: comment.content,
         postedAt: comment.postedAt,
-        attachment: comment.attachment,
+        attachment: comment.fileAttachment ? {
+          fileName: comment.fileAttachment.fileName || '',
+          fileType: comment.fileAttachment.fileType || '',
+          fileUrl: comment.fileAttachment.fileUrl || '',
+          resourceType: comment.fileAttachment.resourceType,
+        } : undefined,
       }));
     } catch (error: any) {
       this.logger.error(`Failed to fetch comments for task ${taskId}: ${error.message}`);
@@ -433,7 +438,12 @@ export class TodoistProvider implements ITaskProvider {
         projectId: comment.projectId,
         content: comment.content,
         postedAt: comment.postedAt,
-        attachment: comment.attachment,
+        attachment: comment.fileAttachment ? {
+          fileName: comment.fileAttachment.fileName || '',
+          fileType: comment.fileAttachment.fileType || '',
+          fileUrl: comment.fileAttachment.fileUrl || '',
+          resourceType: comment.fileAttachment.resourceType,
+        } : undefined,
       };
     } catch (error: any) {
       this.logger.error(`Failed to add comment to task ${taskId}: ${error.message}`);

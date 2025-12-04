@@ -604,4 +604,18 @@ export class SyncService implements OnModuleDestroy {
       throw error;
     }
   }
+
+  /**
+   * Get the last sync timestamp
+   */
+  async getLastSyncTime(): Promise<Date | null> {
+    return this.storage.getLastSyncTime();
+  }
+
+  /**
+   * Get all local tasks from storage
+   */
+  async getLocalTasks(filters?: { completed?: boolean }): Promise<Task[]> {
+    return this.storage.getTasks(filters);
+  }
 }

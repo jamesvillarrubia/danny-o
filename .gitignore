@@ -19,6 +19,7 @@ build/
 *.db-shm
 *.db-wal
 data/
+.danny/  # CLI data directory (typically in ~/.danny/)
 
 # IDE / Editor
 .vscode/

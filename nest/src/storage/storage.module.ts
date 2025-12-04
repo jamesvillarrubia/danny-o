@@ -6,6 +6,8 @@
 
 import { Module, Global } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { homedir } from 'os';
+import { join } from 'path';
 import { SQLiteAdapter } from './adapters/sqlite.adapter';
 import { PostgresAdapter } from './adapters/postgres.adapter';
 import { IStorageAdapter } from '../common/interfaces/storage-adapter.interface';
@@ -27,7 +29,10 @@ import { IStorageAdapter } from '../common/interfaces/storage-adapter.interface'
           }
           adapter = new PostgresAdapter(databaseUrl);
         } else {
-          const sqlitePath = configService.get<string>('SQLITE_PATH', '../data/tasks.db');
+          // Default to user's home directory: ~/.danny/data/tasks.db
+          // This ensures danny CLI works from any directory
+          const defaultPath = join(homedir(), '.danny', 'data', 'tasks.db');
+          const sqlitePath = configService.get<string>('SQLITE_PATH', defaultPath);
           adapter = new SQLiteAdapter(sqlitePath);
         }
 

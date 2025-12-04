@@ -18,6 +18,7 @@ import {
   CompleteCommand,
   PlanCommand,
   InsightsCommand,
+  ProcessCommand,
 } from './commands';
 
 @Module({
@@ -37,6 +38,7 @@ import {
     CompleteCommand,
     PlanCommand,
     InsightsCommand,
+    ProcessCommand,
   ],
   exports: [
     // Export commands for nest-commander to find them
@@ -47,6 +49,7 @@ import {
     CompleteCommand,
     PlanCommand,
     InsightsCommand,
+    ProcessCommand,
   ],
 })
 export class CLIModule {}

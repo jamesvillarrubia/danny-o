@@ -1,13 +1,28 @@
-#!/usr/bin/env tsx
+#!/usr/bin/env bash
+# CLI Entry Point (Development Mode)
+# 
+# Uses tsx to run TypeScript files directly without building.
+# Ensures tsx finds the correct tsconfig.json regardless of where danny is called from.
 
-/**
- * CLI Entry Point (Development Mode)
- * 
- * Uses tsx to run TypeScript files directly without building.
- * Fast, reliable, and works perfectly with NestJS!
- * 
- * For production, use the built version: node dist/main.js
- */
+# Resolve symlinks to get the actual script location
+SOURCE="${BASH_SOURCE[0]}"
+while [ -L "$SOURCE" ]; do
+  DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE"
+done
+SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+NEST_DIR="$(dirname "$SCRIPT_DIR")"
 
-import '../src/main';
+# List of known commands
+KNOWN_COMMANDS="sync|list|classify|prioritize|complete|plan|insights|process"
+
+# If first argument doesn't match a known command, treat it as natural language input
+if [ $# -gt 0 ] && ! echo "$1" | grep -qE "^($KNOWN_COMMANDS)$|^-"; then
+  # First argument is not a command, route to 'process'
+  cd "$NEST_DIR" && tsx "$NEST_DIR/src/main.ts" process "$@"
+else
+  # Normal command execution
+  cd "$NEST_DIR" && tsx "$NEST_DIR/src/main.ts" "$@"
+fi
 

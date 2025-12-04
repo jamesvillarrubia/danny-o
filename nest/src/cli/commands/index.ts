@@ -9,4 +9,5 @@ export * from './prioritize.command';
 export * from './complete.command';
 export * from './plan.command';
 export * from './insights.command';
+export * from './process.command';
 

@@ -20,7 +20,7 @@ export class EnvironmentVariables {
 
   @IsOptional()
   @IsString()
-  SQLITE_PATH?: string;
+  SQLITE_PATH?: string; // Defaults to ~/.danny/data/tasks.db (set in StorageModule)
 
   @IsOptional()
   @IsString()
@@ -38,6 +38,11 @@ export class EnvironmentVariables {
   @IsOptional()
   @IsEnum(['cli', 'mcp'])
   RUN_MODE?: 'cli' | 'mcp';
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  TASK_PROCESSOR_MAX_TURNS?: number;
 }
 
 export function validate(config: Record<string, unknown>) {
@@ -48,7 +53,8 @@ export function validate(config: Record<string, unknown>) {
   validatedConfig.NODE_ENV = validatedConfig.NODE_ENV || 'development';
   validatedConfig.RUN_MODE = validatedConfig.RUN_MODE || 'cli';
   validatedConfig.SYNC_INTERVAL = validatedConfig.SYNC_INTERVAL || 300000;
-  validatedConfig.SQLITE_PATH = validatedConfig.SQLITE_PATH || '../data/tasks.db';
+  validatedConfig.TASK_PROCESSOR_MAX_TURNS = validatedConfig.TASK_PROCESSOR_MAX_TURNS || 5;
+  // SQLITE_PATH defaults to ~/.danny/data/tasks.db (handled in StorageModule)
 
   return validatedConfig;
 }

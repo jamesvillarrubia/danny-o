@@ -393,7 +393,10 @@ export class TodoistProvider implements ITaskProvider {
     try {
       this.logger.log(`Fetching comments for task ${taskId}`);
       
-      const comments = await this.api.getComments({ taskId });
+      const response = await this.api.getComments({ taskId });
+      
+      // The API returns an array directly, not an object with 'items'
+      const comments = Array.isArray(response) ? response : [];
       
       return comments.map((comment: any) => ({
         id: comment.id,
@@ -405,7 +408,8 @@ export class TodoistProvider implements ITaskProvider {
       }));
     } catch (error: any) {
       this.logger.error(`Failed to fetch comments for task ${taskId}: ${error.message}`);
-      throw error;
+      // Return empty array instead of throwing to prevent blocking other operations
+      return [];
     }
   }
 

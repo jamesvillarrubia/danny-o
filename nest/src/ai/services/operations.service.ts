@@ -544,15 +544,24 @@ export class AIOperationsService {
           continue;
         }
 
+        // Debug: Log task with comments
+        if (task.comments.length > 0) {
+          this.logger.debug(`Task "${task.content}" has ${task.comments.length} comment(s)`);
+          this.logger.debug(`Last comment: "${task.comments[task.comments.length - 1].content.substring(0, 100)}..."`);
+        }
+
         // Get the last comment
         const lastComment = task.comments[task.comments.length - 1];
 
-        // Check if it mentions @danny
-        if (!lastComment.content.toLowerCase().includes('@danny')) {
+        // Check if it mentions @danny (case insensitive)
+        const hasAtDanny = lastComment.content.toLowerCase().includes('@danny');
+        
+        if (!hasAtDanny) {
           continue;
         }
 
         this.logger.log(`Found @danny mention in task ${task.id}: "${task.content}"`);
+        this.logger.log(`Last comment content: "${lastComment.content}"`);
 
         // Generate a contextual response
         const responseComment = await this.generateCommentResponse(task, lastComment.content);
@@ -585,39 +594,63 @@ export class AIOperationsService {
    * Generate a contextual response to a comment mentioning @danny
    */
   private async generateCommentResponse(task: Task, mentionComment: string): Promise<string> {
-    const commentHistory = task.comments
-      ?.slice(0, -1) // Exclude the last comment (the one with @danny)
-      .map((c) => c.content)
-      .join('\n') || 'No previous comments';
+    // Build full comment history with timestamps
+    const commentHistory = task.comments && task.comments.length > 1
+      ? task.comments
+          .slice(0, -1) // Exclude the last comment (the one with @danny)
+          .map((c, i) => `[${c.postedAt}] ${c.content}`)
+          .join('\n\n')
+      : 'No previous comments';
 
-    const prompt = `You are Danny, an AI task management assistant. A user has mentioned you in a comment on their task.
+    // Build comprehensive metadata context
+    const metadata = task.metadata || {};
+    const metadataContext = `
+**Task Metadata:**
+- Category: ${metadata.category || 'Not classified'}
+- Labels: ${task.labels?.join(', ') || 'None'}
+- Time Estimate: ${metadata.timeEstimateMinutes ? `${metadata.timeEstimateMinutes} minutes` : metadata.timeEstimate || 'Not estimated'}
+- Size: ${metadata.size || 'Not sized'}
+- Priority Score: ${metadata.priorityScore || 'Not scored'}
+- AI Confidence: ${metadata.aiConfidence ? `${(metadata.aiConfidence * 100).toFixed(0)}%` : 'N/A'}
+- Classification Source: ${metadata.classificationSource || 'N/A'}
+- Energy Level: ${metadata.energyLevel || 'Not set'}
+- Created: ${task.createdAt}
+- Last Updated: ${task.updatedAt || 'N/A'}`;
+
+    const prompt = `You are Danny, an AI task management assistant. A user has mentioned you in a comment on their task and needs your help.
 
 **Task Details:**
 Title: "${task.content}"
 Description: ${task.description || 'None'}
-Category: ${task.metadata?.category || 'Uncategorized'}
-Priority: ${task.priority}/4
-Due: ${task.due?.date || 'Not set'}
+Project ID: ${task.projectId}
+Priority: ${task.priority}/4 (1=lowest, 4=highest)
+Due Date: ${task.due?.date || 'Not set'}
+Status: ${task.isCompleted ? 'Completed' : 'Active'}
+URL: ${task.url || 'N/A'}
+${metadataContext}
 
-**Comment History:**
+**Comment History (chronological):**
 ${commentHistory}
 
-**User's Comment (mentioning @danny):**
+**Latest Comment (mentioning @danny):**
 "${mentionComment}"
 
 **Your Task:**
-Provide a helpful, concise response to the user's comment. Consider:
-- What are they asking for?
-- Is this a question, request for clarification, or update?
-- Can you provide actionable guidance based on the task context?
-- Keep your response under 2-3 sentences for brevity
+Based on the FULL task context (details, metadata, and ALL comments), provide a helpful, concise response to the user's latest comment. Consider:
+- What are they asking for? (archive, complete, classify, prioritize, update, question?)
+- Does the comment history provide important context about why they're asking?
+- What does the task metadata tell you about this task's current state?
 
 **Response Guidelines:**
-- Be friendly and conversational
-- Address their specific question or comment
-- Offer actionable advice when relevant
-- Don't over-explain; be concise
-- If they're asking you to do something (classify, prioritize, break down), acknowledge and explain it will happen in the next sync/classify run
+- Be friendly and conversational (you're Danny, their helpful assistant)
+- Address their specific question or request directly
+- If they're asking you to take an action (archive, complete, classify):
+  * Acknowledge you understand the request
+  * Explain briefly how they can trigger it (e.g., "I can archive this for you - just run \`danny respond\` or I'll catch it in the next sync")
+  * Or if you can do it now, say so
+- If it's a question, answer based on the full context
+- Keep it under 2-3 sentences unless more detail is genuinely needed
+- Use the task metadata and history to give informed, contextual responses
 
 Respond ONLY with the comment text (no preamble, no "Here's my response:", just the comment content):`;
 

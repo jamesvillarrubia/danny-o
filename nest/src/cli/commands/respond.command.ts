@@ -4,11 +4,15 @@
  * Check for @danny mentions in task comments and respond to them.
  */
 
-import { Command, CommandRunner } from 'nest-commander';
+import { Command, CommandRunner, Option } from 'nest-commander';
 import { Injectable, Inject } from '@nestjs/common';
-import { IStorageAdapter } from '../../common/interfaces';
+import { IStorageAdapter, Task } from '../../common/interfaces';
 import { AIOperationsService } from '../../ai/services/operations.service';
 import { SyncService } from '../../task/services/sync.service';
+
+interface RespondOptions {
+  taskId?: string;
+}
 
 @Injectable()
 @Command({
@@ -24,17 +28,36 @@ export class RespondCommand extends CommandRunner {
     super();
   }
 
-  async run(): Promise<void> {
+  async run(passedParams: string[], options?: RespondOptions): Promise<void> {
     try {
       console.log('💬 Checking for @danny mentions...\n');
 
-      // Get all active tasks
-      const tasks = await this.storage.getTasks({ completed: false });
-      console.log(`Found ${tasks.length} active tasks`);
+      let tasks: Task[];
+      
+      // If specific task ID provided, only check that task
+      if (options?.taskId) {
+        const task = await this.storage.getTask(options.taskId);
+        if (!task) {
+          console.error(`❌ Task ${options.taskId} not found in local storage`);
+          console.error('💡 Try running `danny sync` first');
+          process.exit(1);
+        }
+        tasks = [task];
+        console.log(`Checking task: "${task.content}"`);
+      } else {
+        // Get all active tasks
+        tasks = await this.storage.getTasks({ completed: false });
+        console.log(`Found ${tasks.length} active tasks`);
+        console.log('⚠️  Warning: Checking all tasks may hit rate limits. Use --task-id for specific tasks.\n');
+      }
 
-      // Fetch comments for all tasks
+      // Fetch comments for tasks
       console.log('📥 Fetching comments...');
       const tasksWithComments = await this.sync.fetchCommentsForTasks(tasks);
+      
+      // Count how many tasks have comments
+      const tasksWithCommentCount = tasksWithComments.filter(t => t.comments && t.comments.length > 0).length;
+      console.log(`${tasksWithCommentCount} tasks have comments`);
 
       // Find and respond to @danny mentions
       const mentionResults = await this.aiOps.respondToMentions(tasksWithComments);
@@ -66,6 +89,14 @@ export class RespondCommand extends CommandRunner {
       console.error(`❌ Error: ${error.message}`);
       process.exit(1);
     }
+  }
+
+  @Option({
+    flags: '-t, --task-id <taskId>',
+    description: 'Check a specific task by ID',
+  })
+  parseTaskId(val: string): string {
+    return val;
   }
 }
 

@@ -400,19 +400,51 @@ export class SyncService implements OnModuleDestroy {
   /**
    * Fetch and attach comments to tasks
    */
-  async fetchCommentsForTasks(tasks: Task[]): Promise<Task[]> {
-    const tasksWithComments = await Promise.all(
-      tasks.map(async (task) => {
-        try {
-          const comments = await this.taskProvider.getComments(task.id);
-          return { ...task, comments };
-        } catch (error: any) {
-          this.logger.warn(`Failed to fetch comments for task ${task.id}: ${error.message}`);
-          return task; // Return task without comments if fetch fails
+  async fetchCommentsForTasks(tasks: Task[], options: { respectRateLimits?: boolean } = {}): Promise<Task[]> {
+    const { respectRateLimits = true } = options;
+    
+    this.logger.log(`Fetching comments for ${tasks.length} tasks...`);
+    
+    if (tasks.length === 0) {
+      return tasks;
+    }
+
+    // Process sequentially with rate limiting to avoid HTTP 429
+    const tasksWithComments: Task[] = [];
+    
+    for (let i = 0; i < tasks.length; i++) {
+      const task = tasks[i];
+      try {
+        const comments = await this.taskProvider.getComments(task.id);
+        tasksWithComments.push({ ...task, comments });
+        
+        // Rate limit: 200ms delay between requests
+        // Todoist allows 450 requests per 15 minutes = 30 requests/minute = 0.5 requests/second
+        // So 200ms = 5 req/sec is very safe
+        if (respectRateLimits && i < tasks.length - 1) {
+          await this.delay(200);
         }
-      }),
-    );
+      } catch (error: any) {
+        // If rate limit hit, stop fetching and return what we have
+        if (error.message.includes('429') || error.message.includes('Too Many Requests')) {
+          this.logger.warn(`Rate limit hit after ${i + 1} tasks. Returning tasks fetched so far.`);
+          // Return tasks we've fetched plus remaining tasks without comments
+          return [...tasksWithComments, ...tasks.slice(i)];
+        }
+        
+        this.logger.warn(`Failed to fetch comments for task ${task.id}: ${error.message}`);
+        tasksWithComments.push(task); // Return task without comments if fetch fails
+      }
+    }
+    
     return tasksWithComments;
+  }
+
+  /**
+   * Delay helper for rate limiting
+   */
+  private delay(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
   }
 
   /**

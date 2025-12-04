@@ -529,6 +529,114 @@ export class AIOperationsService {
     return results;
   }
 
+  /**
+   * Check tasks for @danny mentions in last comment and generate responses
+   */
+  async respondToMentions(tasks: Task[]): Promise<Array<{ taskId: string; responded: boolean; comment?: string; error?: string }>> {
+    this.logger.log(`Checking ${tasks.length} tasks for @danny mentions...`);
+
+    const results: Array<{ taskId: string; responded: boolean; comment?: string; error?: string }> = [];
+
+    for (const task of tasks) {
+      try {
+        // Check if task has comments
+        if (!task.comments || task.comments.length === 0) {
+          continue;
+        }
+
+        // Get the last comment
+        const lastComment = task.comments[task.comments.length - 1];
+
+        // Check if it mentions @danny
+        if (!lastComment.content.toLowerCase().includes('@danny')) {
+          continue;
+        }
+
+        this.logger.log(`Found @danny mention in task ${task.id}: "${task.content}"`);
+
+        // Generate a contextual response
+        const responseComment = await this.generateCommentResponse(task, lastComment.content);
+
+        results.push({
+          taskId: task.id,
+          responded: true,
+          comment: responseComment,
+        });
+
+        // Rate limit courtesy
+        await this.delay(500);
+      } catch (error: any) {
+        this.logger.error(`Failed to respond to mention in task ${task.id}: ${error.message}`);
+        results.push({
+          taskId: task.id,
+          responded: false,
+          error: error.message,
+        });
+      }
+    }
+
+    this.logger.log(
+      `Responded to ${results.filter((r) => r.responded).length} @danny mentions`,
+    );
+    return results;
+  }
+
+  /**
+   * Generate a contextual response to a comment mentioning @danny
+   */
+  private async generateCommentResponse(task: Task, mentionComment: string): Promise<string> {
+    const commentHistory = task.comments
+      ?.slice(0, -1) // Exclude the last comment (the one with @danny)
+      .map((c) => c.content)
+      .join('\n') || 'No previous comments';
+
+    const prompt = `You are Danny, an AI task management assistant. A user has mentioned you in a comment on their task.
+
+**Task Details:**
+Title: "${task.content}"
+Description: ${task.description || 'None'}
+Category: ${task.metadata?.category || 'Uncategorized'}
+Priority: ${task.priority}/4
+Due: ${task.due?.date || 'Not set'}
+
+**Comment History:**
+${commentHistory}
+
+**User's Comment (mentioning @danny):**
+"${mentionComment}"
+
+**Your Task:**
+Provide a helpful, concise response to the user's comment. Consider:
+- What are they asking for?
+- Is this a question, request for clarification, or update?
+- Can you provide actionable guidance based on the task context?
+- Keep your response under 2-3 sentences for brevity
+
+**Response Guidelines:**
+- Be friendly and conversational
+- Address their specific question or comment
+- Offer actionable advice when relevant
+- Don't over-explain; be concise
+- If they're asking you to do something (classify, prioritize, break down), acknowledge and explain it will happen in the next sync/classify run
+
+Respond ONLY with the comment text (no preamble, no "Here's my response:", just the comment content):`;
+
+    try {
+      const response = await this.claude.query(prompt);
+      
+      // Clean up the response (remove quotes if AI wrapped it)
+      let cleanResponse = response.trim();
+      if (cleanResponse.startsWith('"') && cleanResponse.endsWith('"')) {
+        cleanResponse = cleanResponse.slice(1, -1);
+      }
+      
+      return cleanResponse;
+    } catch (error: any) {
+      this.logger.error(`Failed to generate comment response: ${error.message}`);
+      throw error;
+    }
+  }
+
   private delay(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }

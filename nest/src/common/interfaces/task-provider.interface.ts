@@ -6,7 +6,7 @@
  * by implementing these methods.
  */
 
-import { Task, Project, Label, TaskFilters, CreateTaskDto, UpdateTaskDto } from './task.interface';
+import { Task, Project, Label, TaskFilters, CreateTaskDto, UpdateTaskDto, Comment } from './task.interface';
 
 export interface ITaskProvider {
   /**
@@ -68,6 +68,16 @@ export interface ITaskProvider {
    * Get all labels
    */
   getLabels(): Promise<Label[]>;
+
+  /**
+   * Get comments for a task
+   */
+  getComments(taskId: string): Promise<Comment[]>;
+
+  /**
+   * Add a comment to a task
+   */
+  addComment(taskId: string, content: string): Promise<Comment>;
 
   /**
    * Test connection to the provider

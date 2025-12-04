@@ -15,7 +15,7 @@ SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
 NEST_DIR="$(dirname "$SCRIPT_DIR")"
 
 # List of known commands
-KNOWN_COMMANDS="sync|list|classify|prioritize|complete|plan|insights|process"
+KNOWN_COMMANDS="sync|list|classify|prioritize|complete|plan|insights|process|respond"
 
 # If first argument doesn't match a known command, treat it as natural language input
 if [ $# -gt 0 ] && ! echo "$1" | grep -qE "^($KNOWN_COMMANDS)$|^-"; then

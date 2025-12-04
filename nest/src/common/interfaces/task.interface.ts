@@ -5,6 +5,23 @@
  * These allow swapping between different task management systems.
  */
 
+/**
+ * Comment on a task or project
+ */
+export interface Comment {
+  id: string;
+  taskId?: string;
+  projectId?: string;
+  content: string;
+  postedAt: string;
+  attachment?: {
+    fileName: string;
+    fileType: string;
+    fileUrl: string;
+    resourceType: string;
+  };
+}
+
 export interface Task {
   id: string;
   content: string;
@@ -18,6 +35,9 @@ export interface Task {
   updatedAt: string;
   isCompleted: boolean;
   completedAt?: string | null;
+  
+  // Comments (optional, fetched separately)
+  comments?: Comment[];
   
   // Metadata from enrichment (optional)
   metadata?: TaskMetadata;

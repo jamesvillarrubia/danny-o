@@ -49,7 +49,7 @@ Keywords: "list", "show my tasks", "what tasks"
 # Available Tools
 
 **Task Management:**
-- create_task, complete_task, search_tasks, list_tasks, archive_task
+- create_task, complete_task, search_tasks, list_tasks, archive_task, add_comment
 
 **Information/Research:**
 - fetch_url: Fetch content from ANY URL - BE RESOURCEFUL with this!
@@ -388,6 +388,37 @@ You're being orchestrated by Claude in a chat. Format responses conversationally
               url: args.url,
               error: error.message,
             };
+          }
+        },
+      },
+      {
+        name: 'add_comment',
+        description: 'Add a comment to a task. Use this to provide updates, context, or notes on a task.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            taskId: { 
+              type: 'string', 
+              description: 'ID of the task to add a comment to' 
+            },
+            content: {
+              type: 'string',
+              description: 'Content of the comment to add',
+            },
+          },
+          required: ['taskId', 'content'],
+        },
+        handler: async (args: any) => {
+          try {
+            await this.sync.addCommentToTask(args.taskId, args.content);
+            return {
+              success: true,
+              taskId: args.taskId,
+              message: 'Comment added successfully',
+            };
+          } catch (error: any) {
+            this.logger.error(`Failed to add comment: ${error.message}`);
+            throw new Error(`Failed to add comment: ${error.message}`);
           }
         },
       },

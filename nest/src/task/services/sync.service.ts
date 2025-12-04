@@ -396,5 +396,37 @@ export class SyncService implements OnModuleDestroy {
       );
     }
   }
+
+  /**
+   * Fetch and attach comments to tasks
+   */
+  async fetchCommentsForTasks(tasks: Task[]): Promise<Task[]> {
+    const tasksWithComments = await Promise.all(
+      tasks.map(async (task) => {
+        try {
+          const comments = await this.taskProvider.getComments(task.id);
+          return { ...task, comments };
+        } catch (error: any) {
+          this.logger.warn(`Failed to fetch comments for task ${task.id}: ${error.message}`);
+          return task; // Return task without comments if fetch fails
+        }
+      }),
+    );
+    return tasksWithComments;
+  }
+
+  /**
+   * Add a comment to a task
+   */
+  async addCommentToTask(taskId: string, content: string): Promise<void> {
+    try {
+      this.logger.log(`Adding comment to task ${taskId}`);
+      await this.taskProvider.addComment(taskId, content);
+      this.logger.log(`Comment added to task ${taskId}`);
+    } catch (error: any) {
+      this.logger.error(`Failed to add comment to task ${taskId}: ${error.message}`);
+      throw error;
+    }
+  }
 }
 

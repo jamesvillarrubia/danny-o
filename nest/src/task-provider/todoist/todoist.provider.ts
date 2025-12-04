@@ -15,6 +15,7 @@ import {
   TaskFilters,
   CreateTaskDto,
   UpdateTaskDto,
+  Comment,
 } from '../../common/interfaces/task.interface';
 
 @Injectable()
@@ -383,6 +384,57 @@ export class TodoistProvider implements ITaskProvider {
 
   private delay(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  /**
+   * Get comments for a task
+   */
+  async getComments(taskId: string): Promise<Comment[]> {
+    try {
+      this.logger.log(`Fetching comments for task ${taskId}`);
+      
+      const comments = await this.api.getComments({ taskId });
+      
+      return comments.map((comment: any) => ({
+        id: comment.id,
+        taskId: comment.taskId,
+        projectId: comment.projectId,
+        content: comment.content,
+        postedAt: comment.postedAt,
+        attachment: comment.attachment,
+      }));
+    } catch (error: any) {
+      this.logger.error(`Failed to fetch comments for task ${taskId}: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Add a comment to a task
+   */
+  async addComment(taskId: string, content: string): Promise<Comment> {
+    try {
+      this.logger.log(`Adding comment to task ${taskId}`);
+      
+      const comment = await this.api.addComment({
+        taskId,
+        content,
+      });
+      
+      this.logger.log(`Added comment ${comment.id} to task ${taskId}`);
+      
+      return {
+        id: comment.id,
+        taskId: comment.taskId,
+        projectId: comment.projectId,
+        content: comment.content,
+        postedAt: comment.postedAt,
+        attachment: comment.attachment,
+      };
+    } catch (error: any) {
+      this.logger.error(`Failed to add comment to task ${taskId}: ${error.message}`);
+      throw error;
+    }
   }
 }
 

@@ -9,6 +9,7 @@ import { Injectable, Inject } from '@nestjs/common';
 import { IStorageAdapter } from '../../common/interfaces';
 import { AIOperationsService } from '../../ai/services/operations.service';
 import { EnrichmentService } from '../../task/services/enrichment.service';
+import { SyncService } from '../../task/services/sync.service';
 
 interface ClassifyOptions {
   all?: boolean;
@@ -26,6 +27,7 @@ export class ClassifyCommand extends CommandRunner {
     @Inject('IStorageAdapter') private readonly storage: IStorageAdapter,
     @Inject(AIOperationsService) private readonly aiOps: AIOperationsService,
     @Inject(EnrichmentService) private readonly enrichment: EnrichmentService,
+    @Inject(SyncService) private readonly sync: SyncService,
   ) {
     super();
   }
@@ -53,6 +55,27 @@ export class ClassifyCommand extends CommandRunner {
       );
 
       console.log(`\n✅ Complete! Classified ${totalProcessed} task(s)`);
+
+      // Check for @danny mentions and respond
+      console.log('\n💬 Checking for @danny mentions...');
+      const tasksWithComments = await this.sync.fetchCommentsForTasks(unclassified);
+      const mentionResults = await this.aiOps.respondToMentions(tasksWithComments);
+      
+      const responded = mentionResults.filter((r) => r.responded);
+      if (responded.length > 0) {
+        console.log(`\n💬 Responded to ${responded.length} @danny mention(s):`);
+        for (const result of responded) {
+          const task = tasksWithComments.find((t) => t.id === result.taskId);
+          if (task && result.comment) {
+            console.log(`  • "${task.content}"`);
+            console.log(`    → "${result.comment}"`);
+            // Actually add the comment to Todoist
+            await this.sync.addCommentToTask(task.id, result.comment);
+          }
+        }
+      } else {
+        console.log('  No @danny mentions found');
+      }
     } catch (error: any) {
       console.error(`❌ Error: ${error.message}`);
       process.exit(1);
@@ -74,7 +97,10 @@ export class ClassifyCommand extends CommandRunner {
       console.log(`\n📦 Batch ${batchNum}/${totalBatches} (${batch.length} tasks)`);
 
       try {
-        const results = await this.aiOps.classifyTasks(batch);
+        // Fetch comments for tasks before classification
+        const batchWithComments = await this.sync.fetchCommentsForTasks(batch);
+        
+        const results = await this.aiOps.classifyTasks(batchWithComments);
 
         for (const result of results) {
           try {

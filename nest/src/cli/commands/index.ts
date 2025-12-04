@@ -10,4 +10,5 @@ export * from './complete.command';
 export * from './plan.command';
 export * from './insights.command';
 export * from './process.command';
+export * from './respond.command';
 

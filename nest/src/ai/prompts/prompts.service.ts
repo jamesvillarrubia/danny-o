@@ -114,9 +114,14 @@ Respond with JSON in this exact format:
    * Prompt for classifying multiple tasks in batch
    */
   getBatchClassifyPrompt(tasks: Task[], completionHistory: TaskHistory[] = [], availableLabels: Label[] = []): string {
-    const taskList = tasks.map((t, i) =>
-      `${i + 1}. "${t.content}"${t.description ? ` (${t.description})` : ''}`
-    ).join('\n');
+    const taskList = tasks.map((t, i) => {
+      let taskDesc = `${i + 1}. "${t.content}"${t.description ? ` (${t.description})` : ''}`;
+      if (t.comments && t.comments.length > 0) {
+        const commentSummary = t.comments.slice(0, 3).map(c => c.content).join('; ');
+        taskDesc += ` [Comments: ${commentSummary}${t.comments.length > 3 ? '...' : ''}]`;
+      }
+      return taskDesc;
+    }).join('\n');
 
     const historyContext = completionHistory.length > 0
       ? `\n\nPast classification examples:\n${

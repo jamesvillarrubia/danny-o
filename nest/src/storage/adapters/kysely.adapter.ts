@@ -177,7 +177,7 @@ export class KyselyAdapter implements IStorageAdapter {
     await db.schema
       .createTable('task_history')
       .ifNotExists()
-      .addColumn('id', isPg ? 'serial' : 'integer', col => col.primaryKey().autoIncrement())
+      .addColumn('id', isPg ? 'serial' : 'integer', col => isPg ? col.primaryKey() : col.primaryKey().autoIncrement())
       .addColumn('task_id', 'text', col => col.notNull())
       .addColumn('content', 'text', col => col.notNull())
       .addColumn('completed_at', 'text', col => col.notNull())
@@ -229,7 +229,7 @@ export class KyselyAdapter implements IStorageAdapter {
     await db.schema
       .createTable('ai_interactions')
       .ifNotExists()
-      .addColumn('id', isPg ? 'serial' : 'integer', col => col.primaryKey().autoIncrement())
+      .addColumn('id', isPg ? 'serial' : 'integer', col => isPg ? col.primaryKey() : col.primaryKey().autoIncrement())
       .addColumn('interaction_type', 'text', col => col.notNull())
       .addColumn('task_id', 'text')
       .addColumn('input_context', isPg ? 'jsonb' : 'text')

@@ -75,12 +75,15 @@ export class RespondCommand extends CommandRunner {
         const task = tasksWithComments.find((t) => t.id === result.taskId);
         if (task && result.comment) {
           console.log(`📝 Task: "${task.content}"`);
-          console.log(`   Response: "${result.comment}"`);
+          if (result.action && result.action !== 'none') {
+            console.log(`   ⚡ Action: ${result.action.toUpperCase()}`);
+          }
+          console.log(`   💬 Response: "${result.comment}"`);
           
           // Actually add the comment to Todoist
           await this.sync.addCommentToTask(task.id, result.comment);
           
-          console.log('   ✅ Comment added\n');
+          console.log('   ✅ Done!\n');
         }
       }
 

@@ -8,6 +8,7 @@
 
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { IStorageAdapter } from '../../common/interfaces/storage-adapter.interface';
+import { ITaskProvider } from '../../common/interfaces/task-provider.interface';
 import { Task, TaskHistory } from '../../common/interfaces';
 import { ClaudeService } from './claude.service';
 import { PromptsService } from '../prompts/prompts.service';
@@ -38,6 +39,7 @@ export class AIOperationsService {
     @Inject(PromptsService) private readonly prompts: PromptsService,
     @Inject(TaxonomyService) private readonly taxonomy: TaxonomyService,
     @Inject('IStorageAdapter') private readonly storage: IStorageAdapter,
+    @Inject('ITaskProvider') private readonly taskProvider: ITaskProvider,
   ) {}
 
   // ==================== Task Classification ====================
@@ -532,10 +534,16 @@ export class AIOperationsService {
   /**
    * Check tasks for @danny mentions in last comment and generate responses
    */
-  async respondToMentions(tasks: Task[]): Promise<Array<{ taskId: string; responded: boolean; comment?: string; error?: string }>> {
+  async respondToMentions(tasks: Task[]): Promise<Array<{ 
+    taskId: string; 
+    responded: boolean; 
+    comment?: string; 
+    action?: string;
+    error?: string 
+  }>> {
     this.logger.log(`Checking ${tasks.length} tasks for @danny mentions...`);
 
-    const results: Array<{ taskId: string; responded: boolean; comment?: string; error?: string }> = [];
+    const results: Array<{ taskId: string; responded: boolean; comment?: string; action?: string; error?: string }> = [];
 
     for (const task of tasks) {
       try {
@@ -544,32 +552,50 @@ export class AIOperationsService {
           continue;
         }
 
+        // Sort comments by postedAt ascending (oldest first, newest last)
+        // Todoist Sync API returns newest first, but we want chronological order
+        const sortedComments = [...task.comments].sort((a, b) => 
+          new Date(a.postedAt).getTime() - new Date(b.postedAt).getTime()
+        );
+
+        // Get the most recent comment (last in chronological order)
+        const mostRecentComment = sortedComments[sortedComments.length - 1];
+
         // Debug: Log task with comments
-        if (task.comments.length > 0) {
-          this.logger.debug(`Task "${task.content}" has ${task.comments.length} comment(s)`);
-          this.logger.debug(`Last comment: "${task.comments[task.comments.length - 1].content.substring(0, 100)}..."`);
-        }
+        this.logger.debug(`Task "${task.content}" has ${task.comments.length} comment(s)`);
+        this.logger.debug(`Most recent comment: "${mostRecentComment.content.substring(0, 100)}..."`);
 
-        // Get the last comment
-        const lastComment = task.comments[task.comments.length - 1];
-
-        // Check if it mentions @danny (case insensitive)
-        const hasAtDanny = lastComment.content.toLowerCase().includes('@danny');
+        // Check if most recent comment mentions @danny (case insensitive)
+        const hasAtDanny = mostRecentComment.content.toLowerCase().includes('@danny');
         
         if (!hasAtDanny) {
           continue;
         }
 
-        this.logger.log(`Found @danny mention in task ${task.id}: "${task.content}"`);
-        this.logger.log(`Last comment content: "${lastComment.content}"`);
+        // Skip if the most recent comment is from Danny (avoid infinite loops)
+        if (mostRecentComment.content.startsWith('🤖 DANNY:')) {
+          this.logger.debug(`Skipping task ${task.id} - last comment is from Danny`);
+          continue;
+        }
 
-        // Generate a contextual response
-        const responseComment = await this.generateCommentResponse(task, lastComment.content);
+        this.logger.log(`Found @danny mention in task ${task.id}: "${task.content}"`);
+        this.logger.log(`Comment content: "${mostRecentComment.content}"`);
+
+        // Parse intent and generate response with action
+        const taskWithSortedComments = { ...task, comments: sortedComments };
+        const { action, response } = await this.parseIntentAndGenerateResponse(taskWithSortedComments, mostRecentComment.content);
+
+        // Execute the action if one was identified
+        if (action && action !== 'none') {
+          await this.executeAction(task.id, action);
+          this.logger.log(`Executed action "${action}" on task ${task.id}`);
+        }
 
         results.push({
           taskId: task.id,
           responded: true,
-          comment: responseComment,
+          comment: response,
+          action: action,
         });
 
         // Rate limit courtesy
@@ -588,6 +614,99 @@ export class AIOperationsService {
       `Responded to ${results.filter((r) => r.responded).length} @danny mentions`,
     );
     return results;
+  }
+
+  /**
+   * Execute an action on a task
+   */
+  private async executeAction(taskId: string, action: string): Promise<void> {
+    switch (action) {
+      case 'archive':
+      case 'complete':
+        await this.taskProvider.closeTask(taskId);
+        this.logger.log(`Completed/archived task ${taskId}`);
+        break;
+      case 'delete':
+        await this.taskProvider.deleteTask(taskId);
+        this.logger.log(`Deleted task ${taskId}`);
+        break;
+      // Future actions: classify, prioritize, reschedule, etc.
+      default:
+        this.logger.debug(`No executable action for "${action}"`);
+    }
+  }
+
+  /**
+   * Parse user intent and generate appropriate response with action
+   */
+  private async parseIntentAndGenerateResponse(task: Task, mentionComment: string): Promise<{ action: string; response: string }> {
+    // Build full comment history with timestamps
+    const commentHistory = task.comments && task.comments.length > 1
+      ? task.comments
+          .slice(0, -1) // Exclude the last comment (the one with @danny)
+          .map((c) => `[${c.postedAt}] ${c.content}`)
+          .join('\n\n')
+      : 'No previous comments';
+
+    const prompt = `You are Danny, an AI task management assistant. A user has mentioned you in a comment and needs your help.
+
+**Task Details:**
+Title: "${task.content}"
+Description: ${task.description || 'None'}
+Project ID: ${task.projectId}
+Priority: ${task.priority}/4
+Due Date: ${task.due?.date || 'Not set'}
+
+**Comment History:**
+${commentHistory}
+
+**Latest Comment (mentioning @danny):**
+"${mentionComment}"
+
+**Your Task:**
+1. Determine what action the user wants (if any)
+2. Generate a brief, friendly response
+
+**Available Actions:**
+- "archive" or "complete" - Mark the task as done/archived
+- "delete" - Permanently delete the task
+- "none" - No action needed (just answering a question)
+
+**Response Format (JSON only):**
+{
+  "action": "archive|complete|delete|none",
+  "response": "Your brief response to the user (1-2 sentences max)"
+}
+
+Important:
+- If they say "archive", "complete", "done", "finish", "close", or "proceed" (after a previous archive request), use action "archive"
+- If they say "delete" or "remove permanently", use action "delete"  
+- If asking a question or unclear, use action "none"
+- Response should confirm the action taken or answer their question
+- Keep response SHORT - just confirm what you did`;
+
+    try {
+      const result = await this.claude.query(prompt);
+      
+      const action = result.action || 'none';
+      let response = result.response || 'Done!';
+      
+      // Add Danny prefix
+      response = `🤖 DANNY: ${response}`;
+      
+      return { action, response };
+    } catch (error: any) {
+      this.logger.error(`Failed to parse intent: ${error.message}`);
+      // Fallback: try to detect simple keywords
+      const lowerComment = mentionComment.toLowerCase();
+      if (lowerComment.includes('archive') || lowerComment.includes('complete') || lowerComment.includes('done') || lowerComment.includes('proceed')) {
+        return { action: 'archive', response: '🤖 DANNY: Done! Task archived. ✅' };
+      }
+      if (lowerComment.includes('delete') || lowerComment.includes('remove')) {
+        return { action: 'delete', response: '🤖 DANNY: Done! Task deleted. 🗑️' };
+      }
+      return { action: 'none', response: '🤖 DANNY: I\'m here to help! What would you like me to do with this task?' };
+    }
   }
 
   /**
@@ -655,7 +774,8 @@ Based on the FULL task context (details, metadata, and ALL comments), provide a 
 Respond ONLY with the comment text (no preamble, no "Here's my response:", just the comment content):`;
 
     try {
-      const response = await this.claude.query(prompt);
+      // Use queryText for plain text response (no JSON parsing)
+      const response = await this.claude.queryText(prompt);
       
       // Clean up the response (remove quotes if AI wrapped it)
       let cleanResponse = response.trim();
@@ -663,7 +783,8 @@ Respond ONLY with the comment text (no preamble, no "Here's my response:", just 
         cleanResponse = cleanResponse.slice(1, -1);
       }
       
-      return cleanResponse;
+      // Add Danny prefix to clearly identify AI responses
+      return `🤖 DANNY: ${cleanResponse}`;
     } catch (error: any) {
       this.logger.error(`Failed to generate comment response: ${error.message}`);
       throw error;

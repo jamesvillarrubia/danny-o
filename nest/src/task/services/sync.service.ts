@@ -2,22 +2,28 @@
  * Todoist Sync Service
  * 
  * Orchestrates synchronization between Todoist API and local storage.
+ * 
  * Features:
+ * - Uses Todoist Sync API v1 for efficient bulk data fetching (single request)
+ * - Supports incremental sync via sync_token (only fetch changes)
+ * - Comments are fetched in bulk with tasks, eliminating N+1 API calls
  * - Background sync on configurable interval
  * - Conflict detection and resolution
- * - Incremental updates for efficiency
  * - Auto-classification trigger for new tasks
  * 
  * The sync engine is storage-agnostic and works with any StorageAdapter
  * implementation (SQLite, PostgreSQL, etc.).
+ * 
+ * @see https://developer.todoist.com/api/v1#tag/Sync
  */
 
-import { Inject, Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
+import { Inject, Injectable, Logger, OnModuleDestroy, Optional } from '@nestjs/common';
 import { ITaskProvider } from '../../common/interfaces/task-provider.interface';
 import { IStorageAdapter } from '../../common/interfaces/storage-adapter.interface';
-import { Task, TaskHistory, Project } from '../../common/interfaces';
+import { Task, TaskHistory, Project, Comment } from '../../common/interfaces';
 import { ReconciliationService } from './reconciliation.service';
 import { SyncOptionsDto, SyncResultDto, CompleteTaskDto, CreateTaskInputDto } from '../dto';
+import { TodoistSyncProvider, BulkSyncResult } from '../../task-provider/todoist/todoist-sync.provider';
 
 type SyncCallback = (tasks: Task[]) => Promise<void>;
 type SyncCompleteCallback = (result: SyncResultDto) => Promise<void>;
@@ -32,6 +38,12 @@ export class SyncService implements OnModuleDestroy {
   private onNewTasks: SyncCallback | null = null;
   private onSyncComplete: SyncCompleteCallback | null = null;
 
+  /**
+   * In-memory cache of comments by task ID from the last bulk sync.
+   * This eliminates the need for N+1 API calls to fetch comments per task.
+   */
+  private cachedCommentsByTaskId: Map<string, Comment[]> = new Map();
+
   constructor(
     @Inject('ITaskProvider')
     private readonly taskProvider: ITaskProvider,
@@ -39,6 +51,9 @@ export class SyncService implements OnModuleDestroy {
     private readonly storage: IStorageAdapter,
     @Inject(ReconciliationService)
     private readonly reconciler: ReconciliationService,
+    @Optional()
+    @Inject('ITodoistSyncProvider')
+    private readonly syncProvider?: TodoistSyncProvider,
   ) {
     this.intervalMs = 300000; // Default: 5 minutes
   }
@@ -101,7 +116,10 @@ export class SyncService implements OnModuleDestroy {
   }
 
   /**
-   * Perform a sync operation now
+   * Perform a sync operation now using Sync API v1 for efficient bulk fetching.
+   * 
+   * Uses incremental sync when possible (via sync_token) to only fetch changes
+   * since the last sync, dramatically reducing API calls and data transfer.
    */
   async syncNow(): Promise<SyncResultDto> {
     if (this.isSyncing) {
@@ -117,60 +135,12 @@ export class SyncService implements OnModuleDestroy {
     const startTime = Date.now();
 
     try {
-      this.logger.log('Starting sync...');
-
-      // Fetch data from Todoist
-      const [tasks, projects, labels] = await Promise.all([
-        this.taskProvider.getTasks(),
-        this.taskProvider.getProjects(),
-        this.taskProvider.getLabels(),
-      ]);
-
-      // Detect new tasks (for AI classification)
-      const newTasks = await this.detectNewTasks(tasks);
-
-      // Save to storage
-      const [taskCount, projectCount, labelCount] = await Promise.all([
-        this.storage.saveTasks(tasks),
-        this.storage.saveProjects(projects),
-        this.storage.saveLabels(labels),
-      ]);
-
-      // Reconcile metadata categories with actual Todoist projects
-      await this.reconcileCategories(tasks, projects);
-
-      // Update last sync time
-      await this.storage.setLastSyncTime(new Date());
-
-      const duration = Date.now() - startTime;
-      const result: SyncResultDto = {
-        success: true,
-        duration,
-        tasks: taskCount,
-        projects: projectCount,
-        labels: labelCount,
-        newTasks: newTasks.length,
-        timestamp: new Date(),
-      };
-
-      this.logger.log(`Sync complete in ${duration}ms: ${JSON.stringify({
-        tasks: taskCount,
-        projects: projectCount,
-        labels: labelCount,
-        newTasks: newTasks.length,
-      })}`);
-
-      // Trigger callbacks
-      if (newTasks.length > 0 && this.onNewTasks) {
-        await this.onNewTasks(newTasks);
+      // Use Sync API if available, otherwise fall back to REST API
+      if (this.syncProvider) {
+        return await this.syncWithSyncApi(startTime);
+      } else {
+        return await this.syncWithRestApi(startTime);
       }
-
-      if (this.onSyncComplete) {
-        await this.onSyncComplete(result);
-      }
-
-      this.lastSyncError = null;
-      return result;
     } catch (error: any) {
       this.logger.error(`Sync failed: ${error.message}`);
       this.lastSyncError = error;
@@ -183,6 +153,135 @@ export class SyncService implements OnModuleDestroy {
     } finally {
       this.isSyncing = false;
     }
+  }
+
+  /**
+   * Efficient sync using Todoist Sync API v1
+   * - Single API call fetches ALL tasks, projects, labels, and comments
+   * - Supports incremental sync to only fetch changes
+   */
+  private async syncWithSyncApi(startTime: number): Promise<SyncResultDto> {
+    this.logger.log('Starting sync with Sync API v1...');
+
+    // Get stored sync token for incremental sync
+    const syncToken = await this.storage.getSyncToken();
+    const isFullSync = syncToken === '*';
+
+    this.logger.log(`Performing ${isFullSync ? 'full' : 'incremental'} sync...`);
+
+    // Single API call to get everything!
+    const bulkResult = await this.syncProvider!.bulkSync(syncToken);
+
+    // Cache comments for later use (eliminates N+1 API calls)
+    this.cachedCommentsByTaskId = bulkResult.commentsByTaskId;
+
+    // Detect new tasks (for AI classification)
+    const newTasks = await this.detectNewTasks(bulkResult.tasks);
+
+    // Save to storage in parallel
+    const [taskCount, projectCount, labelCount] = await Promise.all([
+      this.storage.saveTasks(bulkResult.tasks),
+      this.storage.saveProjects(bulkResult.projects),
+      this.storage.saveLabels(bulkResult.labels),
+    ]);
+
+    // Reconcile metadata categories with actual Todoist projects
+    await this.reconcileCategories(bulkResult.tasks, bulkResult.projects);
+
+    // Save the new sync token for incremental sync next time
+    await this.storage.setSyncToken(bulkResult.syncToken);
+    await this.storage.setLastSyncTime(new Date());
+
+    const duration = Date.now() - startTime;
+    const commentsCount = bulkResult.commentsByTaskId.size;
+
+    const result: SyncResultDto = {
+      success: true,
+      duration,
+      tasks: taskCount,
+      projects: projectCount,
+      labels: labelCount,
+      newTasks: newTasks.length,
+      timestamp: new Date(),
+    };
+
+    this.logger.log(
+      `Sync complete in ${duration}ms (1 API call): ` +
+      `${taskCount} tasks, ${projectCount} projects, ${labelCount} labels, ` +
+      `${commentsCount} tasks with comments, ${newTasks.length} new tasks`
+    );
+
+    // Trigger callbacks
+    if (newTasks.length > 0 && this.onNewTasks) {
+      await this.onNewTasks(newTasks);
+    }
+
+    if (this.onSyncComplete) {
+      await this.onSyncComplete(result);
+    }
+
+    this.lastSyncError = null;
+    return result;
+  }
+
+  /**
+   * Fallback sync using REST API (less efficient, multiple API calls)
+   */
+  private async syncWithRestApi(startTime: number): Promise<SyncResultDto> {
+    this.logger.log('Starting sync with REST API (fallback mode)...');
+
+    // Fetch data from Todoist (3 API calls)
+    const [tasks, projects, labels] = await Promise.all([
+      this.taskProvider.getTasks(),
+      this.taskProvider.getProjects(),
+      this.taskProvider.getLabels(),
+    ]);
+
+    // Detect new tasks (for AI classification)
+    const newTasks = await this.detectNewTasks(tasks);
+
+    // Save to storage
+    const [taskCount, projectCount, labelCount] = await Promise.all([
+      this.storage.saveTasks(tasks),
+      this.storage.saveProjects(projects),
+      this.storage.saveLabels(labels),
+    ]);
+
+    // Reconcile metadata categories with actual Todoist projects
+    await this.reconcileCategories(tasks, projects);
+
+    // Update last sync time
+    await this.storage.setLastSyncTime(new Date());
+
+    const duration = Date.now() - startTime;
+    const result: SyncResultDto = {
+      success: true,
+      duration,
+      tasks: taskCount,
+      projects: projectCount,
+      labels: labelCount,
+      newTasks: newTasks.length,
+      timestamp: new Date(),
+    };
+
+    this.logger.log(`Sync complete in ${duration}ms (3 API calls): ${JSON.stringify({
+      tasks: taskCount,
+      projects: projectCount,
+      labels: labelCount,
+      newTasks: newTasks.length,
+    })}`);
+
+    // Trigger callbacks
+    if (newTasks.length > 0 && this.onNewTasks) {
+      await this.onNewTasks(newTasks);
+    }
+
+    if (this.onSyncComplete) {
+      await this.onSyncComplete(result);
+    }
+
+    this.lastSyncError = null;
+    return result;
   }
 
   /**
@@ -331,10 +430,14 @@ export class SyncService implements OnModuleDestroy {
   }
 
   /**
-   * Force a full resync
+   * Force a full resync (clears sync token to force full data fetch)
    */
   async fullResync(): Promise<SyncResultDto> {
-    this.logger.log('Performing full resync...');
+    this.logger.log('Performing full resync (clearing sync token)...');
+    
+    // Clear the sync token to force a full sync
+    await this.storage.setSyncToken('*');
+    
     return await this.syncNow();
   }
 
@@ -398,18 +501,62 @@ export class SyncService implements OnModuleDestroy {
   }
 
   /**
-   * Fetch and attach comments to tasks
+   * Attach comments to tasks efficiently.
+   * 
+   * OPTIMIZATION: Uses cached comments from the last bulk sync instead of
+   * making N API calls (one per task). This eliminates the N+1 problem.
+   * 
+   * If cache is empty (e.g., no sync has been done), falls back to REST API
+   * with rate limiting.
+   * 
+   * @param tasks - Tasks to attach comments to
+   * @param options - Options for fallback behavior
+   * @returns Tasks with comments attached
    */
-  async fetchCommentsForTasks(tasks: Task[], options: { respectRateLimits?: boolean } = {}): Promise<Task[]> {
-    const { respectRateLimits = true } = options;
+  async fetchCommentsForTasks(
+    tasks: Task[], 
+    options: { respectRateLimits?: boolean; forceRefresh?: boolean } = {}
+  ): Promise<Task[]> {
+    const { respectRateLimits = true, forceRefresh = false } = options;
     
-    this.logger.log(`Fetching comments for ${tasks.length} tasks...`);
+    this.logger.log(`Attaching comments to ${tasks.length} tasks...`);
     
     if (tasks.length === 0) {
       return tasks;
     }
 
-    // Process sequentially with rate limiting to avoid HTTP 429
+    // If we have cached comments from Sync API and don't need refresh, use them
+    if (this.cachedCommentsByTaskId.size > 0 && !forceRefresh) {
+      this.logger.log(`Using cached comments from Sync API (0 additional API calls)`);
+      return tasks.map(task => ({
+        ...task,
+        comments: this.cachedCommentsByTaskId.get(task.id) || [],
+      }));
+    }
+
+    // Fallback: If Sync API available but cache empty, do a FULL sync to populate
+    // Note: We use fullResync() instead of syncNow() because incremental sync
+    // only returns changes, not the full data set including all comments
+    if (this.syncProvider && this.cachedCommentsByTaskId.size === 0) {
+      this.logger.log('Comments cache empty, performing full sync to populate...');
+      await this.fullResync();
+      
+      // Now use the cached comments
+      return tasks.map(task => ({
+        ...task,
+        comments: this.cachedCommentsByTaskId.get(task.id) || [],
+      }));
+    }
+
+    // Final fallback: REST API with rate limiting (N+1 problem, but necessary)
+    this.logger.warn('Falling back to REST API for comments (N+1 API calls)');
+    return await this.fetchCommentsViaRestApi(tasks, respectRateLimits);
+  }
+
+  /**
+   * Fallback method to fetch comments via REST API (N+1 calls)
+   */
+  private async fetchCommentsViaRestApi(tasks: Task[], respectRateLimits: boolean): Promise<Task[]> {
     const tasksWithComments: Task[] = [];
     
     for (let i = 0; i < tasks.length; i++) {
@@ -419,8 +566,6 @@ export class SyncService implements OnModuleDestroy {
         tasksWithComments.push({ ...task, comments });
         
         // Rate limit: 200ms delay between requests
-        // Todoist allows 450 requests per 15 minutes = 30 requests/minute = 0.5 requests/second
-        // So 200ms = 5 req/sec is very safe
         if (respectRateLimits && i < tasks.length - 1) {
           await this.delay(200);
         }
@@ -428,12 +573,11 @@ export class SyncService implements OnModuleDestroy {
         // If rate limit hit, stop fetching and return what we have
         if (error.message.includes('429') || error.message.includes('Too Many Requests')) {
           this.logger.warn(`Rate limit hit after ${i + 1} tasks. Returning tasks fetched so far.`);
-          // Return tasks we've fetched plus remaining tasks without comments
           return [...tasksWithComments, ...tasks.slice(i)];
         }
         
         this.logger.warn(`Failed to fetch comments for task ${task.id}: ${error.message}`);
-        tasksWithComments.push(task); // Return task without comments if fetch fails
+        tasksWithComments.push(task);
       }
     }
     
@@ -461,4 +605,3 @@ export class SyncService implements OnModuleDestroy {
     }
   }
 }
-

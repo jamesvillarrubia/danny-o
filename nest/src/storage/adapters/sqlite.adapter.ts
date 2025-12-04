@@ -887,6 +887,23 @@ export class SQLiteAdapter implements IStorageAdapter {
     ).run(timestamp.toISOString(), new Date().toISOString());
   }
 
+  async getSyncToken(): Promise<string> {
+    const db = this.getDb();
+    const row = db
+      .prepare(`SELECT value FROM sync_state WHERE key = 'todoist_sync_token'`)
+      .get() as any;
+
+    // Return '*' if no token exists - this triggers a full sync
+    return row?.value || '*';
+  }
+
+  async setSyncToken(token: string): Promise<void> {
+    const db = this.getDb();
+    db.prepare(
+      `INSERT OR REPLACE INTO sync_state (key, value, updated_at) VALUES ('todoist_sync_token', ?, ?)`,
+    ).run(token, new Date().toISOString());
+  }
+
   // ==================== Helper Methods ====================
 
   private rowToTask(row: any): Task {

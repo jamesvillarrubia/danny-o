@@ -293,5 +293,16 @@ export class PostgresAdapter implements IStorageAdapter {
     // TODO: Implement
     this.logger.warn('setLastSyncTime not yet implemented for PostgreSQL');
   }
+
+  async getSyncToken(): Promise<string> {
+    // TODO: Implement
+    this.logger.warn('getSyncToken not yet implemented for PostgreSQL');
+    return '*'; // Return '*' to trigger full sync
+  }
+
+  async setSyncToken(token: string): Promise<void> {
+    // TODO: Implement
+    this.logger.warn('setSyncToken not yet implemented for PostgreSQL');
+  }
 }
 

@@ -116,6 +116,48 @@ export class ClaudeService implements OnModuleInit {
   }
 
   /**
+   * Send a prompt to Claude and get plain text response (no JSON parsing)
+   */
+  async queryText(prompt: string, options: QueryOptions = {}): Promise<string> {
+    try {
+      this.logger.log('Sending text query to Claude...');
+
+      const response = await this.client.messages.create({
+        model: this.model,
+        max_tokens: options.maxTokens || this.maxTokens,
+        temperature: options.temperature ?? this.temperature,
+        system: this.promptsService.SYSTEM_PROMPT,
+        messages: [
+          {
+            role: 'user',
+            content: prompt,
+          },
+        ],
+      });
+
+      const textContent = response.content[0].type === 'text' 
+        ? response.content[0].text 
+        : '';
+
+      this.logger.log('Received text response from Claude');
+      return textContent.trim();
+    } catch (error: any) {
+      if (error.status === 429) {
+        this.logger.error('Rate limit exceeded');
+        throw new Error('AI rate limit exceeded. Please try again later.');
+      }
+
+      if (error.status === 401) {
+        this.logger.error('Invalid API key');
+        throw new Error('Invalid Claude API key. Please check your configuration.');
+      }
+
+      this.logger.error(`Text query failed: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
    * Process multiple prompts in batch with rate limiting
    */
   async batchQuery(prompts: string[], options: BatchOptions = {}): Promise<PromiseSettledResult<any>[]> {

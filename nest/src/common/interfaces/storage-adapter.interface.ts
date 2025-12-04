@@ -144,4 +144,15 @@ export abstract class IStorageAdapter {
    * Set the last sync timestamp
    */
   abstract setLastSyncTime(timestamp: Date): Promise<void>;
+
+  /**
+   * Get the Todoist sync token for incremental sync
+   * Returns '*' if no token exists (triggers full sync)
+   */
+  abstract getSyncToken(): Promise<string>;
+
+  /**
+   * Save the Todoist sync token for incremental sync
+   */
+  abstract setSyncToken(token: string): Promise<void>;
 }

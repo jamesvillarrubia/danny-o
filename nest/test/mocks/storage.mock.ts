@@ -13,6 +13,7 @@ export class MockStorageAdapter implements IStorageAdapter {
   private projects: Map<string, Project> = new Map();
   private labels: Map<string, Label> = new Map();
   private lastSyncTime: Date | null = null;
+  private syncToken: string = '*';
 
   async initialize(): Promise<void> {
     // No-op for mock
@@ -194,6 +195,14 @@ export class MockStorageAdapter implements IStorageAdapter {
     this.lastSyncTime = timestamp;
   }
 
+  async getSyncToken(): Promise<string> {
+    return this.syncToken;
+  }
+
+  async setSyncToken(token: string): Promise<void> {
+    this.syncToken = token;
+  }
+
   // Helper methods for testing
   clear(): void {
     this.tasks.clear();
@@ -202,6 +211,7 @@ export class MockStorageAdapter implements IStorageAdapter {
     this.projects.clear();
     this.labels.clear();
     this.lastSyncTime = null;
+    this.syncToken = '*';
   }
 
   seedTasks(tasks: Task[]): void {

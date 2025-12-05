@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Danny - Task Assistant</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #fafafa;
+    }
+    
+    #danny-frame {
+      width: 100%;
+      height: 100%;
+      border: none;
+    }
+    
+    .loading {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      color: #71717a;
+    }
+    
+    .loading-logo {
+      width: 48px;
+      height: 48px;
+      border-radius: 12px;
+      background: linear-gradient(135deg, #ff8c78, #e54d35);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 16px;
+      animation: pulse 2s ease-in-out infinite;
+    }
+    
+    .loading-logo span {
+      color: white;
+      font-weight: bold;
+      font-size: 24px;
+    }
+    
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.8; transform: scale(0.98); }
+    }
+    
+    .error {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      padding: 24px;
+      text-align: center;
+    }
+    
+    .error h2 {
+      color: #18181b;
+      margin-bottom: 8px;
+    }
+    
+    .error p {
+      color: #71717a;
+      font-size: 14px;
+      margin-bottom: 16px;
+    }
+    
+    .error button {
+      padding: 8px 16px;
+      background: #f86a52;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-weight: 500;
+      cursor: pointer;
+    }
+    
+    .error button:hover {
+      background: #e54d35;
+    }
+    
+    .hidden {
+      display: none !important;
+    }
+  </style>
+</head>
+<body>
+  <div id="loading" class="loading">
+    <div class="loading-logo">
+      <span>D</span>
+    </div>
+    <p>Loading Danny...</p>
+  </div>
+  
+  <div id="error" class="error">
+    <h2>Couldn't connect</h2>
+    <p>Make sure the Danny server is running and accessible.</p>
+    <button onclick="retryLoad()">Try Again</button>
+    <button onclick="openSettings()" style="margin-top: 8px; background: #71717a;">Configure URL</button>
+  </div>
+  
+  <iframe id="danny-frame" class="hidden"></iframe>
+  
+  <script src="sidepanel.js"></script>
+</body>
+</html>
+

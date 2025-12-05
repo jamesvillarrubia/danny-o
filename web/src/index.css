@@ -1,0 +1,122 @@
+@import 'tailwindcss';
+
+/* Custom theme overrides for Tailwind v4 */
+@theme {
+  /* Danny brand colors - warm coral/salmon palette */
+  --color-danny-50: #fff5f3;
+  --color-danny-100: #ffe8e4;
+  --color-danny-200: #ffd5cd;
+  --color-danny-300: #ffb5a8;
+  --color-danny-400: #ff8c78;
+  --color-danny-500: #f86a52;
+  --color-danny-600: #e54d35;
+  --color-danny-700: #c13d28;
+  --color-danny-800: #9f3524;
+  --color-danny-900: #833224;
+  --color-danny-950: #47160e;
+
+  /* Priority colors */
+  --color-priority-1: #dc2626;
+  --color-priority-2: #f97316;
+  --color-priority-3: #3b82f6;
+  --color-priority-4: #6b7280;
+
+  /* Shadows */
+  --shadow-task: 0 1px 3px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.1);
+  --shadow-task-hover: 0 4px 12px rgba(0, 0, 0, 0.1), 0 2px 4px rgba(0, 0, 0, 0.06);
+  --shadow-panel: 0 10px 40px rgba(0, 0, 0, 0.12);
+
+  /* Animations */
+  --animate-slide-up: slideUp 0.2s ease-out;
+  --animate-fade-in: fadeIn 0.15s ease-out;
+  --animate-pulse-subtle: pulseSubtle 2s ease-in-out infinite;
+}
+
+/* Base styles */
+html {
+  font-family: 'Outfit', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  background: linear-gradient(135deg, #fafafa 0%, #f4f4f5 100%);
+  min-height: 100vh;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #d4d4d8;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #a1a1aa;
+}
+
+/* Focus styles */
+*:focus-visible {
+  outline: 2px solid #f86a52;
+  outline-offset: 2px;
+}
+
+/* Task checkbox animation */
+.task-checkbox {
+  transition: all 0.15s ease-out;
+}
+
+.task-checkbox:hover {
+  transform: scale(1.1);
+}
+
+.task-checkbox.completed {
+  background: linear-gradient(135deg, #f86a52, #e54d35);
+}
+
+/* Priority indicator pulse */
+.priority-urgent {
+  animation: pulseSubtle 2s ease-in-out infinite;
+}
+
+/* Chat input glow effect */
+.chat-input:focus {
+  box-shadow: 0 0 0 3px rgba(248, 106, 82, 0.15);
+}
+
+/* Staggered animation for task list */
+.task-item {
+  animation: slideUp 0.2s ease-out;
+  animation-fill-mode: both;
+}
+
+.task-item:nth-child(1) { animation-delay: 0ms; }
+.task-item:nth-child(2) { animation-delay: 30ms; }
+.task-item:nth-child(3) { animation-delay: 60ms; }
+.task-item:nth-child(4) { animation-delay: 90ms; }
+.task-item:nth-child(5) { animation-delay: 120ms; }
+.task-item:nth-child(6) { animation-delay: 150ms; }
+.task-item:nth-child(7) { animation-delay: 180ms; }
+.task-item:nth-child(8) { animation-delay: 210ms; }
+.task-item:nth-child(9) { animation-delay: 240ms; }
+.task-item:nth-child(10) { animation-delay: 270ms; }
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+

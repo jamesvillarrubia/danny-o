@@ -1,0 +1,57 @@
+# Fly.io ignore file
+# Excludes unnecessary files from deployment to reduce image size
+
+# Frontend (deployed separately to Vercel)
+web/
+
+# Development files
+node_modules/
+.git/
+.github/
+.vscode/
+.idea/
+*.log
+*.swp
+*.swo
+*~
+
+# Test files
+test/
+*.test.ts
+*.spec.ts
+vitest.config.ts
+coverage/
+
+# Documentation
+*.md
+!README.md
+docs/
+
+# CI/CD
+step-ci/
+.github/
+
+# Docker (we use the Dockerfile, not compose files)
+docker-compose*.yml
+
+# Environment files (secrets should be set via fly secrets)
+.env
+.env.*
+!.env.example
+
+# Build artifacts (will be rebuilt in Docker)
+dist/
+build/
+
+# TypeScript source maps (optional, but reduces size)
+*.map
+
+# IDE
+.cursor/
+.DS_Store
+
+# Legacy code
+legacy/
+
+# Vercel config (for frontend only)
+vercel.json

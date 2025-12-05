@@ -1,0 +1,172 @@
+# CI Workflow
+# 
+# Runs on every push and PR to main/develop branches.
+# Includes linting, type checking, unit tests, and step-ci tests.
+
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  lint-and-typecheck:
+    name: Lint & Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 10
+
+      - name: Install dependencies
+        working-directory: ./nest
+        run: pnpm install --frozen-lockfile
+
+      - name: Run ESLint
+        working-directory: ./nest
+        run: pnpm lint
+
+      - name: Type check
+        working-directory: ./nest
+        run: pnpm exec tsc --noEmit
+
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 10
+
+      - name: Install dependencies
+        working-directory: ./nest
+        run: pnpm install --frozen-lockfile
+
+      - name: Run unit tests
+        working-directory: ./nest
+        run: pnpm test
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v4
+        with:
+          directory: ./nest/coverage
+          fail_ci_if_error: false
+
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 10
+
+      - name: Install dependencies
+        working-directory: ./nest
+        run: pnpm install --frozen-lockfile
+
+      - name: Run integration tests
+        working-directory: ./nest
+        run: pnpm test:integration
+        env:
+          NODE_ENV: test
+
+  step-ci-tests:
+    name: Step-CI Contract Tests
+    runs-on: ubuntu-latest
+    needs: [lint-and-typecheck, unit-tests]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 10
+
+      - name: Install dependencies
+        working-directory: ./nest
+        run: pnpm install --frozen-lockfile
+
+      - name: Build application
+        working-directory: ./nest
+        run: pnpm build
+
+      - name: Start API server
+        working-directory: ./nest
+        run: |
+          RUN_MODE=http USE_MOCKS=true NODE_ENV=test node dist/main.js &
+          # Wait for server to be ready
+          timeout 30 bash -c 'until curl -s http://localhost:3000/health > /dev/null; do sleep 1; done'
+
+      - name: Install Step-CI
+        run: npm install -g stepci
+
+      - name: Run Step-CI tests
+        working-directory: ./nest
+        run: stepci run step-ci/step-ci.yaml --env step-ci/environments/ci.yaml
+
+      - name: Stop API server
+        if: always()
+        run: pkill -f "node dist/main.js" || true
+
+  build:
+    name: Build Check
+    runs-on: ubuntu-latest
+    needs: [lint-and-typecheck]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 10
+
+      - name: Install dependencies
+        working-directory: ./nest
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        working-directory: ./nest
+        run: pnpm build
+
+      - name: Verify build output
+        working-directory: ./nest
+        run: |
+          test -f dist/main.js
+          echo "Build successful!"
+

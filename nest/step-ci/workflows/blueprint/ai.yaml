@@ -1,0 +1,163 @@
+# AI Endpoints Blueprint Tests
+# 
+# Tests all AI-related RPC endpoints for availability and correct response format.
+# These tests use mocked AI responses for deterministic output.
+
+version: "1.1"
+name: AI Blueprint
+
+env:
+  host: ${{ env.API_HOST }}
+
+tests:
+  classify:
+    name: Classify Tasks
+    steps:
+      - name: POST /v1/ai/classify - 200 OK (empty)
+        http:
+          url: ${{ env.host }}/v1/ai/classify
+          method: POST
+          headers:
+            Content-Type: application/json
+          body: {}
+          timeout: 30000
+          check:
+            status: 200
+            jsonpath:
+              $.results: isArray
+              $.tasksProcessed: isNumber
+              $.tasksClassified: isNumber
+              $.duration: isNumber
+
+      - name: POST /v1/ai/classify - 200 OK with options
+        http:
+          url: ${{ env.host }}/v1/ai/classify
+          method: POST
+          headers:
+            Content-Type: application/json
+          body:
+            force: false
+            batchSize: 5
+          timeout: 30000
+          check:
+            status: 200
+
+  prioritize:
+    name: Prioritize Tasks
+    steps:
+      - name: POST /v1/ai/prioritize - 200 OK
+        http:
+          url: ${{ env.host }}/v1/ai/prioritize
+          method: POST
+          headers:
+            Content-Type: application/json
+          body: {}
+          timeout: 30000
+          check:
+            status: 200
+            jsonpath:
+              $.recommendations: isArray
+
+      - name: POST /v1/ai/prioritize - 200 OK with category
+        http:
+          url: ${{ env.host }}/v1/ai/prioritize
+          method: POST
+          headers:
+            Content-Type: application/json
+          body:
+            category: "work"
+            limit: 10
+          timeout: 30000
+          check:
+            status: 200
+
+  estimate_time:
+    name: Estimate Task Time
+    steps:
+      - name: POST /v1/ai/estimateTime - 404 Not Found
+        http:
+          url: ${{ env.host }}/v1/ai/estimateTime
+          method: POST
+          headers:
+            Content-Type: application/json
+          body:
+            taskId: "nonexistent-task-id"
+          timeout: 30000
+          check:
+            status: 404
+
+  daily_plan:
+    name: Generate Daily Plan
+    steps:
+      - name: POST /v1/ai/dailyPlan - 200 OK
+        http:
+          url: ${{ env.host }}/v1/ai/dailyPlan
+          method: POST
+          headers:
+            Content-Type: application/json
+          body: {}
+          timeout: 30000
+          check:
+            status: 200
+            jsonpath:
+              $.summary: isString
+              $.today: isObject
+
+      - name: POST /v1/ai/dailyPlan - 200 OK with hours
+        http:
+          url: ${{ env.host }}/v1/ai/dailyPlan
+          method: POST
+          headers:
+            Content-Type: application/json
+          body:
+            hoursAvailable: 4
+          timeout: 30000
+          check:
+            status: 200
+
+  breakdown:
+    name: Breakdown Task
+    steps:
+      - name: POST /v1/ai/breakdown - 404 Not Found
+        http:
+          url: ${{ env.host }}/v1/ai/breakdown
+          method: POST
+          headers:
+            Content-Type: application/json
+          body:
+            taskId: "nonexistent-task-id"
+          timeout: 30000
+          check:
+            status: 404
+
+  insights:
+    name: Get Insights
+    steps:
+      - name: POST /v1/ai/insights - 200 OK
+        http:
+          url: ${{ env.host }}/v1/ai/insights
+          method: POST
+          headers:
+            Content-Type: application/json
+          body: {}
+          timeout: 30000
+          check:
+            status: 200
+            jsonpath:
+              $.insights: isArray
+              $.recommendations: isArray
+              $.period: isString
+              $.stats: isObject
+
+      - name: POST /v1/ai/insights - 200 OK with days
+        http:
+          url: ${{ env.host }}/v1/ai/insights
+          method: POST
+          headers:
+            Content-Type: application/json
+          body:
+            days: 30
+          timeout: 30000
+          check:
+            status: 200
+

@@ -147,7 +147,7 @@ export class StatsController {
       classified: stats.classified || 0,
       unclassified: stats.unclassified || 0,
       withTimeEstimate: stats.withTimeEstimate || 0,
-      withPriority: stats.withPriority || 0,
+      withPriority: 0, // Not tracked in current DTO
       byCategory: stats.byCategory || {},
       classificationRate: stats.total > 0
         ? Math.round((stats.classified / stats.total) * 100)

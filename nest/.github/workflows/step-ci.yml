@@ -1,0 +1,92 @@
+# Step-CI Contract & Blueprint Tests
+# 
+# Runs step-ci tests on every push and PR to validate API contracts.
+
+name: Step-CI Tests
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'nest/src/**'
+      - 'nest/step-ci/**'
+      - 'nest/docker-compose.test.yml'
+      - 'nest/.github/workflows/step-ci.yml'
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'nest/src/**'
+      - 'nest/step-ci/**'
+      - 'nest/docker-compose.test.yml'
+      - 'nest/.github/workflows/step-ci.yml'
+  workflow_dispatch: # Allow manual triggering
+
+jobs:
+  step-ci-tests:
+    name: Run Step-CI Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and run tests
+        working-directory: ./nest
+        run: |
+          docker-compose -f docker-compose.test.yml up --build --abort-on-container-exit --exit-code-from step-ci
+
+      - name: Cleanup
+        if: always()
+        working-directory: ./nest
+        run: |
+          docker-compose -f docker-compose.test.yml down --volumes --remove-orphans
+
+  step-ci-local:
+    name: Run Step-CI (Local)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 10
+
+      - name: Install dependencies
+        working-directory: ./nest
+        run: pnpm install --frozen-lockfile
+
+      - name: Build application
+        working-directory: ./nest
+        run: pnpm build
+
+      - name: Start API server
+        working-directory: ./nest
+        run: |
+          RUN_MODE=http USE_MOCKS=true NODE_ENV=test node dist/main.js &
+          sleep 10  # Wait for server to start
+
+      - name: Install Step-CI
+        run: npm install -g stepci
+
+      - name: Run blueprint tests
+        working-directory: ./nest
+        run: |
+          stepci run step-ci/step-ci.yaml --env step-ci/environments/ci.yaml
+
+      - name: Stop API server
+        if: always()
+        run: pkill -f "node dist/main.js" || true
+

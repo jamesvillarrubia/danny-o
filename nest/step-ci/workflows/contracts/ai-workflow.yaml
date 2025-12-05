@@ -1,0 +1,197 @@
+# Contract Test: AI Workflow
+# 
+# Tests the AI features workflow:
+# 1. Classify a specific task
+# 2. Estimate time for the task
+# 3. Get a daily plan including the task
+# 4. Break down a complex task
+# 5. Get productivity insights
+#
+# This test demonstrates the full AI capabilities.
+
+version: "1.1"
+name: Contract - AI Workflow
+
+env:
+  host: ${{ env.API_HOST }}
+
+tests:
+  ai_workflow:
+    name: Full AI Features Workflow
+    steps:
+      # Step 1: Create a work task for AI processing
+      - name: Create work task
+        http:
+          url: ${{ env.host }}/v1/tasks
+          method: POST
+          headers:
+            Content-Type: application/json
+          body:
+            content: "Refactor authentication module for better security"
+            description: "Review current implementation, identify vulnerabilities, and implement improvements"
+            priority: 3
+          timeout: ${{ env.TIMEOUT }}
+          check:
+            status: 201
+          captures:
+            workTaskId:
+              jsonpath: $.id
+
+      # Step 2: Create a home task
+      - name: Create home task
+        http:
+          url: ${{ env.host }}/v1/tasks
+          method: POST
+          headers:
+            Content-Type: application/json
+          body:
+            content: "Fix the broken fence in backyard"
+            description: "Replace damaged boards and repaint"
+            priority: 2
+          timeout: ${{ env.TIMEOUT }}
+          check:
+            status: 201
+          captures:
+            homeTaskId:
+              jsonpath: $.id
+
+      # Step 3: Classify the specific tasks
+      - name: Classify created tasks
+        http:
+          url: ${{ env.host }}/v1/ai/classify
+          method: POST
+          headers:
+            Content-Type: application/json
+          body:
+            taskIds:
+              - ${{ captures.workTaskId }}
+              - ${{ captures.homeTaskId }}
+          timeout: 60000
+          check:
+            status: 200
+            jsonpath:
+              $.results: isArray
+              $.tasksClassified: isNumber
+          captures:
+            classificationResults:
+              jsonpath: $.results
+
+      # Step 4: Estimate time for work task
+      - name: Estimate work task duration
+        http:
+          url: ${{ env.host }}/v1/ai/estimateTime
+          method: POST
+          headers:
+            Content-Type: application/json
+          body:
+            taskId: ${{ captures.workTaskId }}
+          timeout: 30000
+          check:
+            status: 200
+            jsonpath:
+              $.taskId: ${{ captures.workTaskId }}
+              $.estimate: isString
+              $.size: isString
+              $.confidence: isNumber
+          captures:
+            workTaskEstimate:
+              jsonpath: $.timeEstimateMinutes
+
+      # Step 5: Estimate time for home task
+      - name: Estimate home task duration
+        http:
+          url: ${{ env.host }}/v1/ai/estimateTime
+          method: POST
+          headers:
+            Content-Type: application/json
+          body:
+            taskId: ${{ captures.homeTaskId }}
+          timeout: 30000
+          check:
+            status: 200
+            jsonpath:
+              $.taskId: ${{ captures.homeTaskId }}
+
+      # Step 6: Break down the work task
+      - name: Break down work task into subtasks
+        http:
+          url: ${{ env.host }}/v1/ai/breakdown
+          method: POST
+          headers:
+            Content-Type: application/json
+          body:
+            taskId: ${{ captures.workTaskId }}
+          timeout: 60000
+          check:
+            status: 200
+            jsonpath:
+              $.taskId: ${{ captures.workTaskId }}
+              $.subtasks: isArray
+              $.totalEstimate: isString
+
+      # Step 7: Generate a daily plan
+      - name: Generate daily plan
+        http:
+          url: ${{ env.host }}/v1/ai/dailyPlan
+          method: POST
+          headers:
+            Content-Type: application/json
+          body:
+            hoursAvailable: 6
+          timeout: 60000
+          check:
+            status: 200
+            jsonpath:
+              $.summary: isString
+              $.today: isObject
+              $.thisWeek: isObject
+
+      # Step 8: Get prioritization recommendations
+      - name: Get AI prioritization
+        http:
+          url: ${{ env.host }}/v1/ai/prioritize
+          method: POST
+          headers:
+            Content-Type: application/json
+          body:
+            limit: 20
+          timeout: 30000
+          check:
+            status: 200
+            jsonpath:
+              $.recommendations: isArray
+
+      # Step 9: Get productivity insights
+      - name: Get AI insights
+        http:
+          url: ${{ env.host }}/v1/ai/insights
+          method: POST
+          headers:
+            Content-Type: application/json
+          body:
+            days: 7
+          timeout: 30000
+          check:
+            status: 200
+            jsonpath:
+              $.insights: isArray
+              $.recommendations: isArray
+              $.stats: isObject
+
+      # Cleanup: Delete test tasks
+      - name: Delete work task
+        http:
+          url: ${{ env.host }}/v1/tasks/${{ captures.workTaskId }}
+          method: DELETE
+          timeout: ${{ env.TIMEOUT }}
+          check:
+            status: /^(204|404)$/
+
+      - name: Delete home task
+        http:
+          url: ${{ env.host }}/v1/tasks/${{ captures.homeTaskId }}
+          method: DELETE
+          timeout: ${{ env.TIMEOUT }}
+          check:
+            status: /^(204|404)$/
+

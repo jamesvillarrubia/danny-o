@@ -191,7 +191,7 @@ export interface TaskResponseDto {
   labels?: string[];
   due?: {
     date: string;
-    datetime?: string;
+    datetime?: string | null;
     string?: string;
     isRecurring: boolean;
   } | null;

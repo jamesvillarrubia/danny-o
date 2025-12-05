@@ -247,34 +247,40 @@ export class AIController {
     const plan = await this.aiOps.suggestDailyPlan(tasks, context);
 
     return {
-      summary: plan.summary || 'Daily plan generated',
-      notes: plan.notes || '',
+      summary: plan.plan || 'Daily plan generated',
+      notes: plan.notes || plan.reasoning || '',
       today: {
         tasks: (plan.today?.tasks || []).map((t: any) => ({
-          taskId: t.taskId || '',
-          content: t.content || '',
+          taskId: t.task?.id || t.taskId || '',
+          content: t.task?.content || t.content || '',
           estimatedMinutes: t.estimatedMinutes || 0,
-          reason: t.reason || '',
+          reason: t.reasoning || t.reason || '',
         })),
         totalTime: plan.today?.totalTime || '0min',
       },
       thisWeek: {
         tasks: (plan.thisWeek?.tasks || []).map((t: any) => ({
-          taskId: t.taskId || '',
-          content: t.content || '',
+          taskId: t?.id || t.taskId || '',
+          content: t?.content || '',
         })),
         reasoning: plan.thisWeek?.reasoning || '',
       },
       needsSupplies: plan.needsSupplies
         ? {
-            tasks: plan.needsSupplies.tasks || [],
+            tasks: (plan.needsSupplies.tasks || []).map((t: any) => ({
+              taskId: t?.id || '',
+              content: t?.content || '',
+            })),
             shoppingList: plan.needsSupplies.shoppingList || [],
             suggestion: plan.needsSupplies.suggestion || '',
           }
         : undefined,
       delegateToSpouse: plan.delegateToSpouse
         ? {
-            tasks: plan.delegateToSpouse.tasks || [],
+            tasks: (plan.delegateToSpouse.tasks || []).map((t: any) => ({
+              taskId: t?.id || '',
+              content: t?.content || '',
+            })),
             reasoning: plan.delegateToSpouse.reasoning || '',
           }
         : undefined,
@@ -357,13 +363,33 @@ export class AIController {
     // Get AI insights
     const aiInsights = await this.aiOps.generateInsights();
 
+    // Map patterns to insights if available, otherwise parse insights string
+    const insightsList: InsightsResponseDto['insights'] = [];
+    
+    if (aiInsights.patterns && Array.isArray(aiInsights.patterns)) {
+      for (const p of aiInsights.patterns) {
+        insightsList.push({
+          type: 'pattern',
+          title: p.observation?.slice(0, 50) || 'Pattern',
+          description: p.observation || '',
+          data: { category: p.category, significance: p.significance },
+        });
+      }
+    }
+    
+    // Add the insights string as a single insight if no patterns
+    if (insightsList.length === 0 && aiInsights.insights) {
+      insightsList.push({
+        type: 'pattern',
+        title: 'AI Analysis',
+        description: typeof aiInsights.insights === 'string' 
+          ? aiInsights.insights 
+          : JSON.stringify(aiInsights.insights),
+      });
+    }
+
     return {
-      insights: (aiInsights.insights || []).map((i: any) => ({
-        type: i.type || 'pattern',
-        title: i.title || i.description?.slice(0, 50) || 'Insight',
-        description: i.description || '',
-        data: i.data,
-      })),
+      insights: insightsList,
       recommendations: aiInsights.recommendations || [],
       period: `Last ${days} days`,
       stats: {

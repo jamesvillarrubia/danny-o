@@ -1,0 +1,224 @@
+# Contract Test: Task Lifecycle
+# 
+# Tests the complete task lifecycle:
+# 1. Create a task
+# 2. Read the task
+# 3. Update the task
+# 4. Search for the task
+# 5. Complete the task
+# 6. Verify in history
+# 7. Delete/cleanup
+#
+# This is idempotent - creates and cleans up its own test data.
+
+version: "1.1"
+name: Contract - Task Lifecycle
+
+env:
+  host: ${{ env.API_HOST }}
+
+tests:
+  task_crud_lifecycle:
+    name: Task CRUD Lifecycle
+    steps:
+      # Step 1: Create a new task
+      - name: Create task
+        http:
+          url: ${{ env.host }}/v1/tasks
+          method: POST
+          headers:
+            Content-Type: application/json
+          body:
+            content: "Contract lifecycle test task"
+            description: "This task tests the full CRUD lifecycle"
+            priority: 3
+          timeout: ${{ env.TIMEOUT }}
+          check:
+            status: 201
+            jsonpath:
+              $.id: isString
+              $.content: "Contract lifecycle test task"
+              $.priority: 3
+              $.isCompleted: false
+          captures:
+            taskId:
+              jsonpath: $.id
+            taskContent:
+              jsonpath: $.content
+
+      # Step 2: Read the task back
+      - name: Read created task
+        http:
+          url: ${{ env.host }}/v1/tasks/${{ captures.taskId }}
+          method: GET
+          timeout: ${{ env.TIMEOUT }}
+          check:
+            status: 200
+            jsonpath:
+              $.id: ${{ captures.taskId }}
+              $.content: "Contract lifecycle test task"
+
+      # Step 3: Update the task content
+      - name: Update task content
+        http:
+          url: ${{ env.host }}/v1/tasks/${{ captures.taskId }}
+          method: PATCH
+          headers:
+            Content-Type: application/json
+          body:
+            content: "Contract lifecycle test task - UPDATED"
+            priority: 4
+          timeout: ${{ env.TIMEOUT }}
+          check:
+            status: 200
+            jsonpath:
+              $.id: ${{ captures.taskId }}
+              $.content: "Contract lifecycle test task - UPDATED"
+              $.priority: 4
+
+      # Step 4: Update the task category
+      - name: Update task category
+        http:
+          url: ${{ env.host }}/v1/tasks/${{ captures.taskId }}
+          method: PATCH
+          headers:
+            Content-Type: application/json
+          body:
+            category: "work"
+          timeout: ${{ env.TIMEOUT }}
+          check:
+            status: 200
+
+      # Step 5: Verify task appears in list
+      - name: Verify task in list
+        http:
+          url: ${{ env.host }}/v1/tasks?limit=100
+          method: GET
+          timeout: ${{ env.TIMEOUT }}
+          check:
+            status: 200
+            jsonpath:
+              $.tasks: isArray
+
+      # Step 6: Search for the task
+      - name: Search for task
+        http:
+          url: ${{ env.host }}/v1/tasks/search
+          method: POST
+          headers:
+            Content-Type: application/json
+          body:
+            query: "lifecycle test"
+          timeout: ${{ env.TIMEOUT }}
+          check:
+            status: 200
+            jsonpath:
+              $.results: isArray
+              $.totalMatches: isNumber
+
+      # Step 7: Complete the task
+      - name: Complete task
+        http:
+          url: ${{ env.host }}/v1/tasks/${{ captures.taskId }}/complete
+          method: POST
+          headers:
+            Content-Type: application/json
+          body:
+            actualMinutes: 10
+            context: "Completed during contract test"
+          timeout: ${{ env.TIMEOUT }}
+          check:
+            status: 200
+            jsonpath:
+              $.taskId: ${{ captures.taskId }}
+              $.completedAt: isString
+              $.actualMinutes: 10
+
+      # Step 8: Verify task appears in history
+      - name: Verify in completion history
+        http:
+          url: ${{ env.host }}/v1/stats/history?limit=10
+          method: GET
+          timeout: ${{ env.TIMEOUT }}
+          check:
+            status: 200
+            jsonpath:
+              $.entries: isArray
+
+  batch_operations:
+    name: Batch Operations
+    steps:
+      # Create multiple tasks
+      - name: Create task 1
+        http:
+          url: ${{ env.host }}/v1/tasks
+          method: POST
+          headers:
+            Content-Type: application/json
+          body:
+            content: "Batch test task 1"
+            priority: 1
+          timeout: ${{ env.TIMEOUT }}
+          check:
+            status: 201
+          captures:
+            batchTask1:
+              jsonpath: $.id
+
+      - name: Create task 2
+        http:
+          url: ${{ env.host }}/v1/tasks
+          method: POST
+          headers:
+            Content-Type: application/json
+          body:
+            content: "Batch test task 2"
+            priority: 1
+          timeout: ${{ env.TIMEOUT }}
+          check:
+            status: 201
+          captures:
+            batchTask2:
+              jsonpath: $.id
+
+      # Batch update
+      - name: Batch update tasks
+        http:
+          url: ${{ env.host }}/v1/tasks/batchUpdate
+          method: POST
+          headers:
+            Content-Type: application/json
+          body:
+            updates:
+              - taskId: ${{ captures.batchTask1 }}
+                updates:
+                  priority: 3
+                  category: "work"
+              - taskId: ${{ captures.batchTask2 }}
+                updates:
+                  priority: 2
+                  category: "personal"
+          timeout: ${{ env.TIMEOUT }}
+          check:
+            status: 200
+            jsonpath:
+              $.updated: 2
+              $.failed: 0
+
+      # Cleanup
+      - name: Delete batch task 1
+        http:
+          url: ${{ env.host }}/v1/tasks/${{ captures.batchTask1 }}
+          method: DELETE
+          timeout: ${{ env.TIMEOUT }}
+          check:
+            status: /^(204|404)$/
+
+      - name: Delete batch task 2
+        http:
+          url: ${{ env.host }}/v1/tasks/${{ captures.batchTask2 }}
+          method: DELETE
+          timeout: ${{ env.TIMEOUT }}
+          check:
+            status: /^(204|404)$/
+

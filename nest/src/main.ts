@@ -5,6 +5,9 @@
  * - CLI mode: Run command-line interface
  * - MCP mode: Start Model Context Protocol server
  * - HTTP mode: Start HTTP server for API access and step-ci testing
+ * 
+ * When USE_MOCKS=true, HTTP interceptors are enabled to mock external APIs
+ * (Todoist, Anthropic) for contract testing without real API calls.
  */
 
 import 'dotenv/config'; // Load .env before anything else
@@ -16,6 +19,19 @@ import { MCPServerService } from './mcp/services/mcp-server.service';
 
 async function bootstrap() {
   const runMode = process.env.RUN_MODE || 'cli';
+  const useMocks = process.env.USE_MOCKS === 'true';
+
+  // Set up HTTP mocks if enabled (for contract testing)
+  if (useMocks) {
+    try {
+      const { setupMocks } = await import('./mock-bootstrap');
+      setupMocks();
+    } catch (error) {
+      console.error('[Bootstrap] Failed to set up mocks:', error);
+      console.error('[Bootstrap] Make sure nock is installed: pnpm add -D nock');
+      process.exit(1);
+    }
+  }
 
   if (runMode === 'mcp') {
     // MCP Server mode

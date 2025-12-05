@@ -1,0 +1,173 @@
+# Contract Test: Sync, Classify, Complete Flow
+# 
+# Tests the real user flow of:
+# 1. Syncing tasks from Todoist
+# 2. Classifying unclassified tasks
+# 3. Prioritizing tasks
+# 4. Completing a task
+#
+# This test maintains state across steps and is idempotent.
+
+version: "1.1"
+name: Contract - Sync Classify Complete
+
+env:
+  host: ${{ env.API_HOST }}
+
+tests:
+  sync_classify_complete_flow:
+    name: Full Sync-Classify-Complete Workflow
+    steps:
+      # Step 1: Sync tasks from Todoist
+      - name: Sync tasks from Todoist
+        http:
+          url: ${{ env.host }}/v1/tasks/sync
+          method: POST
+          headers:
+            Content-Type: application/json
+          body:
+            fullSync: false
+          timeout: 30000
+          check:
+            status: 200
+            jsonpath:
+              $.synced: isNumber
+              $.tasks: isNumber
+          captures:
+            syncedTasks:
+              jsonpath: $.tasks
+            syncedProjects:
+              jsonpath: $.projects
+
+      # Step 2: List all tasks to verify sync
+      - name: Verify synced tasks
+        http:
+          url: ${{ env.host }}/v1/tasks?limit=50
+          method: GET
+          timeout: ${{ env.TIMEOUT }}
+          check:
+            status: 200
+            jsonpath:
+              $.tasks: isArray
+          captures:
+            allTasks:
+              jsonpath: $.tasks
+            firstTaskId:
+              jsonpath: $.tasks[0].id
+
+      # Step 3: Get enrichment stats before classification
+      - name: Check enrichment stats before
+        http:
+          url: ${{ env.host }}/v1/stats/enrichment
+          method: GET
+          timeout: ${{ env.TIMEOUT }}
+          check:
+            status: 200
+          captures:
+            unclassifiedBefore:
+              jsonpath: $.unclassified
+
+      # Step 4: Classify unclassified tasks
+      - name: Classify tasks with AI
+        http:
+          url: ${{ env.host }}/v1/ai/classify
+          method: POST
+          headers:
+            Content-Type: application/json
+          body:
+            force: false
+            batchSize: 10
+          timeout: 60000
+          check:
+            status: 200
+            jsonpath:
+              $.results: isArray
+              $.tasksProcessed: isNumber
+          captures:
+            classifiedCount:
+              jsonpath: $.tasksClassified
+
+      # Step 5: Get enrichment stats after classification
+      - name: Check enrichment stats after
+        http:
+          url: ${{ env.host }}/v1/stats/enrichment
+          method: GET
+          timeout: ${{ env.TIMEOUT }}
+          check:
+            status: 200
+          captures:
+            unclassifiedAfter:
+              jsonpath: $.unclassified
+
+      # Step 6: Prioritize tasks
+      - name: Get priority recommendations
+        http:
+          url: ${{ env.host }}/v1/ai/prioritize
+          method: POST
+          headers:
+            Content-Type: application/json
+          body:
+            limit: 10
+          timeout: 30000
+          check:
+            status: 200
+            jsonpath:
+              $.recommendations: isArray
+
+      # Step 7: Create a test task (for cleanup)
+      - name: Create test task for completion
+        http:
+          url: ${{ env.host }}/v1/tasks
+          method: POST
+          headers:
+            Content-Type: application/json
+          body:
+            content: "Contract test task - to be completed"
+            priority: 2
+          timeout: ${{ env.TIMEOUT }}
+          check:
+            status: 201
+            jsonpath:
+              $.id: isString
+          captures:
+            testTaskId:
+              jsonpath: $.id
+
+      # Step 8: Complete the test task
+      - name: Complete the test task
+        http:
+          url: ${{ env.host }}/v1/tasks/${{ captures.testTaskId }}/complete
+          method: POST
+          headers:
+            Content-Type: application/json
+          body:
+            actualMinutes: 15
+          timeout: ${{ env.TIMEOUT }}
+          check:
+            status: 200
+            jsonpath:
+              $.taskId: ${{ captures.testTaskId }}
+              $.completedAt: isString
+
+      # Step 9: Verify task appears in history
+      - name: Verify completion in history
+        http:
+          url: ${{ env.host }}/v1/stats/history?limit=5
+          method: GET
+          timeout: ${{ env.TIMEOUT }}
+          check:
+            status: 200
+            jsonpath:
+              $.entries: isArray
+
+      # Step 10: Check productivity stats
+      - name: Verify productivity stats updated
+        http:
+          url: ${{ env.host }}/v1/stats/productivity?days=1
+          method: GET
+          timeout: ${{ env.TIMEOUT }}
+          check:
+            status: 200
+            jsonpath:
+              $.totalCompleted: isNumber
+

@@ -1,0 +1,54 @@
+# Docker Compose for Step-CI Testing
+# 
+# Spins up the API in mocked mode and runs step-ci tests against it.
+# 
+# Usage:
+#   docker-compose -f docker-compose.test.yml up --build --abort-on-container-exit
+#   docker-compose -f docker-compose.test.yml down
+
+version: '3.8'
+
+services:
+  # API Service - runs in HTTP mode with mocked external APIs
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      - NODE_ENV=test
+      - RUN_MODE=http
+      - USE_MOCKS=true
+      - DATABASE_TYPE=sqlite
+      - DATABASE_URL=:memory:
+      - TODOIST_API_TOKEN=mock_token
+      - ANTHROPIC_API_KEY=mock_key
+      - PORT=3000
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 5s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+    networks:
+      - test-network
+
+  # Step-CI Test Runner
+  step-ci:
+    image: stepci/stepci:latest
+    depends_on:
+      api:
+        condition: service_healthy
+    volumes:
+      - ./step-ci:/tests:ro
+    command: run /tests/step-ci.yaml --env /tests/environments/docker.yaml
+    environment:
+      - CI=true
+    networks:
+      - test-network
+
+networks:
+  test-network:
+    driver: bridge
+

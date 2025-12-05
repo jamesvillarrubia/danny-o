@@ -1,0 +1,210 @@
+# Tasks Endpoints Blueprint Tests
+# 
+# Tests all task-related endpoints for availability, correct response format,
+# and proper error handling. These are shallow tests focused on breadth.
+
+version: "1.1"
+name: Tasks Blueprint
+
+env:
+  host: ${{ env.API_HOST }}
+
+tests:
+  # ===========================================================================
+  # Standard Methods (CRUD)
+  # ===========================================================================
+  
+  list_tasks:
+    name: List Tasks
+    steps:
+      - name: GET /v1/tasks - 200 with empty filters
+        http:
+          url: ${{ env.host }}/v1/tasks
+          method: GET
+          timeout: ${{ env.TIMEOUT }}
+          check:
+            status: 200
+            jsonpath:
+              $.tasks: isArray
+              $.totalCount: isNumber
+
+      - name: GET /v1/tasks - 200 with category filter
+        http:
+          url: ${{ env.host }}/v1/tasks?category=work
+          method: GET
+          timeout: ${{ env.TIMEOUT }}
+          check:
+            status: 200
+            jsonpath:
+              $.tasks: isArray
+
+      - name: GET /v1/tasks - 200 with priority filter
+        http:
+          url: ${{ env.host }}/v1/tasks?priority=4
+          method: GET
+          timeout: ${{ env.TIMEOUT }}
+          check:
+            status: 200
+
+      - name: GET /v1/tasks - 200 with limit
+        http:
+          url: ${{ env.host }}/v1/tasks?limit=5
+          method: GET
+          timeout: ${{ env.TIMEOUT }}
+          check:
+            status: 200
+
+      - name: GET /v1/tasks - 200 with pagination
+        http:
+          url: ${{ env.host }}/v1/tasks?limit=10&offset=0
+          method: GET
+          timeout: ${{ env.TIMEOUT }}
+          check:
+            status: 200
+            jsonpath:
+              $.tasks: isArray
+
+  get_task:
+    name: Get Single Task
+    steps:
+      - name: GET /v1/tasks/{id} - 404 Not Found
+        http:
+          url: ${{ env.host }}/v1/tasks/nonexistent-task-id
+          method: GET
+          timeout: ${{ env.TIMEOUT }}
+          check:
+            status: 404
+            jsonpath:
+              $.error.status: NOT_FOUND
+
+  create_task:
+    name: Create Task
+    steps:
+      - name: POST /v1/tasks - 201 Created
+        http:
+          url: ${{ env.host }}/v1/tasks
+          method: POST
+          headers:
+            Content-Type: application/json
+          body:
+            content: "Blueprint test task - will be deleted"
+            priority: 2
+          timeout: ${{ env.TIMEOUT }}
+          check:
+            status: 201
+            jsonpath:
+              $.id: isString
+              $.content: "Blueprint test task - will be deleted"
+          captures:
+            createdTaskId:
+              jsonpath: $.id
+
+      - name: DELETE created task (cleanup)
+        http:
+          url: ${{ env.host }}/v1/tasks/${{ captures.createdTaskId }}
+          method: DELETE
+          timeout: ${{ env.TIMEOUT }}
+          check:
+            status: /^(204|404)$/
+
+  update_task:
+    name: Update Task
+    steps:
+      - name: PATCH /v1/tasks/{id} - 404 Not Found
+        http:
+          url: ${{ env.host }}/v1/tasks/nonexistent-task-id
+          method: PATCH
+          headers:
+            Content-Type: application/json
+          body:
+            content: "Updated content"
+          timeout: ${{ env.TIMEOUT }}
+          check:
+            status: 404
+
+  delete_task:
+    name: Delete Task
+    steps:
+      - name: DELETE /v1/tasks/{id} - 404 Not Found
+        http:
+          url: ${{ env.host }}/v1/tasks/nonexistent-task-id
+          method: DELETE
+          timeout: ${{ env.TIMEOUT }}
+          check:
+            status: 404
+
+  # ===========================================================================
+  # Custom Methods
+  # ===========================================================================
+
+  sync_tasks:
+    name: Sync Tasks
+    steps:
+      - name: POST /v1/tasks/sync - 200 OK
+        http:
+          url: ${{ env.host }}/v1/tasks/sync
+          method: POST
+          headers:
+            Content-Type: application/json
+          body:
+            fullSync: false
+          timeout: 30000
+          check:
+            status: 200
+            jsonpath:
+              $.synced: isNumber
+              $.duration: isNumber
+
+  complete_task:
+    name: Complete Task
+    steps:
+      - name: POST /v1/tasks/{id}/complete - 404 Not Found
+        http:
+          url: ${{ env.host }}/v1/tasks/nonexistent-task-id/complete
+          method: POST
+          headers:
+            Content-Type: application/json
+          body:
+            actualMinutes: 30
+          timeout: ${{ env.TIMEOUT }}
+          check:
+            status: 404
+
+  search_tasks:
+    name: Search Tasks
+    steps:
+      - name: POST /v1/tasks/search - 200 OK
+        http:
+          url: ${{ env.host }}/v1/tasks/search
+          method: POST
+          headers:
+            Content-Type: application/json
+          body:
+            query: "test"
+            limit: 10
+          timeout: ${{ env.TIMEOUT }}
+          check:
+            status: 200
+            jsonpath:
+              $.results: isArray
+              $.query: "test"
+              $.totalMatches: isNumber
+
+  batch_update:
+    name: Batch Update Tasks
+    steps:
+      - name: POST /v1/tasks/batchUpdate - 200 OK (empty)
+        http:
+          url: ${{ env.host }}/v1/tasks/batchUpdate
+          method: POST
+          headers:
+            Content-Type: application/json
+          body:
+            updates: []
+          timeout: ${{ env.TIMEOUT }}
+          check:
+            status: 200
+            jsonpath:
+              $.updated: 0
+              $.failed: 0
+

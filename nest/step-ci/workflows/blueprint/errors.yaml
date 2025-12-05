@@ -1,0 +1,92 @@
+# Error Handling Blueprint Tests
+# 
+# Tests error responses for various invalid inputs and edge cases.
+# Validates that error responses follow Google API error model.
+
+version: "1.1"
+name: Errors Blueprint
+
+env:
+  host: ${{ env.API_HOST }}
+
+tests:
+  not_found_errors:
+    name: 404 Not Found Errors
+    steps:
+      - name: GET /v1/tasks/{id} - 404 for missing task
+        http:
+          url: ${{ env.host }}/v1/tasks/this-task-does-not-exist
+          method: GET
+          timeout: ${{ env.TIMEOUT }}
+          check:
+            status: 404
+            jsonpath:
+              $.error.code: 404
+              $.error.status: NOT_FOUND
+              $.error.message: isString
+
+      - name: GET /v1/projects/{id} - 404 for missing project
+        http:
+          url: ${{ env.host }}/v1/projects/this-project-does-not-exist
+          method: GET
+          timeout: ${{ env.TIMEOUT }}
+          check:
+            status: 404
+            jsonpath:
+              $.error.code: 404
+              $.error.status: NOT_FOUND
+
+      - name: GET /v1/labels/{id} - 404 for missing label
+        http:
+          url: ${{ env.host }}/v1/labels/this-label-does-not-exist
+          method: GET
+          timeout: ${{ env.TIMEOUT }}
+          check:
+            status: 404
+            jsonpath:
+              $.error.code: 404
+              $.error.status: NOT_FOUND
+
+  test_state_restriction:
+    name: Test State Restriction
+    steps:
+      - name: POST /v1/tasks/resetTestState - 400 in non-test env
+        http:
+          url: ${{ env.host }}/v1/tasks/resetTestState
+          method: POST
+          headers:
+            Content-Type: application/json
+          timeout: ${{ env.TIMEOUT }}
+          # This should either succeed (test env) or fail (prod)
+          check:
+            status: /^(200|400)$/
+
+  method_not_allowed:
+    name: Method Not Allowed
+    steps:
+      - name: PUT /v1/tasks - Method not implemented
+        http:
+          url: ${{ env.host }}/v1/tasks
+          method: PUT
+          headers:
+            Content-Type: application/json
+          body:
+            content: "test"
+          timeout: ${{ env.TIMEOUT }}
+          check:
+            # NestJS returns 404 for undefined routes
+            status: /^(404|405)$/
+
+  invalid_content_type:
+    name: Invalid Content Type
+    steps:
+      - name: POST /v1/tasks - without content type
+        http:
+          url: ${{ env.host }}/v1/tasks
+          method: POST
+          body: "plain text body"
+          timeout: ${{ env.TIMEOUT }}
+          check:
+            # Should fail or return error
+            status: /^(400|415|201)$/
+

@@ -1,0 +1,93 @@
+# Stats Endpoints Blueprint Tests
+# 
+# Tests all statistics-related endpoints for availability and correct response format.
+
+version: "1.1"
+name: Stats Blueprint
+
+env:
+  host: ${{ env.API_HOST }}
+
+tests:
+  productivity:
+    name: Productivity Stats
+    steps:
+      - name: GET /v1/stats/productivity - 200 OK
+        http:
+          url: ${{ env.host }}/v1/stats/productivity
+          method: GET
+          timeout: ${{ env.TIMEOUT }}
+          check:
+            status: 200
+            jsonpath:
+              $.period: isString
+              $.totalCompleted: isNumber
+              $.withTimeTracking: isNumber
+              $.byCategory: isObject
+              $.byDay: isObject
+
+      - name: GET /v1/stats/productivity - 200 OK with days
+        http:
+          url: ${{ env.host }}/v1/stats/productivity?days=30
+          method: GET
+          timeout: ${{ env.TIMEOUT }}
+          check:
+            status: 200
+            jsonpath:
+              $.period: "Last 30 days"
+
+      - name: GET /v1/stats/productivity - 200 OK with category
+        http:
+          url: ${{ env.host }}/v1/stats/productivity?category=work
+          method: GET
+          timeout: ${{ env.TIMEOUT }}
+          check:
+            status: 200
+
+  enrichment:
+    name: Enrichment Stats
+    steps:
+      - name: GET /v1/stats/enrichment - 200 OK
+        http:
+          url: ${{ env.host }}/v1/stats/enrichment
+          method: GET
+          timeout: ${{ env.TIMEOUT }}
+          check:
+            status: 200
+            jsonpath:
+              $.total: isNumber
+              $.classified: isNumber
+              $.unclassified: isNumber
+              $.classificationRate: isNumber
+              $.byCategory: isObject
+
+  history:
+    name: Task History
+    steps:
+      - name: GET /v1/stats/history - 200 OK
+        http:
+          url: ${{ env.host }}/v1/stats/history
+          method: GET
+          timeout: ${{ env.TIMEOUT }}
+          check:
+            status: 200
+            jsonpath:
+              $.entries: isArray
+              $.totalCount: isNumber
+
+      - name: GET /v1/stats/history - 200 OK with limit
+        http:
+          url: ${{ env.host }}/v1/stats/history?limit=10
+          method: GET
+          timeout: ${{ env.TIMEOUT }}
+          check:
+            status: 200
+
+      - name: GET /v1/stats/history - 200 OK with category
+        http:
+          url: ${{ env.host }}/v1/stats/history?category=work
+          method: GET
+          timeout: ${{ env.TIMEOUT }}
+          check:
+            status: 200
+

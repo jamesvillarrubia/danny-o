@@ -50,8 +50,11 @@ async function bootstrap(): Promise<NestExpressApplication> {
 // Export handler for Vercel
 export default async function handler(req: Request, res: Response) {
   const app = await bootstrap();
-  const expressApp = app.getHttpAdapter().getInstance();
-  expressApp(req, res);
+  const server = app.getHttpAdapter().getInstance() as unknown as (
+    req: Request,
+    res: Response
+  ) => void;
+  server(req, res);
 }
 
 // Export for local development

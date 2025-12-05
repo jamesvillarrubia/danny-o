@@ -1,0 +1,1299 @@
+openapi: 3.0.3
+info:
+  title: Todoist AI Agent API
+  description: |
+    AI-powered task management API following Google API Design Guide.
+    
+    ## Authentication
+    Currently using environment-based API keys for Todoist and Claude.
+    
+    ## Resource Naming
+    - Resources use kebab-case for URIs
+    - Collections are plural (tasks, projects, labels)
+    - Custom methods use :verb suffix pattern
+  version: 1.0.0
+  contact:
+    name: API Support
+  license:
+    name: ISC
+
+servers:
+  - url: http://localhost:3000/api
+    description: Local development server
+  - url: https://your-app.vercel.app/api
+    description: Production server (Vercel)
+
+tags:
+  - name: tasks
+    description: Task management operations
+  - name: projects
+    description: Project read operations
+  - name: labels
+    description: Label read operations
+  - name: ai
+    description: AI-powered operations (RPC-style)
+  - name: stats
+    description: Statistics and analytics
+  - name: health
+    description: Health check endpoints
+
+paths:
+  # ===========================================================================
+  # Tasks - Standard Methods
+  # ===========================================================================
+  /v1/tasks:
+    get:
+      tags: [tasks]
+      operationId: listTasks
+      summary: List tasks
+      description: Returns a list of tasks with optional filters
+      parameters:
+        - name: category
+          in: query
+          schema:
+            type: string
+          description: Filter by category
+        - name: priority
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 4
+          description: Filter by priority (1-4)
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+            minimum: 1
+            maximum: 100
+          description: Maximum number of tasks to return
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+          description: Offset for pagination
+        - name: completed
+          in: query
+          schema:
+            type: boolean
+            default: false
+          description: Include completed tasks
+      responses:
+        '200':
+          description: List of tasks
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListTasksResponse'
+    post:
+      tags: [tasks]
+      operationId: createTask
+      summary: Create a task
+      description: Creates a new task in Todoist
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTaskRequest'
+      responses:
+        '201':
+          description: Task created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Task'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /v1/tasks/{taskId}:
+    parameters:
+      - name: taskId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Task ID
+    get:
+      tags: [tasks]
+      operationId: getTask
+      summary: Get a task
+      description: Returns a single task by ID
+      responses:
+        '200':
+          description: Task details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Task'
+        '404':
+          description: Task not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    patch:
+      tags: [tasks]
+      operationId: updateTask
+      summary: Update a task
+      description: Updates task properties
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateTaskRequest'
+      responses:
+        '200':
+          description: Task updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Task'
+        '404':
+          description: Task not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    delete:
+      tags: [tasks]
+      operationId: deleteTask
+      summary: Delete a task
+      description: Deletes a task from storage
+      responses:
+        '204':
+          description: Task deleted
+        '404':
+          description: Task not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ===========================================================================
+  # Tasks - Custom Methods
+  # ===========================================================================
+  /v1/tasks/sync:
+    post:
+      tags: [tasks]
+      operationId: syncTasks
+      summary: Sync with Todoist
+      description: Synchronizes tasks with Todoist API
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                fullSync:
+                  type: boolean
+                  default: false
+                  description: Force full resync (ignore sync token)
+      responses:
+        '200':
+          description: Sync completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncResponse'
+        '400':
+          description: Sync failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /v1/tasks/{taskId}/complete:
+    parameters:
+      - name: taskId
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      tags: [tasks]
+      operationId: completeTask
+      summary: Complete a task
+      description: Marks a task as complete in Todoist and local storage
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                actualMinutes:
+                  type: integer
+                  minimum: 1
+                  description: Actual time spent in minutes
+                context:
+                  type: string
+                  description: Context note for completion
+      responses:
+        '200':
+          description: Task completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CompleteTaskResponse'
+        '404':
+          description: Task not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /v1/tasks/search:
+    post:
+      tags: [tasks]
+      operationId: searchTasks
+      summary: Search tasks
+      description: Search tasks by content, description, or category
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [query]
+              properties:
+                query:
+                  type: string
+                  description: Search query
+                limit:
+                  type: integer
+                  default: 20
+                  maximum: 100
+      responses:
+        '200':
+          description: Search results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchTasksResponse'
+
+  /v1/tasks/batchUpdate:
+    post:
+      tags: [tasks]
+      operationId: batchUpdateTasks
+      summary: Batch update tasks
+      description: Update multiple tasks in a single request
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [updates]
+              properties:
+                updates:
+                  type: array
+                  items:
+                    type: object
+                    required: [taskId, updates]
+                    properties:
+                      taskId:
+                        type: string
+                      updates:
+                        $ref: '#/components/schemas/UpdateTaskRequest'
+      responses:
+        '200':
+          description: Batch update results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchUpdateResponse'
+
+  /v1/tasks/resetTestState:
+    post:
+      tags: [tasks]
+      operationId: resetTestState
+      summary: Reset test state
+      description: Reset state for step-ci idempotency (test environment only)
+      responses:
+        '200':
+          description: State reset
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  reset:
+                    type: boolean
+                  message:
+                    type: string
+        '400':
+          description: Not allowed in production
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ===========================================================================
+  # Projects
+  # ===========================================================================
+  /v1/projects:
+    get:
+      tags: [projects]
+      operationId: listProjects
+      summary: List projects
+      parameters:
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: pageToken
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of projects
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListProjectsResponse'
+
+  /v1/projects/{projectId}:
+    parameters:
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      tags: [projects]
+      operationId: getProject
+      summary: Get a project
+      responses:
+        '200':
+          description: Project details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+        '404':
+          description: Project not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ===========================================================================
+  # Labels
+  # ===========================================================================
+  /v1/labels:
+    get:
+      tags: [labels]
+      operationId: listLabels
+      summary: List labels
+      parameters:
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: pageToken
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of labels
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListLabelsResponse'
+
+  /v1/labels/{labelId}:
+    parameters:
+      - name: labelId
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      tags: [labels]
+      operationId: getLabel
+      summary: Get a label
+      responses:
+        '200':
+          description: Label details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Label'
+        '404':
+          description: Label not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ===========================================================================
+  # AI Operations (RPC-style)
+  # ===========================================================================
+  /v1/ai/classify:
+    post:
+      tags: [ai]
+      operationId: classifyTasks
+      summary: Classify tasks
+      description: Use AI to classify tasks into life area categories
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                taskIds:
+                  type: array
+                  items:
+                    type: string
+                  description: Specific task IDs to classify (optional)
+                force:
+                  type: boolean
+                  default: false
+                  description: Re-classify already classified tasks
+                batchSize:
+                  type: integer
+                  default: 10
+                  maximum: 50
+      responses:
+        '200':
+          description: Classification results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClassifyTasksResponse'
+
+  /v1/ai/prioritize:
+    post:
+      tags: [ai]
+      operationId: prioritizeTasks
+      summary: Prioritize tasks
+      description: Get AI-powered prioritization recommendations
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                category:
+                  type: string
+                  description: Filter by category
+                limit:
+                  type: integer
+                  default: 20
+                  maximum: 50
+      responses:
+        '200':
+          description: Prioritization recommendations
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PrioritizeTasksResponse'
+
+  /v1/ai/estimateTime:
+    post:
+      tags: [ai]
+      operationId: estimateTime
+      summary: Estimate task time
+      description: Get AI time estimate for a task
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [taskId]
+              properties:
+                taskId:
+                  type: string
+      responses:
+        '200':
+          description: Time estimate
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EstimateTimeResponse'
+        '404':
+          description: Task not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /v1/ai/dailyPlan:
+    post:
+      tags: [ai]
+      operationId: dailyPlan
+      summary: Generate daily plan
+      description: Get AI-generated daily plan with task recommendations
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                hoursAvailable:
+                  type: number
+                  minimum: 0.5
+                  maximum: 16
+                focusCategory:
+                  type: string
+      responses:
+        '200':
+          description: Daily plan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DailyPlanResponse'
+
+  /v1/ai/breakdown:
+    post:
+      tags: [ai]
+      operationId: breakdownTask
+      summary: Break down task
+      description: Break down a complex task into subtasks using AI
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [taskId]
+              properties:
+                taskId:
+                  type: string
+      responses:
+        '200':
+          description: Task breakdown
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BreakdownTaskResponse'
+        '404':
+          description: Task not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /v1/ai/insights:
+    post:
+      tags: [ai]
+      operationId: getInsights
+      summary: Get productivity insights
+      description: Get AI-powered productivity insights
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                days:
+                  type: integer
+                  default: 7
+                  minimum: 1
+                  maximum: 90
+      responses:
+        '200':
+          description: Productivity insights
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InsightsResponse'
+
+  # ===========================================================================
+  # Stats
+  # ===========================================================================
+  /v1/stats/productivity:
+    get:
+      tags: [stats]
+      operationId: getProductivityStats
+      summary: Get productivity statistics
+      parameters:
+        - name: days
+          in: query
+          schema:
+            type: integer
+            default: 7
+            minimum: 1
+            maximum: 90
+        - name: category
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Productivity statistics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductivityStatsResponse'
+
+  /v1/stats/enrichment:
+    get:
+      tags: [stats]
+      operationId: getEnrichmentStats
+      summary: Get enrichment statistics
+      responses:
+        '200':
+          description: Enrichment statistics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnrichmentStatsResponse'
+
+  /v1/stats/history:
+    get:
+      tags: [stats]
+      operationId: getTaskHistory
+      summary: Get task completion history
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+            maximum: 100
+        - name: category
+          in: query
+          schema:
+            type: string
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: Task history
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskHistoryResponse'
+
+  # ===========================================================================
+  # Health
+  # ===========================================================================
+  /health:
+    get:
+      tags: [health]
+      operationId: healthCheck
+      summary: Overall health check
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+        '503':
+          description: Service is unhealthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+  /health/ready:
+    get:
+      tags: [health]
+      operationId: readinessCheck
+      summary: Readiness probe
+      responses:
+        '200':
+          description: Service is ready
+        '503':
+          description: Service is not ready
+
+  /health/live:
+    get:
+      tags: [health]
+      operationId: livenessCheck
+      summary: Liveness probe
+      responses:
+        '200':
+          description: Service is alive
+        '503':
+          description: Service is not alive
+
+components:
+  schemas:
+    # =========================================================================
+    # Task Schemas
+    # =========================================================================
+    Task:
+      type: object
+      required: [id, content, projectId, priority, createdAt, updatedAt, isCompleted]
+      properties:
+        id:
+          type: string
+        content:
+          type: string
+        description:
+          type: string
+        projectId:
+          type: string
+        priority:
+          type: integer
+          minimum: 1
+          maximum: 4
+        labels:
+          type: array
+          items:
+            type: string
+        due:
+          $ref: '#/components/schemas/TaskDue'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        isCompleted:
+          type: boolean
+        completedAt:
+          type: string
+          format: date-time
+        metadata:
+          $ref: '#/components/schemas/TaskMetadata'
+
+    TaskDue:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+        datetime:
+          type: string
+          format: date-time
+        string:
+          type: string
+        isRecurring:
+          type: boolean
+
+    TaskMetadata:
+      type: object
+      properties:
+        category:
+          type: string
+        timeEstimate:
+          type: string
+        timeEstimateMinutes:
+          type: integer
+        size:
+          type: string
+          enum: [XS, S, M, L, XL]
+        aiConfidence:
+          type: number
+          minimum: 0
+          maximum: 1
+
+    ListTasksResponse:
+      type: object
+      required: [tasks, totalCount]
+      properties:
+        tasks:
+          type: array
+          items:
+            $ref: '#/components/schemas/Task'
+        totalCount:
+          type: integer
+        nextPageToken:
+          type: string
+
+    CreateTaskRequest:
+      type: object
+      required: [content]
+      properties:
+        content:
+          type: string
+        description:
+          type: string
+        projectId:
+          type: string
+        priority:
+          type: integer
+          minimum: 1
+          maximum: 4
+        dueString:
+          type: string
+        dueDate:
+          type: string
+          format: date
+        labels:
+          type: array
+          items:
+            type: string
+
+    UpdateTaskRequest:
+      type: object
+      properties:
+        content:
+          type: string
+        description:
+          type: string
+        projectId:
+          type: string
+        priority:
+          type: integer
+          minimum: 1
+          maximum: 4
+        category:
+          type: string
+        labels:
+          type: array
+          items:
+            type: string
+
+    SyncResponse:
+      type: object
+      required: [synced, tasks, projects, labels, newTasks, duration]
+      properties:
+        synced:
+          type: integer
+        tasks:
+          type: integer
+        projects:
+          type: integer
+        labels:
+          type: integer
+        newTasks:
+          type: integer
+        duration:
+          type: integer
+          description: Duration in milliseconds
+
+    CompleteTaskResponse:
+      type: object
+      required: [taskId, completedAt]
+      properties:
+        taskId:
+          type: string
+        completedAt:
+          type: string
+          format: date-time
+        actualMinutes:
+          type: integer
+
+    SearchTasksResponse:
+      type: object
+      required: [results, query, totalMatches]
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Task'
+        query:
+          type: string
+        totalMatches:
+          type: integer
+
+    BatchUpdateResponse:
+      type: object
+      required: [updated, failed, results]
+      properties:
+        updated:
+          type: integer
+        failed:
+          type: integer
+        results:
+          type: array
+          items:
+            type: object
+            properties:
+              taskId:
+                type: string
+              status:
+                type: string
+                enum: [success, failed]
+              error:
+                type: string
+
+    # =========================================================================
+    # Project Schemas
+    # =========================================================================
+    Project:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        color:
+          type: string
+        parentId:
+          type: string
+        order:
+          type: integer
+        isInboxProject:
+          type: boolean
+        isFavorite:
+          type: boolean
+
+    ListProjectsResponse:
+      type: object
+      required: [projects, totalCount]
+      properties:
+        projects:
+          type: array
+          items:
+            $ref: '#/components/schemas/Project'
+        totalCount:
+          type: integer
+        nextPageToken:
+          type: string
+
+    # =========================================================================
+    # Label Schemas
+    # =========================================================================
+    Label:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        color:
+          type: string
+        order:
+          type: integer
+        isFavorite:
+          type: boolean
+
+    ListLabelsResponse:
+      type: object
+      required: [labels, totalCount]
+      properties:
+        labels:
+          type: array
+          items:
+            $ref: '#/components/schemas/Label'
+        totalCount:
+          type: integer
+        nextPageToken:
+          type: string
+
+    # =========================================================================
+    # AI Schemas
+    # =========================================================================
+    ClassifyTasksResponse:
+      type: object
+      required: [results, tasksProcessed, tasksClassified, duration]
+      properties:
+        results:
+          type: array
+          items:
+            type: object
+            properties:
+              taskId:
+                type: string
+              taskContent:
+                type: string
+              category:
+                type: string
+              confidence:
+                type: number
+              reasoning:
+                type: string
+        tasksProcessed:
+          type: integer
+        tasksClassified:
+          type: integer
+        duration:
+          type: integer
+
+    PrioritizeTasksResponse:
+      type: object
+      required: [recommendations]
+      properties:
+        recommendations:
+          type: array
+          items:
+            type: object
+            properties:
+              taskId:
+                type: string
+              taskContent:
+                type: string
+              recommendedPriority:
+                type: integer
+              urgencyScore:
+                type: number
+              impactScore:
+                type: number
+              reasoning:
+                type: string
+        startWith:
+          type: string
+        defer:
+          type: array
+          items:
+            type: string
+        delegate:
+          type: array
+          items:
+            type: string
+
+    EstimateTimeResponse:
+      type: object
+      required: [taskId, taskContent, estimate, timeEstimateMinutes, size, confidence, reasoning]
+      properties:
+        taskId:
+          type: string
+        taskContent:
+          type: string
+        estimate:
+          type: string
+        timeEstimateMinutes:
+          type: integer
+        size:
+          type: string
+          enum: [XS, S, M, L, XL]
+        confidence:
+          type: number
+        reasoning:
+          type: string
+
+    DailyPlanResponse:
+      type: object
+      required: [summary, notes, today, thisWeek]
+      properties:
+        summary:
+          type: string
+        notes:
+          type: string
+        today:
+          type: object
+          properties:
+            tasks:
+              type: array
+              items:
+                type: object
+                properties:
+                  taskId:
+                    type: string
+                  content:
+                    type: string
+                  estimatedMinutes:
+                    type: integer
+                  reason:
+                    type: string
+            totalTime:
+              type: string
+        thisWeek:
+          type: object
+          properties:
+            tasks:
+              type: array
+              items:
+                type: object
+                properties:
+                  taskId:
+                    type: string
+                  content:
+                    type: string
+            reasoning:
+              type: string
+
+    BreakdownTaskResponse:
+      type: object
+      required: [taskId, taskContent, subtasks, totalEstimate]
+      properties:
+        taskId:
+          type: string
+        taskContent:
+          type: string
+        subtasks:
+          type: array
+          items:
+            type: object
+            properties:
+              content:
+                type: string
+              estimatedMinutes:
+                type: integer
+              order:
+                type: integer
+        totalEstimate:
+          type: string
+        supplyList:
+          type: array
+          items:
+            type: string
+        notes:
+          type: string
+
+    InsightsResponse:
+      type: object
+      required: [insights, recommendations, period, stats]
+      properties:
+        insights:
+          type: array
+          items:
+            type: object
+            properties:
+              type:
+                type: string
+                enum: [pattern, recommendation, warning, achievement]
+              title:
+                type: string
+              description:
+                type: string
+              data:
+                type: object
+        recommendations:
+          type: array
+          items:
+            type: string
+        period:
+          type: string
+        stats:
+          type: object
+          properties:
+            tasksCompleted:
+              type: integer
+            averageCompletionTime:
+              type: integer
+            mostProductiveCategory:
+              type: string
+            mostProductiveDay:
+              type: string
+
+    # =========================================================================
+    # Stats Schemas
+    # =========================================================================
+    ProductivityStatsResponse:
+      type: object
+      required: [period, totalCompleted, withTimeTracking, byCategory, byDay]
+      properties:
+        period:
+          type: string
+        totalCompleted:
+          type: integer
+        withTimeTracking:
+          type: integer
+        averageMinutes:
+          type: integer
+        byCategory:
+          type: object
+          additionalProperties:
+            type: integer
+        byDay:
+          type: object
+          additionalProperties:
+            type: integer
+        trends:
+          type: object
+          properties:
+            direction:
+              type: string
+              enum: [up, down, stable]
+            percentageChange:
+              type: number
+            comparedTo:
+              type: string
+
+    EnrichmentStatsResponse:
+      type: object
+      required: [total, classified, unclassified, classificationRate]
+      properties:
+        total:
+          type: integer
+        classified:
+          type: integer
+        unclassified:
+          type: integer
+        withTimeEstimate:
+          type: integer
+        withPriority:
+          type: integer
+        byCategory:
+          type: object
+          additionalProperties:
+            type: integer
+        classificationRate:
+          type: number
+        aiClassified:
+          type: integer
+        manuallyClassified:
+          type: integer
+
+    TaskHistoryResponse:
+      type: object
+      required: [entries, totalCount]
+      properties:
+        entries:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+              taskId:
+                type: string
+              taskContent:
+                type: string
+              completedAt:
+                type: string
+                format: date-time
+              category:
+                type: string
+              actualDuration:
+                type: integer
+              timeAgo:
+                type: string
+        totalCount:
+          type: integer
+        nextPageToken:
+          type: string
+
+    # =========================================================================
+    # Health Schemas
+    # =========================================================================
+    HealthResponse:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [ok, error]
+        info:
+          type: object
+        error:
+          type: object
+        details:
+          type: object
+
+    # =========================================================================
+    # Error Schemas
+    # =========================================================================
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, status]
+          properties:
+            code:
+              type: integer
+            message:
+              type: string
+            status:
+              type: string
+            details:
+              type: array
+              items:
+                type: object
+

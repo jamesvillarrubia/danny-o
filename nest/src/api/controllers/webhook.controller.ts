@@ -23,7 +23,7 @@ interface TodoistWebhookPayload {
   };
 }
 
-@Controller('api/webhook')
+@Controller('webhook')
 export class WebhookController {
   private readonly logger = new Logger(WebhookController.name);
   private readonly webhookSecret?: string;

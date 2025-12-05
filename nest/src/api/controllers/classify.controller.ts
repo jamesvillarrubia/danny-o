@@ -14,7 +14,7 @@ interface ClassifyRequestDto {
   maxBatches?: number;
 }
 
-@Controller('api/classify')
+@Controller('classify')
 export class ClassifyController {
   private readonly logger = new Logger(ClassifyController.name);
 

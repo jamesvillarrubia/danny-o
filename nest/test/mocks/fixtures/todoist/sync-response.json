@@ -1,0 +1,108 @@
+{
+  "description": "Mock Todoist Sync API response",
+  "endpoint": "POST /sync/v9/sync",
+  "response": {
+    "sync_token": "mock_sync_token_abc123",
+    "full_sync": false,
+    "items": [
+      {
+        "id": "test-task-1",
+        "content": "Review pull request for authentication module",
+        "description": "Check security implementation and test coverage",
+        "project_id": "project_work",
+        "priority": 4,
+        "labels": ["code-review", "urgent"],
+        "due": {
+          "date": "2024-12-06",
+          "is_recurring": false
+        },
+        "added_at": "2024-12-01T10:00:00Z",
+        "is_deleted": false,
+        "checked": false
+      },
+      {
+        "id": "test-task-2",
+        "content": "Prepare slides for quarterly review",
+        "description": "Include metrics from Q4 and goals for Q1",
+        "project_id": "project_work",
+        "priority": 3,
+        "labels": ["presentation"],
+        "due": {
+          "date": "2024-12-10",
+          "datetime": "2024-12-10T14:00:00Z",
+          "is_recurring": false
+        },
+        "added_at": "2024-12-02T09:00:00Z",
+        "is_deleted": false,
+        "checked": false
+      },
+      {
+        "id": "test-task-3",
+        "content": "Fix leaky bathroom faucet",
+        "description": "The hot water handle is dripping",
+        "project_id": "project_home",
+        "priority": 2,
+        "labels": ["home-repair"],
+        "due": null,
+        "added_at": "2024-11-28T15:00:00Z",
+        "is_deleted": false,
+        "checked": false
+      }
+    ],
+    "projects": [
+      {
+        "id": "project_inbox",
+        "name": "Inbox",
+        "color": "grey",
+        "is_inbox_project": true
+      },
+      {
+        "id": "project_work",
+        "name": "Work",
+        "color": "blue"
+      },
+      {
+        "id": "project_home",
+        "name": "Home Maintenance",
+        "color": "green"
+      },
+      {
+        "id": "project_personal",
+        "name": "Personal",
+        "color": "yellow"
+      }
+    ],
+    "labels": [
+      {
+        "id": "label_urgent",
+        "name": "urgent",
+        "color": "red"
+      },
+      {
+        "id": "label_code_review",
+        "name": "code-review",
+        "color": "blue"
+      },
+      {
+        "id": "label_home_repair",
+        "name": "home-repair",
+        "color": "green"
+      }
+    ],
+    "notes": [
+      {
+        "id": "note_1",
+        "item_id": "test-task-1",
+        "content": "Remember to check the rate limiting implementation",
+        "posted_at": "2024-12-03T10:00:00Z"
+      },
+      {
+        "id": "note_2",
+        "item_id": "test-task-1",
+        "content": "Also verify error handling",
+        "posted_at": "2024-12-04T11:00:00Z"
+      }
+    ]
+  }
+}
+

@@ -13,7 +13,7 @@ interface RespondRequestDto {
   taskId?: string;
 }
 
-@Controller('api/respond')
+@Controller('respond')
 export class RespondController {
   private readonly logger = new Logger(RespondController.name);
 

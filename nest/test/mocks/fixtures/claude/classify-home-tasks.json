@@ -1,0 +1,23 @@
+{
+  "description": "Mock Claude response for classifying home-related tasks",
+  "request": {
+    "promptContains": "classify"
+  },
+  "response": {
+    "tasks": [
+      {
+        "taskId": "task_home_1",
+        "category": "home-maintenance",
+        "confidence": 0.88,
+        "reasoning": "Task involves fixing a leaky faucet, clearly home maintenance"
+      },
+      {
+        "taskId": "task_home_2",
+        "category": "home-repair",
+        "confidence": 0.91,
+        "reasoning": "Task involves replacing HVAC filter, routine home repair"
+      }
+    ]
+  }
+}
+

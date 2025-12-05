@@ -37,35 +37,22 @@ export class SentryModule implements OnModuleInit {
     Sentry.init({
       dsn,
       environment,
-      
-      // Performance monitoring
-      tracesSampleRate: 0.1, // 10% of transactions
-      
-      // Capture release information
+      tracesSampleRate: 0.1,
       release: process.env.VERCEL_GIT_COMMIT_SHA || 'local',
-      
-      // Integrations
       integrations: [
-        // HTTP integration for tracing requests
-        Sentry.httpIntegration(),
+        Sentry.httpIntegration({}),
       ],
-      
-      // Filter sensitive data
-      beforeSend(event) {
-        // Don't send events in development
+      beforeSend: (event: Sentry.Event) => {
         if (environment === 'development') {
           return null;
         }
-        
-        // Scrub sensitive data
         if (event.request?.headers) {
           delete event.request.headers['authorization'];
           delete event.request.headers['x-todoist-hmac-sha256'];
         }
-        
         return event;
       },
-    });
+    } as Sentry.NodeOptions);
 
     this.logger.log(`Sentry initialized (${environment})`);
   }

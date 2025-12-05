@@ -1,0 +1,9 @@
+# Docker Environment Configuration
+# 
+# Used when running step-ci in Docker Compose test environment
+
+env:
+  API_HOST: http://api:3000/api
+  TIMEOUT: 10000
+  VERBOSE: false
+

@@ -16,7 +16,7 @@ interface AILogsQueryDto {
   limit?: string;
 }
 
-@Controller('api/ai-logs')
+@Controller('ai-logs')
 export class AILogsController {
   private readonly logger = new Logger(AILogsController.name);
 

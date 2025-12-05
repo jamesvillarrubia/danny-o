@@ -1,0 +1,56 @@
+{
+  "description": "Mock Todoist API response for listing labels",
+  "endpoint": "GET /rest/v2/labels",
+  "response": [
+    {
+      "id": "label_urgent",
+      "name": "urgent",
+      "color": "red",
+      "order": 0,
+      "is_favorite": true
+    },
+    {
+      "id": "label_code_review",
+      "name": "code-review",
+      "color": "blue",
+      "order": 1,
+      "is_favorite": false
+    },
+    {
+      "id": "label_presentation",
+      "name": "presentation",
+      "color": "purple",
+      "order": 2,
+      "is_favorite": false
+    },
+    {
+      "id": "label_home_repair",
+      "name": "home-repair",
+      "color": "green",
+      "order": 3,
+      "is_favorite": false
+    },
+    {
+      "id": "label_errands",
+      "name": "errands",
+      "color": "grey",
+      "order": 4,
+      "is_favorite": false
+    },
+    {
+      "id": "label_health",
+      "name": "health",
+      "color": "teal",
+      "order": 5,
+      "is_favorite": false
+    },
+    {
+      "id": "label_waiting",
+      "name": "waiting-on",
+      "color": "orange",
+      "order": 6,
+      "is_favorite": false
+    }
+  ]
+}
+

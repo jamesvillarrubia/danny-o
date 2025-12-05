@@ -1,28 +1,20 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "version": 2,
+  "framework": null,
   "buildCommand": "pnpm build",
   "installCommand": "pnpm install",
+  "outputDirectory": "public",
   "functions": {
     "api/index.ts": {
-      "memory": 1024,
       "maxDuration": 60
     }
   },
   "rewrites": [
     {
-      "source": "/(.*)",
+      "source": "/api/(.*)",
       "destination": "/api"
     }
   ],
-  "crons": [
-    {
-      "path": "/api/cron/sync",
-      "schedule": "0 8 * * *"
-    },
-    {
-      "path": "/api/cron/classify",
-      "schedule": "0 9 * * *"
-    }
-  ]
+  "crons": []
 }

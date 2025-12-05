@@ -1,0 +1,40 @@
+{
+  "description": "Mock Claude response for prioritizing tasks",
+  "request": {
+    "promptContains": "prioritize"
+  },
+  "response": {
+    "prioritized": [
+      {
+        "taskId": "task_1",
+        "taskIndex": 0,
+        "priority": 4,
+        "urgencyScore": 0.9,
+        "impactScore": 0.85,
+        "reason": "High urgency due to approaching deadline, high impact on project delivery"
+      },
+      {
+        "taskId": "task_2",
+        "taskIndex": 1,
+        "priority": 3,
+        "urgencyScore": 0.7,
+        "impactScore": 0.8,
+        "reason": "Moderate urgency, but significant impact on team productivity"
+      },
+      {
+        "taskId": "task_3",
+        "taskIndex": 2,
+        "priority": 2,
+        "urgencyScore": 0.4,
+        "impactScore": 0.5,
+        "reason": "Low urgency, can be deferred without major consequences"
+      }
+    ],
+    "recommendations": {
+      "startWith": "task_1",
+      "defer": ["task_3"],
+      "delegate": []
+    }
+  }
+}
+

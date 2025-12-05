@@ -1,0 +1,87 @@
+{
+  "description": "Mock Todoist API response for listing tasks",
+  "endpoint": "GET /rest/v2/tasks",
+  "response": [
+    {
+      "id": "test-task-1",
+      "content": "Review pull request for authentication module",
+      "description": "Check security implementation and test coverage",
+      "project_id": "project_work",
+      "priority": 4,
+      "labels": ["code-review", "urgent"],
+      "due": {
+        "date": "2024-12-06",
+        "datetime": null,
+        "string": "tomorrow",
+        "is_recurring": false
+      },
+      "created_at": "2024-12-01T10:00:00Z",
+      "updated_at": "2024-12-05T14:30:00Z",
+      "is_completed": false,
+      "completed_at": null
+    },
+    {
+      "id": "test-task-2",
+      "content": "Prepare slides for quarterly review",
+      "description": "Include metrics from Q4 and goals for Q1",
+      "project_id": "project_work",
+      "priority": 3,
+      "labels": ["presentation"],
+      "due": {
+        "date": "2024-12-10",
+        "datetime": "2024-12-10T14:00:00Z",
+        "string": "Dec 10 at 2pm",
+        "is_recurring": false
+      },
+      "created_at": "2024-12-02T09:00:00Z",
+      "updated_at": "2024-12-05T11:00:00Z",
+      "is_completed": false,
+      "completed_at": null
+    },
+    {
+      "id": "test-task-3",
+      "content": "Fix leaky bathroom faucet",
+      "description": "The hot water handle is dripping",
+      "project_id": "project_home",
+      "priority": 2,
+      "labels": ["home-repair"],
+      "due": null,
+      "created_at": "2024-11-28T15:00:00Z",
+      "updated_at": "2024-11-28T15:00:00Z",
+      "is_completed": false,
+      "completed_at": null
+    },
+    {
+      "id": "test-task-4",
+      "content": "Buy groceries",
+      "description": "Milk, bread, eggs, vegetables",
+      "project_id": "project_personal",
+      "priority": 1,
+      "labels": ["errands"],
+      "due": {
+        "date": "2024-12-07",
+        "datetime": null,
+        "string": "Saturday",
+        "is_recurring": true
+      },
+      "created_at": "2024-12-04T08:00:00Z",
+      "updated_at": "2024-12-04T08:00:00Z",
+      "is_completed": false,
+      "completed_at": null
+    },
+    {
+      "id": "test-task-5",
+      "content": "Schedule dentist appointment",
+      "description": "Regular checkup, has been 6 months",
+      "project_id": "project_personal",
+      "priority": 2,
+      "labels": ["health"],
+      "due": null,
+      "created_at": "2024-11-20T10:00:00Z",
+      "updated_at": "2024-11-20T10:00:00Z",
+      "is_completed": false,
+      "completed_at": null
+    }
+  ]
+}
+

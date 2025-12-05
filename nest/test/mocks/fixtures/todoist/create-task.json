@@ -1,0 +1,18 @@
+{
+  "description": "Mock Todoist API response for creating a task",
+  "endpoint": "POST /rest/v2/tasks",
+  "response": {
+    "id": "new-task-123",
+    "content": "New task created via API",
+    "description": "",
+    "project_id": "project_inbox",
+    "priority": 1,
+    "labels": [],
+    "due": null,
+    "created_at": "2024-12-05T16:00:00Z",
+    "updated_at": "2024-12-05T16:00:00Z",
+    "is_completed": false,
+    "completed_at": null
+  }
+}
+

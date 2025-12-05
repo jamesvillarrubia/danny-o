@@ -13,7 +13,7 @@ import { SyncService } from '../../task/services/sync.service';
 import { AIOperationsService } from '../../ai/services/operations.service';
 import { EnrichmentService } from '../../task/services/enrichment.service';
 
-@Controller('api/cron')
+@Controller('cron')
 export class CronController {
   private readonly logger = new Logger(CronController.name);
   private readonly cronSecret?: string;

@@ -1,0 +1,15 @@
+{
+  "description": "Mock Claude response for estimating a large task",
+  "request": {
+    "promptContains": "estimate"
+  },
+  "response": {
+    "estimate": "4-6 hours",
+    "timeEstimate": "4-6 hours",
+    "timeEstimateMinutes": 300,
+    "size": "L",
+    "confidence": 0.72,
+    "reasoning": "Complex task with multiple sub-components. May require additional research. Estimate based on similar projects which took 4-6 hours."
+  }
+}
+

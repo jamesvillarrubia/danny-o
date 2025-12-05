@@ -11,7 +11,7 @@ interface SyncRequestDto {
   fullSync?: boolean;
 }
 
-@Controller('api/sync')
+@Controller('sync')
 export class SyncController {
   private readonly logger = new Logger(SyncController.name);
 

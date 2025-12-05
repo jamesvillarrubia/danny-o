@@ -1,0 +1,44 @@
+{
+  "description": "Mock Claude response for breaking down a complex task",
+  "request": {
+    "promptContains": "breakdown"
+  },
+  "response": {
+    "subtasks": [
+      {
+        "content": "Research and document current state",
+        "estimatedMinutes": 30,
+        "order": 1
+      },
+      {
+        "content": "Create implementation plan",
+        "estimatedMinutes": 45,
+        "order": 2
+      },
+      {
+        "content": "Set up development environment",
+        "estimatedMinutes": 20,
+        "order": 3
+      },
+      {
+        "content": "Implement core functionality",
+        "estimatedMinutes": 120,
+        "order": 4
+      },
+      {
+        "content": "Write unit tests",
+        "estimatedMinutes": 60,
+        "order": 5
+      },
+      {
+        "content": "Code review and documentation",
+        "estimatedMinutes": 30,
+        "order": 6
+      }
+    ],
+    "totalEstimate": "5-6 hours",
+    "supplyList": [],
+    "notes": "Consider breaking the implementation phase into smaller commits for easier review"
+  }
+}
+

@@ -1,0 +1,51 @@
+{
+  "description": "Mock Claude response for productivity insights",
+  "request": {
+    "promptContains": "insight"
+  },
+  "response": {
+    "insights": [
+      {
+        "type": "pattern",
+        "title": "Peak Productivity Hours",
+        "description": "You complete most tasks between 9 AM and 12 PM. Consider scheduling important work during this window.",
+        "data": {
+          "peakHours": "9-12 AM",
+          "completionRate": 0.65
+        }
+      },
+      {
+        "type": "achievement",
+        "title": "Consistency Streak",
+        "description": "You've completed at least one task every day for the past 7 days. Great momentum!",
+        "data": {
+          "streakDays": 7
+        }
+      },
+      {
+        "type": "recommendation",
+        "title": "Time Estimation Accuracy",
+        "description": "Your time estimates are 15% lower than actual time spent. Consider adding a buffer to estimates.",
+        "data": {
+          "estimationAccuracy": 0.85
+        }
+      },
+      {
+        "type": "warning",
+        "title": "Category Imbalance",
+        "description": "80% of completed tasks are work-related. Consider allocating time for personal and home tasks.",
+        "data": {
+          "workPercentage": 0.8,
+          "personalPercentage": 0.15,
+          "homePercentage": 0.05
+        }
+      }
+    ],
+    "recommendations": [
+      "Schedule home maintenance tasks on weekends",
+      "Use time blocking for deep work sessions",
+      "Review and update task priorities weekly"
+    ]
+  }
+}
+

@@ -1,0 +1,15 @@
+{
+  "description": "Mock Claude response for estimating a small task",
+  "request": {
+    "promptContains": "estimate"
+  },
+  "response": {
+    "estimate": "15-30 minutes",
+    "timeEstimate": "15-30 minutes",
+    "timeEstimateMinutes": 22,
+    "size": "S",
+    "confidence": 0.85,
+    "reasoning": "Simple task with clear scope. Based on similar tasks, typically takes 15-30 minutes to complete."
+  }
+}
+

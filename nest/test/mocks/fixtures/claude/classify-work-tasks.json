@@ -1,0 +1,23 @@
+{
+  "description": "Mock Claude response for classifying work-related tasks",
+  "request": {
+    "promptContains": "classify"
+  },
+  "response": {
+    "tasks": [
+      {
+        "taskId": "task_work_1",
+        "category": "work",
+        "confidence": 0.95,
+        "reasoning": "Task mentions code review and pull request, clearly work-related development activity"
+      },
+      {
+        "taskId": "task_work_2",
+        "category": "work",
+        "confidence": 0.92,
+        "reasoning": "Task involves meeting preparation and presentation, typical work activity"
+      }
+    ]
+  }
+}
+

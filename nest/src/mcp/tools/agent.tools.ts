@@ -10,6 +10,7 @@ import { MCPTool, MCPToolHandler } from '../decorators';
 import { IStorageAdapter, ITaskProvider } from '../../common/interfaces';
 import { SyncService } from '../../task/services/sync.service';
 import { ClaudeService } from '../../ai/services/claude.service';
+import { SearchService } from '../../ai/services/search.service';
 import { ProcessTextInputDto } from '../dto';
 import Anthropic from '@anthropic-ai/sdk';
 
@@ -81,6 +82,7 @@ export class AgentTools {
     @Inject('ITaskProvider') private readonly taskProvider: ITaskProvider,
     private readonly syncService: SyncService,
     private readonly claudeService: ClaudeService,
+    private readonly searchService: SearchService,
   ) {}
 
   @MCPToolHandler({
@@ -118,28 +120,33 @@ export class AgentTools {
     return [
       {
         name: 'search_tasks',
-        description: 'Search for existing tasks by content or description',
+        description: 'Search for existing tasks using smart fuzzy matching. Handles typos, different wording, and partial matches.',
         input_schema: {
           type: 'object',
           properties: {
-            query: { type: 'string', description: 'Search query' },
+            query: { type: 'string', description: 'Search query (can be natural language, handles typos)' },
           },
           required: ['query'],
         },
         handler: async (toolArgs: any) => {
-          const allTasks = await this.storage.getTasks({ completed: false });
-          const matches = allTasks.filter(
-            (t) =>
-              t.content.toLowerCase().includes(toolArgs.query.toLowerCase()) ||
-              (t.description && t.description.toLowerCase().includes(toolArgs.query.toLowerCase())),
-          );
-          return matches.map((t) => ({
-            id: t.id,
-            content: t.content,
-            description: t.description,
-            category: t.metadata?.category,
-            priority: t.priority,
-          }));
+          const result = await this.searchService.search(toolArgs.query, {
+            limit: 10,
+            minScore: 0.3,
+          });
+          
+          return {
+            matchCount: result.matches.length,
+            searchMethod: result.method,
+            matches: result.matches.map((m) => ({
+              id: m.task.id,
+              content: m.task.content,
+              description: m.task.description,
+              category: m.task.metadata?.category,
+              priority: m.task.priority,
+              score: Math.round(m.score * 100),
+              matchedOn: m.matchedOn,
+            })),
+          };
         },
       },
       {

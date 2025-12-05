@@ -7,6 +7,7 @@
  * - Prioritization
  * - Learning from history
  * - Agentic task processing
+ * - Smart search with query expansion
  */
 
 import { Module, forwardRef } from '@nestjs/common';
@@ -15,6 +16,8 @@ import { StorageModule } from '../storage/storage.module';
 import { ClaudeService } from './services/claude.service';
 import { AIOperationsService } from './services/operations.service';
 import { LearningService } from './services/learning.service';
+import { QueryExpansionService } from './services/query-expansion.service';
+import { SearchService } from './services/search.service';
 import { PromptsService } from './prompts/prompts.service';
 import { TaskProcessorAgent } from './task-processor/task-processor.agent';
 
@@ -29,6 +32,8 @@ import { TaskProcessorAgent } from './task-processor/task-processor.agent';
     ClaudeService,
     AIOperationsService,
     LearningService,
+    QueryExpansionService,
+    SearchService,
     TaskProcessorAgent,
   ],
   exports: [
@@ -36,6 +41,8 @@ import { TaskProcessorAgent } from './task-processor/task-processor.agent';
     ClaudeService,
     AIOperationsService,
     LearningService,
+    QueryExpansionService,
+    SearchService,
     TaskProcessorAgent,
   ],
 })

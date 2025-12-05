@@ -4,10 +4,11 @@
  * AI operations (classification, prioritization, planning, etc.) exposed as MCP tools.
  */
 
-import { Injectable, Inject } from '@nestjs/common';
+import { Injectable, Inject, Logger } from '@nestjs/common';
 import { MCPTool, MCPToolHandler } from '../decorators';
 import { IStorageAdapter, Task } from '../../common/interfaces';
 import { AIOperationsService } from '../../ai/services/operations.service';
+import { SearchService } from '../../ai/services/search.service';
 import { EnrichmentService } from '../../task/services/enrichment.service';
 import {
   ClassifyTasksInputDto,
@@ -21,9 +22,12 @@ import {
 @Injectable()
 @MCPTool()
 export class AITools {
+  private readonly logger = new Logger(AITools.name);
+
   constructor(
     @Inject('IStorageAdapter') private readonly storage: IStorageAdapter,
     private readonly aiOps: AIOperationsService,
+    private readonly searchService: SearchService,
     private readonly enrichment: EnrichmentService,
   ) {}
 
@@ -179,22 +183,58 @@ export class AITools {
 
   @MCPToolHandler({
     name: 'ai_search_tasks',
-    description: 'Search tasks using natural language query',
+    description: 'Smart search for tasks using AI-powered query expansion. Handles typos, different wording, partial matches, and semantic understanding.',
     inputSchema: {
       type: 'object',
       properties: {
         query: {
           type: 'string',
-          description: 'Natural language search query',
+          description: 'Natural language search query (e.g., "email Jon about meeting", "fix sink")',
+        },
+        limit: {
+          type: 'number',
+          description: 'Maximum results to return',
+          default: 10,
+        },
+        forceSemantic: {
+          type: 'boolean',
+          description: 'Force full semantic search even if fuzzy matching finds results',
+          default: false,
         },
       },
       required: ['query'],
     },
   })
-  async searchTasks(args: SearchTasksInputDto) {
-    const tasks = await this.storage.getTasks({ completed: false, limit: 100 });
-    const result = await this.aiOps.filterTasksByIntent(args.query, tasks);
-    return result;
+  async searchTasks(args: SearchTasksInputDto & { limit?: number; forceSemantic?: boolean }) {
+    this.logger.log(`AI search for: "${args.query}"`);
+    
+    const result = await this.searchService.search(args.query, {
+      limit: args.limit || 10,
+      minScore: 0.25,
+      forceSemantic: args.forceSemantic,
+    });
+
+    return {
+      matchCount: result.matches.length,
+      searchMethod: result.method,
+      searchTimeMs: result.searchTimeMs,
+      queryExpansion: {
+        original: result.query.original,
+        normalized: result.query.normalized,
+        variations: result.query.variations.slice(0, 5),
+        entities: result.query.entities,
+      },
+      matches: result.matches.map((m) => ({
+        id: m.task.id,
+        content: m.task.content,
+        description: m.task.description,
+        category: m.task.metadata?.category || 'unclassified',
+        priority: m.task.priority,
+        score: Math.round(m.score * 100),
+        matchedOn: m.matchedOn,
+        reasoning: m.reasoning,
+      })),
+    };
   }
 
   @MCPToolHandler({

@@ -15,6 +15,7 @@
 import { Injectable, Logger, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ClaudeService } from '../services/claude.service';
+import { SearchService } from '../services/search.service';
 import { SyncService } from '../../task/services/sync.service';
 import { IStorageAdapter } from '../../common/interfaces/storage-adapter.interface';
 import axios from 'axios';
@@ -165,6 +166,7 @@ export class TaskProcessorAgent {
     @Inject(ClaudeService) private readonly claude: ClaudeService,
     @Inject(SyncService) private readonly sync: SyncService,
     @Inject('IStorageAdapter') private readonly storage: IStorageAdapter,
+    private readonly searchService: SearchService,
   ) {
     // Use configured model (defaults to Haiku for speed, can override with TASK_PROCESSOR_MODEL env var)
     this.model = process.env.TASK_PROCESSOR_MODEL || process.env.CLAUDE_MODEL || 'claude-3-5-haiku-20241022';
@@ -240,31 +242,32 @@ You're being orchestrated by Claude in a chat. Format responses conversationally
     return [
       {
         name: 'search_tasks',
-        description: 'Search for tasks by content/description. Use this before creating to avoid duplicates.',
+        description: 'Search for tasks using smart fuzzy matching. Handles typos, different wording, and partial matches. Use this before creating to avoid duplicates.',
         input_schema: {
           type: 'object',
           properties: {
-            query: { type: 'string', description: 'Search query (task content)' },
+            query: { type: 'string', description: 'Search query (can be natural language, handles typos)' },
             limit: { type: 'number', description: 'Max results to return', default: 10 },
           },
           required: ['query'],
         },
         handler: async (args: any) => {
-          const tasks = await this.storage.getTasks({ completed: false });
-          const query = args.query.toLowerCase();
-          const matches = tasks
-            .filter((t) =>
-              t.content.toLowerCase().includes(query) ||
-              (t.description && t.description.toLowerCase().includes(query)),
-            )
-            .slice(0, args.limit || 10);
+          const result = await this.searchService.search(args.query, {
+            limit: args.limit || 10,
+            minScore: 0.3,
+          });
 
-          return matches.map((t) => ({
-            id: t.id,
-            content: t.content,
-            category: t.metadata?.category,
-            priority: t.priority,
-          }));
+          return {
+            matchCount: result.matches.length,
+            searchMethod: result.method,
+            matches: result.matches.map((m) => ({
+              id: m.task.id,
+              content: m.task.content,
+              category: m.task.metadata?.category,
+              priority: m.task.priority,
+              score: Math.round(m.score * 100),
+            })),
+          };
         },
       },
       {

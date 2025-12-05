@@ -2,12 +2,14 @@
  * Task Management MCP Tools
  * 
  * Basic task CRUD operations exposed as MCP tools.
+ * Uses smart search with query expansion for fuzzy matching.
  */
 
-import { Injectable, Inject } from '@nestjs/common';
+import { Injectable, Inject, Logger } from '@nestjs/common';
 import { MCPTool, MCPToolHandler } from '../decorators';
 import { IStorageAdapter, ITaskProvider } from '../../common/interfaces';
 import { SyncService } from '../../task/services/sync.service';
+import { SearchService } from '../../ai/services/search.service';
 import {
   ListTasksInputDto,
   GetTaskInputDto,
@@ -22,10 +24,13 @@ import {
 @Injectable()
 @MCPTool()
 export class TaskTools {
+  private readonly logger = new Logger(TaskTools.name);
+
   constructor(
     @Inject('IStorageAdapter') private readonly storage: IStorageAdapter,
     @Inject('ITaskProvider') private readonly taskProvider: ITaskProvider,
     private readonly syncService: SyncService,
+    private readonly searchService: SearchService,
   ) {}
 
   @MCPToolHandler({
@@ -194,13 +199,13 @@ export class TaskTools {
 
   @MCPToolHandler({
     name: 'complete_task_by_search',
-    description: 'Complete a task by ID or fuzzy search text. Searches task content/description for matches.',
+    description: 'Complete a task by ID or smart fuzzy search. Uses AI-powered query expansion to find tasks even with typos, different wording, or partial matches.',
     inputSchema: {
       type: 'object',
       properties: {
         searchTerm: {
           type: 'string',
-          description: 'Task ID or search text to find task (e.g., "vendor registration")',
+          description: 'Task ID or search text to find task (e.g., "vendor registration", "email Jon about meeting")',
         },
         actualMinutes: {
           type: 'number',
@@ -212,39 +217,52 @@ export class TaskTools {
   })
   async completeTaskBySearch(args: CompleteTaskBySearchInputDto) {
     const searchTerm = args.searchTerm;
+    this.logger.log(`Searching for task: "${searchTerm}"`);
 
     // Try exact ID match first
     let task = await this.storage.getTask(searchTerm);
 
-    // If not found by ID, fuzzy search
+    // If not found by ID, use smart search with query expansion
     if (!task) {
-      const allTasks = await this.storage.getTasks({ completed: false });
-      const matches = allTasks.filter(
-        (t) =>
-          t.content.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          (t.description && t.description.toLowerCase().includes(searchTerm.toLowerCase())),
-      );
+      const searchResult = await this.searchService.search(searchTerm, {
+        limit: 10,
+        minScore: 0.3,
+      });
 
-      if (matches.length === 0) {
-        throw new Error(`No tasks found matching "${searchTerm}"`);
+      this.logger.log(`Search found ${searchResult.matches.length} matches using ${searchResult.method} method`);
+
+      if (searchResult.matches.length === 0) {
+        return {
+          success: false,
+          error: `No tasks found matching "${searchTerm}"`,
+          searchMethod: searchResult.method,
+          queryExpansion: searchResult.query.variations.slice(0, 5),
+          suggestion: 'Try different keywords or check your task list with list_todoist_tasks',
+        };
       }
 
-      if (matches.length === 1) {
-        task = matches[0];
+      // If we have a high-confidence single match, use it
+      const topMatch = searchResult.matches[0];
+      if (searchResult.matches.length === 1 || topMatch.score > 0.8) {
+        task = topMatch.task;
+        this.logger.log(`High-confidence match: "${task.content}" (score: ${topMatch.score.toFixed(2)})`);
       } else {
         // Multiple matches - return them for user to disambiguate
-        const matchList = matches.map((t) => ({
-          id: t.id,
-          content: t.content,
-          category: t.metadata?.category || 'unclassified',
-          priority: t.priority,
+        const matchList = searchResult.matches.slice(0, 5).map((m) => ({
+          id: m.task.id,
+          content: m.task.content,
+          category: m.task.metadata?.category || 'unclassified',
+          priority: m.task.priority,
+          score: Math.round(m.score * 100),
+          matchedOn: m.matchedOn,
         }));
 
         return {
           multipleMatches: true,
-          count: matches.length,
+          count: searchResult.matches.length,
           matches: matchList,
-          message: 'Multiple tasks found. Please use a specific task ID or more specific search term.',
+          searchMethod: searchResult.method,
+          message: 'Multiple tasks found. Please use a specific task ID or confirm which task to complete.',
         };
       }
     }

@@ -1,54 +1,113 @@
-# Danny-O: AI-Powered Task Management Agent
+# Danny Tasks
 
-This repository contains two isolated implementations of an AI-powered task management system for Todoist:
+AI-powered task management system with intelligent categorization, prioritization, and time estimation.
 
-## 📁 Project Structure
+## Project Structure
 
-### `legacy/` - Original Prototype (JavaScript)
-The initial MVP implementation built with vanilla JavaScript/Node.js. This version served as the proof-of-concept and exploration of core features.
-
-**👉 [View Legacy Documentation](./legacy/README.md)**
-
-### `nest/` - Production Version (NestJS TypeScript)
-The production-ready implementation built with NestJS and TypeScript. Features full modularity, comprehensive testing, Docker support, and MCP (Model Context Protocol) integration.
-
-**👉 [View NestJS Documentation](./nest/README.md)**
-
-## 🚀 Quick Start
-
-Choose your implementation:
-
-**For exploring the original concept:**
-```bash
-cd legacy
-pnpm install
-# See legacy/README.md for setup
+```
+tasks/
+├── api/              # Backend (NestJS) → Deploys to Fly.io
+│   ├── src/
+│   │   ├── cli/      # CLI interface
+│   │   ├── mcp/      # MCP server interface
+│   │   └── api/      # HTTP REST interface
+│   ├── fly.toml
+│   └── Dockerfile
+│
+├── web/              # Frontend (React + Vite) → Deploys to Vercel
+│   ├── src/
+│   └── vercel.json
+│
+├── extension/        # Browser extension (Chrome)
+│
+└── legacy/           # Original JS prototype (archived)
 ```
 
-**For production use:**
-```bash
-cd nest
-pnpm install
-# See nest/README.md for setup
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                    API (Backend)                         │
+│                                                          │
+│  ┌─────────┐    ┌─────────┐    ┌─────────┐              │
+│  │   CLI   │    │   MCP   │    │  HTTP   │              │
+│  └────┬────┘    └────┬────┘    └────┬────┘              │
+│       │              │              │                    │
+└───────┼──────────────┼──────────────┼────────────────────┘
+        │              │              │
+        │              │              ├── Web (React)
+        │              │              └── Extension
+        │              │
+        │              └── AI Agents (Claude, Cursor, etc.)
+        │
+        └── Terminal (you)
 ```
 
-## 📋 Key Differences
+## Quick Start
 
-| Feature | Legacy | NestJS |
-|---------|--------|--------|
-| Language | JavaScript | TypeScript |
-| Framework | None | NestJS |
-| Architecture | Flat/Simple | Modular/DI |
-| Testing | Basic | Comprehensive (Unit/Integration/E2E) |
-| Deployment | Manual | Docker + Cloud Ready |
-| Type Safety | None | Strict TypeScript |
-| MCP Server | Basic | Full Implementation |
+### Prerequisites
 
-## 📖 Documentation
+- Node.js 22+
+- pnpm
+- [Todoist API key](https://todoist.com/prefs/integrations)
+- [Claude API key](https://console.anthropic.com/)
 
-Both implementations share the same core functionality but differ in architecture and deployment strategies. Refer to each subdirectory's README for specific documentation.
+### Development
 
----
+```bash
+# API (backend)
+cd api
+pnpm install
+cp .env.example .env  # Edit with your API keys
+pnpm start:http
 
-**Note:** Each implementation is completely isolated with its own dependencies, configuration, and data storage. They can coexist and run side-by-side without conflict.
+# Web (frontend) - in another terminal
+cd web
+pnpm install
+pnpm dev
+```
 
+### CLI Commands
+
+```bash
+cd api
+pnpm cli sync          # Sync tasks from Todoist
+pnpm cli list          # List tasks
+pnpm cli classify      # AI classification
+pnpm cli plan today    # Generate daily plan
+```
+
+### MCP Server (for AI agents)
+
+```bash
+cd api
+pnpm mcp
+```
+
+## Deployment
+
+- **API** → [Fly.io](https://fly.io) (container deployment)
+- **Web** → [Vercel](https://vercel.com) (static/SSR)
+
+See [api/DEPLOYMENT.md](./api/DEPLOYMENT.md) for full deployment guide.
+
+## Documentation
+
+| Document | Description |
+|----------|-------------|
+| [api/README.md](./api/README.md) | API documentation |
+| [api/DEPLOYMENT.md](./api/DEPLOYMENT.md) | Deployment guide |
+| [api/ARCHITECTURE.md](./api/ARCHITECTURE.md) | Architecture details |
+| [api/DOCKER.md](./api/DOCKER.md) | Docker setup |
+
+## Features
+
+- **AI-Powered Classification** — Automatically categorizes tasks using Claude AI
+- **Model Context Protocol (MCP)** — 17 MCP tools for AI agent integration
+- **Intelligent Enrichment** — Estimates time, energy level, and supplies needed
+- **Multi-Database Support** — SQLite (local), PostgreSQL (production)
+- **CLI & HTTP & MCP Modes** — Three interfaces to the same business logic
+
+## License
+
+MIT

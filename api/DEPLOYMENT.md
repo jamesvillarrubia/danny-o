@@ -39,9 +39,9 @@ This approach gives you:
    fly auth login
    ```
 
-3. **Initialize your app** (from `nest/` directory):
+3. **Initialize your app** (from `api/` directory):
    ```bash
-   cd nest
+   cd api
    fly launch
    ```
    
@@ -102,7 +102,7 @@ The database schema will be created automatically on first deployment.
 ### Deploy the API
 
 ```bash
-# From nest/ directory
+# From api/ directory
 fly deploy
 ```
 
@@ -178,32 +178,29 @@ curl https://danny-tasks-api.fly.dev/api/v1/stats/productivity
 
 ## Part 2: Frontend Deployment (Vercel)
 
+The frontend lives in the `web/` directory at the project root.
+
 ### Setup
 
-1. **Create your frontend** (Next.js, React, etc.) in a separate directory or repository
-
-2. **Deploy to Vercel**:
-```bash
-# Install Vercel CLI
-npm i -g vercel
-
-   # Deploy
-   cd frontend  # or wherever your frontend code is
-vercel --prod
-```
-
-3. **Configure API endpoint**:
+1. **Deploy to Vercel** (from `web/` directory):
+   ```bash
+   # Install Vercel CLI
+   npm i -g vercel
    
-   In your frontend code, point API calls to your Fly.io app:
-   ```typescript
-   const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://danny-tasks-api.fly.dev';
+   # Deploy
+   cd web
+   vercel --prod
    ```
 
-   Set as environment variable in Vercel:
+2. **Configure API endpoint**:
+   
+   Set environment variable in Vercel dashboard or CLI:
    ```bash
-   vercel env add NEXT_PUBLIC_API_URL
+   vercel env add VITE_API_URL
    # Enter: https://danny-tasks-api.fly.dev
    ```
+
+   The frontend's `src/api/client.ts` already uses this environment variable.
 
 ### CORS Configuration
 
@@ -264,11 +261,13 @@ To receive real-time updates from Todoist:
 
 ## Local Development
 
+### API
+
 For local development, the app uses SQLite by default:
 
 ```bash
-# Run locally (uses SQLite)
-cd nest
+# Run API locally (uses SQLite)
+cd api
 pnpm install
 pnpm start:http
 
@@ -281,6 +280,16 @@ To use PostgreSQL locally:
 export DATABASE_URL="postgresql://user:pass@localhost:5432/danny"
 pnpm start:http
 ```
+
+### Frontend
+
+```bash
+cd web
+pnpm install
+pnpm dev
+```
+
+The frontend dev server proxies `/api` requests to `http://localhost:3000` (the API).
 
 ---
 

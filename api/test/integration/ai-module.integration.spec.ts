@@ -11,11 +11,13 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { AIModule } from '../../src/ai/ai.module';
 import { StorageModule } from '../../src/storage/storage.module';
 import { ConfigurationModule } from '../../src/config/config.module';
+import { TaskProviderModule } from '../../src/task-provider/task-provider.module';
 import { AIOperationsService } from '../../src/ai/services/operations.service';
 import { ClaudeService } from '../../src/ai/services/claude.service';
 import { LearningService } from '../../src/ai/services/learning.service';
 import { MockClaudeService } from '../mocks/claude.mock';
 import { MockStorageAdapter } from '../mocks/storage.mock';
+import { MockTaskProvider } from '../mocks/task-provider.mock';
 import { createMockTask } from '../fixtures/tasks.fixture';
 
 describe('AIModule Integration', () => {
@@ -26,22 +28,26 @@ describe('AIModule Integration', () => {
 
   beforeAll(async () => {
     const module: TestingModule = await Test.createTestingModule({
-      imports: [AIModule, StorageModule, ConfigurationModule],
+      imports: [AIModule, StorageModule, ConfigurationModule, TaskProviderModule],
     })
       .overrideProvider(ClaudeService)
       .useClass(MockClaudeService)
       .overrideProvider('IStorageAdapter')
       .useClass(MockStorageAdapter)
+      .overrideProvider('ITaskProvider')
+      .useClass(MockTaskProvider)
       .compile();
 
     aiOps = module.get<AIOperationsService>(AIOperationsService);
-    claude = module.get<MockClaudeService>(ClaudeService);
+    claude = module.get<ClaudeService>(ClaudeService) as unknown as MockClaudeService;
     learning = module.get<LearningService>(LearningService);
     storage = module.get<MockStorageAdapter>('IStorageAdapter');
   });
 
   beforeEach(() => {
-    claude.clearMockResponses();
+    if (claude && typeof claude.clearMockResponses === 'function') {
+      claude.clearMockResponses();
+    }
     storage.clear();
   });
 

@@ -10,6 +10,7 @@ import { PromptsService } from '../../../src/ai/prompts/prompts.service';
 import { TaxonomyService } from '../../../src/config/taxonomy/taxonomy.service';
 import { MockStorageAdapter } from '../../mocks/storage.mock';
 import { MockClaudeService } from '../../mocks/claude.mock';
+import { MockTaskProvider } from '../../mocks/task-provider.mock';
 import { createMockTask } from '../../fixtures/tasks.fixture';
 
 describe('AIOperationsService', () => {
@@ -32,16 +33,22 @@ describe('AIOperationsService', () => {
           provide: 'IStorageAdapter',
           useClass: MockStorageAdapter,
         },
+        {
+          provide: 'ITaskProvider',
+          useClass: MockTaskProvider,
+        },
       ],
     }).compile();
 
     service = module.get<AIOperationsService>(AIOperationsService);
-    claudeService = module.get<MockClaudeService>(ClaudeService);
+    claudeService = module.get<ClaudeService>(ClaudeService) as unknown as MockClaudeService;
     storage = module.get<MockStorageAdapter>('IStorageAdapter');
   });
 
   afterEach(() => {
-    claudeService.clearMockResponses();
+    if (claudeService && typeof claudeService.clearMockResponses === 'function') {
+      claudeService.clearMockResponses();
+    }
     storage.clear();
   });
 

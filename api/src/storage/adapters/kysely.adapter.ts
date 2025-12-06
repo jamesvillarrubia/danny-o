@@ -621,6 +621,18 @@ export class KyselyAdapter implements IStorageAdapter {
     const now = new Date().toISOString();
     const classifiedAtStr = classifiedAt.toISOString();
 
+    // Check if task exists first (foreign key constraint requirement)
+    const taskExists = await db
+      .selectFrom('tasks')
+      .select('id')
+      .where('id', '=', taskId)
+      .executeTakeFirst();
+
+    if (!taskExists) {
+      this.logger.warn(`Cannot save metadata for task ${taskId}: task does not exist`);
+      throw new Error(`Task ${taskId} does not exist in storage`);
+    }
+
     // Ensure metadata row exists
     await db
       .insertInto('task_metadata')

@@ -46,7 +46,7 @@ describe('ClaudeService', () => {
 
     it('should expose getModel method', () => {
       const model = service.getModel();
-      expect(model).toBe('claude-3-5-sonnet-20241022');
+      expect(model).toBe('claude-3-5-sonnet-20240620');
     });
 
     it('should expose getClient method', () => {

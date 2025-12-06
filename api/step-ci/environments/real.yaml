@@ -13,6 +13,7 @@
 #   npx stepci run step-ci/step-ci.yaml --env step-ci/environments/real.yaml
 
 env:
+  BASE_HOST: http://localhost:3000
   API_HOST: http://localhost:3000/api
   TIMEOUT: 30000
   VERBOSE: true

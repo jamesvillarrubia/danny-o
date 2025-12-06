@@ -1,44 +1,8 @@
 {
-  "description": "Mock Claude response for breaking down a complex task",
-  "request": {
-    "promptContains": "breakdown"
-  },
+  "description": "Claude response for breaking down a complex task",
+  "endpoint": "POST /v1/messages",
+  "recorded_at": "2025-12-06T22:58:33.321Z",
   "response": {
-    "subtasks": [
-      {
-        "content": "Research and document current state",
-        "estimatedMinutes": 30,
-        "order": 1
-      },
-      {
-        "content": "Create implementation plan",
-        "estimatedMinutes": 45,
-        "order": 2
-      },
-      {
-        "content": "Set up development environment",
-        "estimatedMinutes": 20,
-        "order": 3
-      },
-      {
-        "content": "Implement core functionality",
-        "estimatedMinutes": 120,
-        "order": 4
-      },
-      {
-        "content": "Write unit tests",
-        "estimatedMinutes": 60,
-        "order": 5
-      },
-      {
-        "content": "Code review and documentation",
-        "estimatedMinutes": 30,
-        "order": 6
-      }
-    ],
-    "totalEstimate": "5-6 hours",
-    "supplyList": [],
-    "notes": "Consider breaking the implementation phase into smaller commits for easier review"
+    "response": "```json\n{\n  \"subtasks\": [\n    {\n      \"title\": \"Design database schema for users and authentication\",\n      \"estimate\": \"4 hours\",\n      \"dependencies\": []\n    },\n    {\n      \"title\": \"Set up user registration endpoint\",\n      \"estimate\": \"6 hours\",\n      \"dependencies\": [\"Design database schema for users and authentication\"]\n    },\n    {\n      \"title\": \"Implement password hashing and validation\",\n      \"estimate\": \"4 hours\",\n      \"dependencies\": [\"Design database schema for users and authentication\"]\n    },\n    {\n      \"title\": \"Create login/authentication endpoint\",\n      \"estimate\": \"6 hours\",\n      \"dependencies\": [\"Set up user registration endpoint\", \"Implement password hashing and validation\"]\n    },\n    {\n      \"title\": \"Implement JWT token generation and validation\",\n      \"estimate\": \"8 hours\",\n      \"dependencies\": [\"Create login/authentication endpoint\"]\n    },\n    {\n      \"title\": \"Build password reset functionality\",\n      \"estimate\": \"8 hours\",\n      \"dependencies\": [\"Implement password hashing and validation\", \"Implement JWT token generation and validation\"]\n    },\n    {\n      \"title\": \"Create middleware for protected routes\",\n      \"estimate\": \"4 hours\",\n      \"dependencies\": [\"Implement JWT token generation and validation\"]\n    },\n    {\n      \"title\": \"Add email verification for new accounts\",\n      \"estimate\": \"6 hours\",\n      \"dependencies\": [\"Set up user registration endpoint\"]\n    },\n    {\n      \"title\": \"Implement session management\",\n      \"estimate\": \"6 hours\",\n      \"dependencies\": [\"Implement JWT token generation and validation\"]\n    },\n    {\n      \"title\": \"Add rate limiting for authentication endpoints\",\n      \"estimate\": \"4 hours\",\n      \"dependencies\": [\"Create login/authentication endpoint\"]\n    },\n    {\n      \"title\": \"Write unit tests for authentication system\",\n      \"estimate\": \"8 hours\",\n      \"dependencies\": [\"Create middleware for protected routes\", \"Build password reset functionality\", \"Add email verification for new accounts\"]\n    },\n    {\n      \"title\": \"Create user profile management endpoints\",\n      \"estimate\": \"6 hours\",\n      \"dependencies\": [\"Create middleware for protected routes\"]\n    }\n  ],\n  \"totalEstimate\": \"70 hours\"\n}\n```"
   }
 }
-

@@ -3,6 +3,7 @@
 # Used when running step-ci locally against development server
 
 env:
+  BASE_HOST: http://localhost:3000
   API_HOST: http://localhost:3000/api
   TIMEOUT: 5000
   VERBOSE: true

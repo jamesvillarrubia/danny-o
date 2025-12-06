@@ -1,56 +1,112 @@
 {
-  "description": "Mock Todoist API response for listing labels",
+  "description": "Todoist API response for listing labels",
   "endpoint": "GET /rest/v2/labels",
+  "recorded_at": "2025-12-06T22:57:54.288Z",
   "response": [
     {
-      "id": "label_urgent",
-      "name": "urgent",
-      "color": "red",
+      "id": "2175759446",
+      "name": "NASA",
+      "color": "charcoal",
       "order": 0,
-      "is_favorite": true
+      "is_favorite": false
     },
     {
-      "id": "label_code_review",
-      "name": "code-review",
-      "color": "blue",
+      "id": "2172980632",
+      "name": "MADI",
+      "color": "charcoal",
       "order": 1,
       "is_favorite": false
     },
     {
-      "id": "label_presentation",
-      "name": "presentation",
-      "color": "purple",
+      "id": "2168931933",
+      "name": "MIT",
+      "color": "charcoal",
       "order": 2,
       "is_favorite": false
     },
     {
-      "id": "label_home_repair",
-      "name": "home-repair",
-      "color": "green",
+      "id": "2173136377",
+      "name": "Networking",
+      "color": "charcoal",
       "order": 3,
-      "is_favorite": false
+      "is_favorite": true
     },
     {
-      "id": "label_errands",
-      "name": "errands",
-      "color": "grey",
+      "id": "2170350433",
+      "name": "Presentations",
+      "color": "charcoal",
       "order": 4,
-      "is_favorite": false
+      "is_favorite": true
     },
     {
-      "id": "label_health",
-      "name": "health",
-      "color": "teal",
+      "id": "2175759461",
+      "name": "Prospero",
+      "color": "charcoal",
       "order": 5,
+      "is_favorite": true
+    },
+    {
+      "id": "2168742274",
+      "name": "Big Ideas",
+      "color": "charcoal",
+      "order": 6,
+      "is_favorite": true
+    },
+    {
+      "id": "2169462183",
+      "name": "Hands Off Keyboard",
+      "color": "charcoal",
+      "order": 7,
+      "is_favorite": true
+    },
+    {
+      "id": "2172930463",
+      "name": "Curiosity in the Age of AI",
+      "color": "charcoal",
+      "order": 8,
+      "is_favorite": true
+    },
+    {
+      "id": "2177092429",
+      "name": "job",
+      "color": "charcoal",
+      "order": 9,
       "is_favorite": false
     },
     {
-      "id": "label_waiting",
-      "name": "waiting-on",
-      "color": "orange",
-      "order": 6,
+      "id": "2178366898",
+      "name": "Sera",
+      "color": "charcoal",
+      "order": 10,
+      "is_favorite": false
+    },
+    {
+      "id": "2178371797",
+      "name": "AED",
+      "color": "charcoal",
+      "order": 11,
+      "is_favorite": false
+    },
+    {
+      "id": "2179203284",
+      "name": "Education",
+      "color": "charcoal",
+      "order": 12,
+      "is_favorite": false
+    },
+    {
+      "id": "2179576408",
+      "name": "InnovationEngines",
+      "color": "charcoal",
+      "order": 13,
+      "is_favorite": false
+    },
+    {
+      "id": "2182437285",
+      "name": "Innovation Engines",
+      "color": "grey",
+      "order": 14,
       "is_favorite": false
     }
   ]
 }
-

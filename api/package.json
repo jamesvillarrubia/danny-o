@@ -25,7 +25,7 @@
     "test:e2e": "vitest run --config ./test/vitest-e2e.config.ts",
     "test:integration": "vitest run --config ./test/vitest.integration.config.ts",
     "test:step-ci": "docker-compose -f docker-compose.test.yml up --build --abort-on-container-exit && docker-compose -f docker-compose.test.yml down",
-    "test:step-ci:mock": "pnpm build && RUN_MODE=http USE_MOCKS=true node dist/main.js & sleep 5 && npx stepci run step-ci/step-ci.yaml --env step-ci/environments/local.yaml; pkill -f 'node dist/main.js' || true",
+    "test:step-ci:mock": "pnpm build && RUN_MODE=http USE_MOCKS=true DATABASE_URL= SQLITE_PATH=:memory: node dist/main.js & sleep 5 && npx stepci run step-ci/workflows/blueprint/health.yaml && npx stepci run step-ci/workflows/blueprint/tasks.yaml; pkill -f 'node dist/main.js' || true",
     "test:step-ci:real": "pnpm build && RUN_MODE=http node dist/main.js & sleep 5 && npx stepci run step-ci/step-ci.yaml --env step-ci/environments/real.yaml; pkill -f 'node dist/main.js' || true",
     "test:step-ci:record": "tsx scripts/record-fixtures.ts",
     "migrate": "tsx src/storage/migrate.ts"

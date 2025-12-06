@@ -3,6 +3,7 @@
 # Used when running step-ci in GitHub Actions or other CI
 
 env:
+  BASE_HOST: http://localhost:3000
   API_HOST: http://localhost:3000/api
   TIMEOUT: 30000
   VERBOSE: false

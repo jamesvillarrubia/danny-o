@@ -1,51 +1,8 @@
 {
-  "description": "Mock Claude response for productivity insights",
-  "request": {
-    "promptContains": "insight"
-  },
+  "description": "Claude response for productivity insights",
+  "endpoint": "POST /v1/messages",
+  "recorded_at": "2025-12-06T22:58:43.951Z",
   "response": {
-    "insights": [
-      {
-        "type": "pattern",
-        "title": "Peak Productivity Hours",
-        "description": "You complete most tasks between 9 AM and 12 PM. Consider scheduling important work during this window.",
-        "data": {
-          "peakHours": "9-12 AM",
-          "completionRate": 0.65
-        }
-      },
-      {
-        "type": "achievement",
-        "title": "Consistency Streak",
-        "description": "You've completed at least one task every day for the past 7 days. Great momentum!",
-        "data": {
-          "streakDays": 7
-        }
-      },
-      {
-        "type": "recommendation",
-        "title": "Time Estimation Accuracy",
-        "description": "Your time estimates are 15% lower than actual time spent. Consider adding a buffer to estimates.",
-        "data": {
-          "estimationAccuracy": 0.85
-        }
-      },
-      {
-        "type": "warning",
-        "title": "Category Imbalance",
-        "description": "80% of completed tasks are work-related. Consider allocating time for personal and home tasks.",
-        "data": {
-          "workPercentage": 0.8,
-          "personalPercentage": 0.15,
-          "homePercentage": 0.05
-        }
-      }
-    ],
-    "recommendations": [
-      "Schedule home maintenance tasks on weekends",
-      "Use time blocking for deep work sessions",
-      "Review and update task priorities weekly"
-    ]
+    "response": "```json\n{\n  \"insights\": [\n    {\n      \"type\": \"pattern\",\n      \"description\": \"Strong weekly output with 45 completed tasks, averaging 6.4 tasks per day, indicating consistent productivity habits\"\n    },\n    {\n      \"type\": \"pattern\", \n      \"description\": \"Tuesday emerges as peak performance day, suggesting optimal energy and focus alignment mid-week\"\n    },\n    {\n      \"type\": \"pattern\",\n      \"description\": \"Work tasks dominate at 60% (27 tasks), with 40% allocated to personal/other activities, showing work-heavy but not completely imbalanced schedule\"\n    },\n    {\n      \"type\": \"warning\",\n      \"description\": \"Average 2.3-hour completion time may indicate tasks are either too complex, poorly scoped, or suffering from inefficiencies\"\n    },\n    {\n      \"type\": \"recommendation\",\n      \"description\": \"Total time investment of ~103 hours suggests potential overwork - evaluate if task complexity matches actual requirements\"\n    }\n  ],\n  \"recommendations\": [\n    \"Break down tasks taking >2.3 hours into smaller, more manageable subtasks (aim for 1-1.5 hour chunks)\",\n    \"Analyze what makes Tuesday productive (schedule, energy, environment) and replicate those conditions on other days\",\n    \"Consider time-blocking techniques to reduce task switching overhead and improve focus\",\n    \"Implement a task complexity scoring system to better estimate and plan completion times\",\n    \"Schedule demanding work tasks earlier in the week when productivity appears highest\",\n    \"Evaluate work-life balance - consider capping work tasks at 50-55% to prevent burnout\"\n  ]\n}\n```"
   }
 }
-

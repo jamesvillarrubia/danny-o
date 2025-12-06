@@ -1,15 +1,8 @@
 {
-  "description": "Mock Claude response for estimating a large task",
-  "request": {
-    "promptContains": "estimate"
-  },
+  "description": "Claude response for estimating a large task",
+  "endpoint": "POST /v1/messages",
+  "recorded_at": "2025-12-06T22:58:19.563Z",
   "response": {
-    "estimate": "4-6 hours",
-    "timeEstimate": "4-6 hours",
-    "timeEstimateMinutes": 300,
-    "size": "L",
-    "confidence": 0.72,
-    "reasoning": "Complex task with multiple sub-components. May require additional research. Estimate based on similar projects which took 4-6 hours."
+    "response": "```json\n{\n  \"estimate\": \"4-6 weeks (160-240 hours)\",\n  \"size\": \"XL\",\n  \"confidence\": 0.7,\n  \"reasoning\": \"This is a major architectural change involving multiple complex integrations, security considerations, and backward compatibility requirements. OAuth2 implementation with multiple providers requires deep understanding of different authentication flows, while SAML integration adds enterprise-level complexity. The backward compatibility requirement and comprehensive testing significantly increase the scope.\",\n  \"breakdown\": [\n    {\n      \"task\": \"Research and design OAuth2 architecture\",\n      \"estimate\": \"1-2 weeks\",\n      \"details\": \"Study existing system, design new auth flow, security analysis, provider comparison\"\n    },\n    {\n      \"task\": \"Implement OAuth2 core infrastructure\",\n      \"estimate\": \"1.5-2 weeks\", \n      \"details\": \"Base OAuth2 client, token management, session handling, database schema changes\"\n    },\n    {\n      \"task\": \"Google OAuth2 integration\",\n      \"estimate\": \"3-5 days\",\n      \"details\": \"Google API setup, scope configuration, user mapping, error handling\"\n    },\n    {\n      \"task\": \"GitHub OAuth2 integration\", \n      \"estimate\": \"3-5 days\",\n      \"details\": \"GitHub App/OAuth setup, permissions, organization handling\"\n    },\n    {\n      \"task\": \"Custom SAML integration\",\n      \"estimate\": \"1-2 weeks\",\n      \"details\": \"SAML 2.0 implementation, IdP configuration, certificate management, attribute mapping\"\n    },\n    {\n      \"task\": \"Backward compatibility layer\",\n      \"estimate\": \"1 week\",\n      \"details\": \"Legacy auth support, migration utilities, dual authentication support\"\n    },\n    {\n      \"task\": \"Comprehensive testing\",\n      \"estimate\": \"1.5 weeks\",\n      \"details\": \"Unit tests, integration tests, security testing, cross-provider testing, migration testing\"\n    },\n    {\n      \"task\": \"Documentation and deployment\",\n      \"estimate\": \"3-5 days\",\n      \"details\": \"API docs, configuration guides, deployment scripts, monitoring setup\"\n    }\n  ]\n}\n```"
   }
 }
-

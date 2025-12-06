@@ -1,15 +1,8 @@
 {
-  "description": "Mock Claude response for estimating a small task",
-  "request": {
-    "promptContains": "estimate"
-  },
+  "description": "Claude response for estimating a small task",
+  "endpoint": "POST /v1/messages",
+  "recorded_at": "2025-12-06T22:58:09.904Z",
   "response": {
-    "estimate": "15-30 minutes",
-    "timeEstimate": "15-30 minutes",
-    "timeEstimateMinutes": 22,
-    "size": "S",
-    "confidence": 0.85,
-    "reasoning": "Simple task with clear scope. Based on similar tasks, typically takes 15-30 minutes to complete."
+    "response": "```json\n{\n  \"estimate\": \"5-10 minutes\",\n  \"size\": \"XS\",\n  \"confidence\": 0.7,\n  \"reasoning\": \"A typical email reply involves reading the original message, formulating a response, and sending it. This is usually a quick task unless the email requires research, detailed explanations, or complex decision-making. Given the simple description, I'm assuming it's a standard business or personal correspondence.\"\n}\n```"
   }
 }
-

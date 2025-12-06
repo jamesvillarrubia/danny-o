@@ -1,0 +1,24 @@
+# Step-CI Blueprint Tests Configuration
+# 
+# Blueprint Tests: All routes, error cases (breadth, shallow)
+# Tests all API endpoints for correct response format
+
+version: "1.1"
+name: Todoist AI Agent API - Blueprint Tests
+
+config:
+  # Load environment from file
+  envFile:
+    path: environments/ci.yaml
+
+# Include only blueprint test workflows
+components:
+  # Blueprint tests - all routes
+  - path: workflows/blueprint/health.yaml
+  - path: workflows/blueprint/tasks.yaml
+  - path: workflows/blueprint/projects.yaml
+  - path: workflows/blueprint/labels.yaml
+  - path: workflows/blueprint/ai.yaml
+  - path: workflows/blueprint/stats.yaml
+  - path: workflows/blueprint/errors.yaml
+

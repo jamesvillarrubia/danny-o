@@ -1,23 +1,8 @@
 {
-  "description": "Mock Claude response for classifying work-related tasks",
-  "request": {
-    "promptContains": "classify"
-  },
+  "description": "Claude response for classifying work-related tasks",
+  "endpoint": "POST /v1/messages",
+  "recorded_at": "2025-12-06T22:57:58.615Z",
   "response": {
-    "tasks": [
-      {
-        "taskId": "task_work_1",
-        "category": "work",
-        "confidence": 0.95,
-        "reasoning": "Task mentions code review and pull request, clearly work-related development activity"
-      },
-      {
-        "taskId": "task_work_2",
-        "category": "work",
-        "confidence": 0.92,
-        "reasoning": "Task involves meeting preparation and presentation, typical work activity"
-      }
-    ]
+    "response": "```json\n{\n  \"category\": \"work\",\n  \"confidence\": 0.95,\n  \"reasoning\": \"This task involves reviewing a pull request for an authentication module, which is clearly a software development activity. Pull requests are part of code review processes in professional software development workflows, and authentication modules are technical components of software systems. This is definitively a work-related task.\"\n}\n```"
   }
 }
-

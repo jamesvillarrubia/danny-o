@@ -13,8 +13,7 @@ import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 
 // API Base URLs
-const TODOIST_REST_BASE = 'https://api.todoist.com';
-const TODOIST_SYNC_BASE = 'https://todoist.com';
+const TODOIST_API_BASE = 'https://api.todoist.com';
 const ANTHROPIC_BASE = 'https://api.anthropic.com';
 
 // Fixture paths - resolve relative to project root
@@ -40,10 +39,18 @@ function loadFixture<T>(category: string, name: string): T | null {
 export function setupMocks(): void {
   console.log('[MockBootstrap] Enabling HTTP mocks for external APIs...');
 
-  // Disable real HTTP connections except localhost
+  // Disable real HTTP connections except for allowed hosts
   nock.disableNetConnect();
   nock.enableNetConnect((host) => {
-    return host.includes('localhost') || host.includes('127.0.0.1');
+    // Allow localhost for test server
+    if (host.includes('localhost') || host.includes('127.0.0.1')) {
+      return true;
+    }
+    // Allow database connections (Neon PostgreSQL)
+    if (host.includes('neon.tech') || host.includes('postgres') || host.includes('pg.')) {
+      return true;
+    }
+    return false;
   });
 
   setupTodoistMocks();
@@ -54,19 +61,23 @@ export function setupMocks(): void {
 
 /**
  * Set up Todoist API mocks (REST + Sync)
+ * Note: The SDK uses various API versions - we intercept all common endpoints.
  */
 function setupTodoistMocks(): void {
-  const restScope = nock(TODOIST_REST_BASE);
-  const syncScope = nock(TODOIST_SYNC_BASE);
+  const scope = nock(TODOIST_API_BASE);
+
+  // ========================================
+  // REST API v2 endpoints (read/write)
+  // ========================================
 
   // GET /rest/v2/tasks
-  restScope
+  scope
     .get('/rest/v2/tasks')
     .reply(200, () => loadFixture('todoist', 'tasks-list'))
     .persist();
 
   // GET /rest/v2/tasks/:id
-  restScope
+  scope
     .get(/\/rest\/v2\/tasks\/[\w-]+/)
     .reply((uri) => {
       const fixture = loadFixture<any>('todoist', 'task-single');
@@ -79,7 +90,7 @@ function setupTodoistMocks(): void {
     .persist();
 
   // POST /rest/v2/tasks
-  restScope
+  scope
     .post('/rest/v2/tasks')
     .reply(201, (uri, body: any) => {
       const fixture = loadFixture<any>('todoist', 'create-task');
@@ -93,19 +104,19 @@ function setupTodoistMocks(): void {
     .persist();
 
   // POST /rest/v2/tasks/:id/close
-  restScope
+  scope
     .post(/\/rest\/v2\/tasks\/[\w-]+\/close/)
     .reply(204)
     .persist();
 
   // DELETE /rest/v2/tasks/:id
-  restScope
+  scope
     .delete(/\/rest\/v2\/tasks\/[\w-]+/)
     .reply(204)
     .persist();
 
   // PATCH /rest/v2/tasks/:id
-  restScope
+  scope
     .patch(/\/rest\/v2\/tasks\/[\w-]+/)
     .reply((uri, body: any) => {
       const fixture = loadFixture<any>('todoist', 'task-single');
@@ -115,19 +126,59 @@ function setupTodoistMocks(): void {
     .persist();
 
   // GET /rest/v2/projects
-  restScope
+  scope
     .get('/rest/v2/projects')
     .reply(200, () => loadFixture('todoist', 'projects-list'))
     .persist();
 
   // GET /rest/v2/labels
-  restScope
+  scope
     .get('/rest/v2/labels')
     .reply(200, () => loadFixture('todoist', 'labels-list'))
     .persist();
 
-  // POST /sync/v9/sync
-  syncScope
+  // ========================================
+  // REST API v1 endpoints (newer SDK)
+  // ========================================
+
+  // POST /api/v1/tasks (create task - newer SDK)
+  scope
+    .post('/api/v1/tasks')
+    .reply(201, (uri, body: any) => {
+      const fixture = loadFixture<any>('todoist', 'create-task');
+      return {
+        ...fixture,
+        id: `mock-task-${Date.now()}`,
+        content: body.content || fixture?.content,
+        project_id: body.project_id || fixture?.project_id,
+      };
+    })
+    .persist();
+
+  // GET /api/v1/tasks (list tasks - newer SDK)
+  scope
+    .get('/api/v1/tasks')
+    .reply(200, () => loadFixture('todoist', 'tasks-list'))
+    .persist();
+
+  // GET /api/v1/projects (list projects - newer SDK)
+  scope
+    .get('/api/v1/projects')
+    .reply(200, () => loadFixture('todoist', 'projects-list'))
+    .persist();
+
+  // ========================================
+  // Sync API v1 endpoints (bulk read)
+  // ========================================
+
+  // POST /api/v1/sync (newer SDK uses this)
+  scope
+    .post('/api/v1/sync')
+    .reply(200, () => loadFixture('todoist', 'sync-response'))
+    .persist();
+
+  // Also intercept the legacy sync endpoint
+  scope
     .post('/sync/v9/sync')
     .reply(200, () => loadFixture('todoist', 'sync-response'))
     .persist();

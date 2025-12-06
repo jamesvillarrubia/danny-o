@@ -1,66 +1,8 @@
 {
-  "description": "Mock Claude response for generating a daily plan",
-  "request": {
-    "promptContains": "plan"
-  },
+  "description": "Claude response for generating a daily plan",
+  "endpoint": "POST /v1/messages",
+  "recorded_at": "2025-12-06T22:58:24.715Z",
   "response": {
-    "summary": "Focus on high-priority work tasks in the morning, home maintenance in the afternoon",
-    "notes": "Consider batching similar tasks together for efficiency. Leave buffer time for unexpected issues.",
-    "today": {
-      "tasks": [
-        {
-          "taskId": "task_1",
-          "content": "Review pull request for authentication module",
-          "estimatedMinutes": 45,
-          "reason": "High priority, blocking other team members"
-        },
-        {
-          "taskId": "task_2",
-          "content": "Prepare slides for tomorrow's presentation",
-          "estimatedMinutes": 60,
-          "reason": "Deadline approaching, important for stakeholder alignment"
-        },
-        {
-          "taskId": "task_3",
-          "content": "Fix leaky bathroom faucet",
-          "estimatedMinutes": 30,
-          "reason": "Quick win, has been deferred too long"
-        }
-      ],
-      "totalTime": "2h 15min"
-    },
-    "thisWeek": {
-      "tasks": [
-        {
-          "taskId": "task_4",
-          "content": "Complete quarterly report"
-        },
-        {
-          "taskId": "task_5",
-          "content": "Schedule dentist appointment"
-        }
-      ],
-      "reasoning": "These tasks have flexible deadlines and can be done later this week"
-    },
-    "needsSupplies": {
-      "tasks": [
-        {
-          "taskId": "task_6",
-          "content": "Repaint bedroom trim"
-        }
-      ],
-      "shoppingList": ["Paint (1 gallon, eggshell white)", "Painter's tape", "Drop cloth"],
-      "suggestion": "Visit hardware store this weekend before starting the project"
-    },
-    "delegateToSpouse": {
-      "tasks": [
-        {
-          "taskId": "task_7",
-          "content": "Pick up dry cleaning"
-        }
-      ],
-      "reasoning": "Simple errand that can be combined with other trips"
-    }
+    "response": "```json\n{\n  \"schedule\": [\n    {\n      \"task\": \"Review PR\",\n      \"startTime\": \"09:00\",\n      \"duration\": \"30 min\"\n    },\n    {\n      \"task\": \"Team standup\",\n      \"startTime\": \"10:00\",\n      \"duration\": \"15 min\"\n    },\n    {\n      \"task\": \"Write documentation\",\n      \"startTime\": \"10:15\",\n      \"duration\": \"2 hours\"\n    }\n  ],\n  \"summary\": \"Morning-focused schedule with high-priority PR review first, followed by the fixed standup meeting, and documentation work to complete the morning block.\",\n  \"notes\": \"PR review scheduled early to handle high priority item when mind is fresh. Documentation work placed immediately after standup to maintain momentum and complete by 12:15 PM, leaving afternoon free for other tasks or meetings.\"\n}\n```"
   }
 }
-

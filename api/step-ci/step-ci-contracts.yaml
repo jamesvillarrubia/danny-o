@@ -1,0 +1,20 @@
+# Step-CI Contract Tests Configuration
+# 
+# Contract Tests: User flow sequences (depth, stateful)
+# Tests the real user workflows end-to-end
+
+version: "1.1"
+name: Todoist AI Agent API - Contract Tests
+
+config:
+  # Load environment from file
+  envFile:
+    path: environments/ci.yaml
+
+# Include only contract test workflows
+components:
+  # Contract tests - user flows
+  - path: workflows/contracts/sync-classify-complete.yaml
+  - path: workflows/contracts/ai-workflow.yaml
+  - path: workflows/contracts/task-lifecycle.yaml
+

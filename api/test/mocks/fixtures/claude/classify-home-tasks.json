@@ -1,23 +1,10 @@
 {
-  "description": "Mock Claude response for classifying home-related tasks",
-  "request": {
-    "promptContains": "classify"
-  },
+  "description": "Claude response for classifying home-related tasks",
+  "endpoint": "POST /v1/messages",
+  "recorded_at": "2025-12-06T22:58:01.430Z",
   "response": {
-    "tasks": [
-      {
-        "taskId": "task_home_1",
-        "category": "home-maintenance",
-        "confidence": 0.88,
-        "reasoning": "Task involves fixing a leaky faucet, clearly home maintenance"
-      },
-      {
-        "taskId": "task_home_2",
-        "category": "home-repair",
-        "confidence": 0.91,
-        "reasoning": "Task involves replacing HVAC filter, routine home repair"
-      }
-    ]
+    "category": "home",
+    "confidence": 0.95,
+    "reasoning": "This is clearly a home maintenance task involving repair of a household fixture. Fixing a leaky bathroom faucet is a typical DIY home improvement/maintenance activity that homeowners or renters need to address to maintain their living space."
   }
 }
-

@@ -1,40 +1,8 @@
 {
-  "description": "Mock Claude response for prioritizing tasks",
-  "request": {
-    "promptContains": "prioritize"
-  },
+  "description": "Claude response for prioritizing tasks",
+  "endpoint": "POST /v1/messages",
+  "recorded_at": "2025-12-06T22:58:06.320Z",
   "response": {
-    "prioritized": [
-      {
-        "taskId": "task_1",
-        "taskIndex": 0,
-        "priority": 4,
-        "urgencyScore": 0.9,
-        "impactScore": 0.85,
-        "reason": "High urgency due to approaching deadline, high impact on project delivery"
-      },
-      {
-        "taskId": "task_2",
-        "taskIndex": 1,
-        "priority": 3,
-        "urgencyScore": 0.7,
-        "impactScore": 0.8,
-        "reason": "Moderate urgency, but significant impact on team productivity"
-      },
-      {
-        "taskId": "task_3",
-        "taskIndex": 2,
-        "priority": 2,
-        "urgencyScore": 0.4,
-        "impactScore": 0.5,
-        "reason": "Low urgency, can be deferred without major consequences"
-      }
-    ],
-    "recommendations": {
-      "startWith": "task_1",
-      "defer": ["task_3"],
-      "delegate": []
-    }
+    "response": "```json\n{\n  \"prioritizedTasks\": [\n    {\n      \"id\": \"buy_groceries\",\n      \"priority\": 1,\n      \"reasoning\": \"High importance and moderate urgency - essential for daily nutrition and health, with limited store hours creating time constraints\"\n    },\n    {\n      \"id\": \"review_pull_request\",\n      \"priority\": 2,\n      \"reasoning\": \"High importance for work responsibilities and team collaboration, moderately urgent as it may be blocking other developers\"\n    },\n    {\n      \"id\": \"fix_bathroom_faucet\",\n      \"priority\": 3,\n      \"reasoning\": \"Moderate importance for home maintenance and water conservation, but lower urgency as it's likely still functional and can be scheduled flexibly\"\n    }\n  ]\n}\n```"
   }
 }
-

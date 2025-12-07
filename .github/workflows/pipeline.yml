@@ -24,7 +24,7 @@
 
 name: Pipeline
 
-run-name: "${{ github.event_name == 'pull_request' && !contains('[object Object],[object Object]', github.head_ref) && github.event.pull_request.title || github.ref_name }} #${{ inputs.run_number || github.run_number }}${{ inputs.version && format(' - {0}', inputs.version) || '' }}"
+run-name: "${{ github.event_name == 'pull_request' && !contains('develop,main', github.head_ref) && github.event.pull_request.title || github.ref_name }} #${{ inputs.run_number || github.run_number }}${{ inputs.version && format(' - {0}', inputs.version) || '' }}"
 
 #Git fetch depth configuration
 # - FETCH_DEPTH_AFFECTED: For change detection and Nx affected analysis
@@ -80,18 +80,15 @@ on:
         type: string
   push:
     branches:
-      - name: main
-        type: production
-      - name: develop
-        type: development
+      - develop
+      - main
   pull_request:
     types:
       - opened
       - synchronize
       - reopened
     branches:
-      - name: main
-        type: production
+      - develop
 jobs:
   
   #=============================================================================
@@ -108,13 +105,13 @@ jobs:
       DOMAINS: |
         api:
           paths:
-          - 'api'
+          - 'api/**'
         extension:
           paths:
-          - 'extension'
+          - 'extension/**'
         web:
           paths:
-          - 'web'
+          - 'web/**'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -161,6 +158,135 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
 
+  # <--START CUSTOM JOBS-->
+
+  #---------------------------------------------------------------------------
+  # TEST JOBS
+  #---------------------------------------------------------------------------
+
+  test-api:
+    needs: [ changes ]
+    if: ${{ needs.changes.outputs.api == 'true' || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: api
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.commitSha || github.sha }}
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+          cache-dependency-path: api/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm test
+
+  test-extension:
+    needs: [ changes ]
+    if: ${{ needs.changes.outputs.extension == 'true' || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: extension
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.commitSha || github.sha }}
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+          cache-dependency-path: extension/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm test
+    continue-on-error: true  # Extension tests may not be set up yet
+
+  test-web:
+    needs: [ changes ]
+    if: ${{ needs.changes.outputs.web == 'true' || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.commitSha || github.sha }}
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+          cache-dependency-path: web/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm test
+    continue-on-error: true  # Web tests may not be set up yet
+
+  #---------------------------------------------------------------------------
+  # DEPLOY JOBS
+  #---------------------------------------------------------------------------
+
+  deploy-api-dev:
+    needs: [ changes, gate ]
+    if: ${{
+        always() &&
+        github.ref_name == 'develop' &&
+        github.event_name == 'push' &&
+        needs.gate.result == 'success' &&
+        needs.changes.outputs.api == 'true'
+      }}
+    runs-on: ubuntu-latest
+    environment: development
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.commitSha || github.sha }}
+      - uses: superfly/flyctl-action/setup-flyctl@master
+      - name: Deploy to Fly.io (dev)
+        working-directory: api
+        run: flyctl deploy --app danny-tasks-api-dev --remote-only
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+  deploy-api-prod:
+    needs: [ changes, version, tag ]
+    if: ${{
+        always() &&
+        github.ref_name == 'main' &&
+        github.event_name == 'push' &&
+        needs.version.result == 'success' &&
+        needs.version.outputs.version != '' &&
+        needs.tag.result == 'success'
+      }}
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.commitSha || github.sha }}
+      - uses: superfly/flyctl-action/setup-flyctl@master
+      - name: Deploy to Fly.io (prod)
+        working-directory: api
+        run: flyctl deploy --app danny-tasks-api-prod --remote-only
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+  # <--END CUSTOM JOBS-->
+
+
   #=============================================================================
   # GATE (⚠️  Managed by Pipecraft - do not modify)
   #=============================================================================
@@ -202,7 +328,7 @@ jobs:
     if: ${{
         always() &&
         github.event_name != 'pull_request' &&
-        github.ref_name == '[object Object]' &&
+        github.ref_name == 'develop' &&
         needs.version.result == 'success' &&
         needs.version.outputs.version != '' &&
         needs.gate.result == 'success'
@@ -238,7 +364,7 @@ jobs:
         needs.tag.result == 'skipped'
       ) &&
         (
-        github.ref_name == '[object Object]'
+        github.ref_name == 'develop'
       )
       }}
     runs-on: ubuntu-latest
@@ -251,7 +377,7 @@ jobs:
         with:
           version: ${{ needs.version.outputs.version }}
           sourceBranch: ${{ github.ref_name }}
-          targetBranch: ${{ '[object Object]' }}
+          targetBranch: ${{ 'main' }}
           autoMerge: ${{ 'false' }}
           run_number: ${{ inputs.run_number || github.run_number }}
 
@@ -264,7 +390,7 @@ jobs:
     needs: [ tag, version ]
     if: ${{
         always() &&
-        github.ref_name == '[object Object]' &&
+        github.ref_name == 'main' &&
         needs.version.result == 'success' &&
         needs.version.outputs.version != '' &&
         needs.tag.result == 'success'

@@ -1,9 +1,7 @@
-# fly.toml app configuration file generated for danny-tasks-api-broken-frog-2830 on 2025-12-06T19:07:16-05:00
-#
-# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
-#
+# fly.toml - Danny Tasks API
+# App name is specified via CLI --app flag for environment-specific deployments
+# See https://fly.io/docs/reference/configuration/
 
-app = 'danny-tasks-api-broken-frog-2830'
 primary_region = 'iad'
 
 [build]

@@ -1,6 +1,6 @@
 /**
  * AI Operations Service
- * 
+ *
  * High-level AI-powered task management operations.
  * Combines Claude, prompts, and storage for intelligent task classification,
  * prioritization, time estimation, and planning capabilities.
@@ -9,7 +9,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { IStorageAdapter } from '../../common/interfaces/storage-adapter.interface';
 import { ITaskProvider } from '../../common/interfaces/task-provider.interface';
-import { Task, TaskHistory } from '../../common/interfaces';
+import { Task } from '../../common/interfaces';
 import { ClaudeService } from './claude.service';
 import { PromptsService } from '../prompts/prompts.service';
 import { TaxonomyService } from '../../config/taxonomy/taxonomy.service';
@@ -113,9 +113,7 @@ export class AIOperationsService {
           }
 
           // Process labels: separate existing from new suggestions
-          const { existingLabels, suggestedLabels } = await this.processLabels(
-            result.labels || [],
-          );
+          const { existingLabels, suggestedLabels } = await this.processLabels(result.labels || []);
 
           results.push({
             taskId: task.id,
@@ -127,7 +125,9 @@ export class AIOperationsService {
           });
         }
       } catch (error: any) {
-        this.logger.error(`Batch classification failed for batch starting at ${i}: ${error.message}`);
+        this.logger.error(
+          `Batch classification failed for batch starting at ${i}: ${error.message}`,
+        );
         // Continue with remaining batches
       }
 
@@ -160,9 +160,10 @@ export class AIOperationsService {
   /**
    * Process label results: separate existing from new suggestions
    */
-  private async processLabels(
-    labelIds: string[],
-  ): Promise<{ existingLabels: string[]; suggestedLabels: Array<{ id: string; name: string; reasoning: string }> }> {
+  private async processLabels(labelIds: string[]): Promise<{
+    existingLabels: string[];
+    suggestedLabels: Array<{ id: string; name: string; reasoning: string }>;
+  }> {
     const existingLabels: string[] = [];
     const suggestedLabels: Array<{ id: string; name: string; reasoning: string }> = [];
 
@@ -212,7 +213,8 @@ export class AIOperationsService {
     this.logger.log(`Estimated: ${result.estimate} (${result.size})`);
 
     // Parse time estimate to minutes if not provided
-    const timeEstimateMinutes = result.timeEstimateMinutes || this.parseTimeToMinutes(result.estimate);
+    const timeEstimateMinutes =
+      result.timeEstimateMinutes || this.parseTimeToMinutes(result.estimate);
 
     return {
       taskId: task.id,
@@ -230,18 +232,20 @@ export class AIOperationsService {
   private parseTimeToMinutes(estimate: string): number {
     const hours = estimate.match(/(\d+(?:\.\d+)?)\s*h/i);
     const mins = estimate.match(/(\d+)\s*m/i);
-    
+
     let total = 0;
     if (hours) total += parseFloat(hours[1]) * 60;
     if (mins) total += parseInt(mins[1]);
-    
+
     return total || 0;
   }
 
   /**
    * Estimate time for multiple tasks
    */
-  async estimateTasksBatch(tasks: Task[]): Promise<Array<TimeEstimateDto | { taskId: string; error: string }>> {
+  async estimateTasksBatch(
+    tasks: Task[],
+  ): Promise<Array<TimeEstimateDto | { taskId: string; error: string }>> {
     this.logger.log(`Batch estimating ${tasks.length} tasks...`);
 
     const results = await Promise.allSettled(tasks.map((task) => this.estimateTaskDuration(task)));
@@ -335,7 +339,7 @@ export class AIOperationsService {
   /**
    * Suggest an optimized daily plan
    */
-  async suggestDailyPlan(tasks: Task[], context: any = {}): Promise<DailyPlanDto> {
+  async suggestDailyPlan(tasks: Task[], _context: any = {}): Promise<DailyPlanDto> {
     this.logger.log(`Creating daily plan from ${tasks.length} tasks...`);
 
     if (tasks.length === 0) {
@@ -534,16 +538,24 @@ export class AIOperationsService {
   /**
    * Check tasks for @danny mentions in last comment and generate responses
    */
-  async respondToMentions(tasks: Task[]): Promise<Array<{ 
-    taskId: string; 
-    responded: boolean; 
-    comment?: string; 
-    action?: string;
-    error?: string 
-  }>> {
+  async respondToMentions(tasks: Task[]): Promise<
+    Array<{
+      taskId: string;
+      responded: boolean;
+      comment?: string;
+      action?: string;
+      error?: string;
+    }>
+  > {
     this.logger.log(`Checking ${tasks.length} tasks for @danny mentions...`);
 
-    const results: Array<{ taskId: string; responded: boolean; comment?: string; action?: string; error?: string }> = [];
+    const results: Array<{
+      taskId: string;
+      responded: boolean;
+      comment?: string;
+      action?: string;
+      error?: string;
+    }> = [];
 
     for (const task of tasks) {
       try {
@@ -554,8 +566,8 @@ export class AIOperationsService {
 
         // Sort comments by postedAt ascending (oldest first, newest last)
         // Todoist Sync API returns newest first, but we want chronological order
-        const sortedComments = [...task.comments].sort((a, b) => 
-          new Date(a.postedAt).getTime() - new Date(b.postedAt).getTime()
+        const sortedComments = [...task.comments].sort(
+          (a, b) => new Date(a.postedAt).getTime() - new Date(b.postedAt).getTime(),
         );
 
         // Get the most recent comment (last in chronological order)
@@ -563,11 +575,13 @@ export class AIOperationsService {
 
         // Debug: Log task with comments
         this.logger.debug(`Task "${task.content}" has ${task.comments.length} comment(s)`);
-        this.logger.debug(`Most recent comment: "${mostRecentComment.content.substring(0, 100)}..."`);
+        this.logger.debug(
+          `Most recent comment: "${mostRecentComment.content.substring(0, 100)}..."`,
+        );
 
         // Check if most recent comment mentions @danny (case insensitive)
         const hasAtDanny = mostRecentComment.content.toLowerCase().includes('@danny');
-        
+
         if (!hasAtDanny) {
           continue;
         }
@@ -583,7 +597,10 @@ export class AIOperationsService {
 
         // Parse intent and generate response with action
         const taskWithSortedComments = { ...task, comments: sortedComments };
-        const { action, response } = await this.parseIntentAndGenerateResponse(taskWithSortedComments, mostRecentComment.content);
+        const { action, response } = await this.parseIntentAndGenerateResponse(
+          taskWithSortedComments,
+          mostRecentComment.content,
+        );
 
         // Execute the action if one was identified
         if (action && action !== 'none') {
@@ -610,9 +627,7 @@ export class AIOperationsService {
       }
     }
 
-    this.logger.log(
-      `Responded to ${results.filter((r) => r.responded).length} @danny mentions`,
-    );
+    this.logger.log(`Responded to ${results.filter((r) => r.responded).length} @danny mentions`);
     return results;
   }
 
@@ -639,14 +654,18 @@ export class AIOperationsService {
   /**
    * Parse user intent and generate appropriate response with action
    */
-  private async parseIntentAndGenerateResponse(task: Task, mentionComment: string): Promise<{ action: string; response: string }> {
+  private async parseIntentAndGenerateResponse(
+    task: Task,
+    mentionComment: string,
+  ): Promise<{ action: string; response: string }> {
     // Build full comment history with timestamps
-    const commentHistory = task.comments && task.comments.length > 1
-      ? task.comments
-          .slice(0, -1) // Exclude the last comment (the one with @danny)
-          .map((c) => `[${c.postedAt}] ${c.content}`)
-          .join('\n\n')
-      : 'No previous comments';
+    const commentHistory =
+      task.comments && task.comments.length > 1
+        ? task.comments
+            .slice(0, -1) // Exclude the last comment (the one with @danny)
+            .map((c) => `[${c.postedAt}] ${c.content}`)
+            .join('\n\n')
+        : 'No previous comments';
 
     const prompt = `You are Danny, an AI task management assistant. A user has mentioned you in a comment and needs your help.
 
@@ -687,25 +706,33 @@ Important:
 
     try {
       const result = await this.claude.query(prompt);
-      
+
       const action = result.action || 'none';
       let response = result.response || 'Done!';
-      
+
       // Add Danny prefix
       response = `🤖 DANNY: ${response}`;
-      
+
       return { action, response };
     } catch (error: any) {
       this.logger.error(`Failed to parse intent: ${error.message}`);
       // Fallback: try to detect simple keywords
       const lowerComment = mentionComment.toLowerCase();
-      if (lowerComment.includes('archive') || lowerComment.includes('complete') || lowerComment.includes('done') || lowerComment.includes('proceed')) {
+      if (
+        lowerComment.includes('archive') ||
+        lowerComment.includes('complete') ||
+        lowerComment.includes('done') ||
+        lowerComment.includes('proceed')
+      ) {
         return { action: 'archive', response: '🤖 DANNY: Done! Task archived. ✅' };
       }
       if (lowerComment.includes('delete') || lowerComment.includes('remove')) {
         return { action: 'delete', response: '🤖 DANNY: Done! Task deleted. 🗑️' };
       }
-      return { action: 'none', response: '🤖 DANNY: I\'m here to help! What would you like me to do with this task?' };
+      return {
+        action: 'none',
+        response: "🤖 DANNY: I'm here to help! What would you like me to do with this task?",
+      };
     }
   }
 
@@ -714,12 +741,13 @@ Important:
    */
   private async generateCommentResponse(task: Task, mentionComment: string): Promise<string> {
     // Build full comment history with timestamps
-    const commentHistory = task.comments && task.comments.length > 1
-      ? task.comments
-          .slice(0, -1) // Exclude the last comment (the one with @danny)
-          .map((c, i) => `[${c.postedAt}] ${c.content}`)
-          .join('\n\n')
-      : 'No previous comments';
+    const commentHistory =
+      task.comments && task.comments.length > 1
+        ? task.comments
+            .slice(0, -1) // Exclude the last comment (the one with @danny)
+            .map((c, i) => `[${c.postedAt}] ${c.content}`)
+            .join('\n\n')
+        : 'No previous comments';
 
     // Build comprehensive metadata context
     const metadata = task.metadata || {};
@@ -776,13 +804,13 @@ Respond ONLY with the comment text (no preamble, no "Here's my response:", just 
     try {
       // Use queryText for plain text response (no JSON parsing)
       const response = await this.claude.queryText(prompt);
-      
+
       // Clean up the response (remove quotes if AI wrapped it)
       let cleanResponse = response.trim();
       if (cleanResponse.startsWith('"') && cleanResponse.endsWith('"')) {
         cleanResponse = cleanResponse.slice(1, -1);
       }
-      
+
       // Add Danny prefix to clearly identify AI responses
       return `🤖 DANNY: ${cleanResponse}`;
     } catch (error: any) {
@@ -795,4 +823,3 @@ Respond ONLY with the comment text (no preamble, no "Here's my response:", just 
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 }
-

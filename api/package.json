@@ -1,7 +1,7 @@
 {
-  "name": "todoist-ai-agent",
+  "name": "danny-tasks-api",
   "version": "2.0.0",
-  "description": "AI-powered task management agent for Todoist with intelligent categorization, prioritization, and time estimation - NestJS TypeScript Edition",
+  "description": "Danny - AI-powered task management agent for Todoist with intelligent categorization, prioritization, and time estimation",
   "main": "dist/main.js",
   "bin": {
     "danny": "./bin/danny"
@@ -98,7 +98,8 @@
   },
   "pnpm": {
     "onlyBuiltDependencies": [
-      "esbuild"
+      "esbuild",
+      "better-sqlite3"
     ]
   }
 }

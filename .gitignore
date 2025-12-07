@@ -2,7 +2,7 @@
 node_modules/
 .pnpm-store/
 .pnpm-debug.log
-pnpm-lock.yaml
+# Note: pnpm-lock.yaml should be committed for reproducible builds
 
 # Build outputs
 dist/

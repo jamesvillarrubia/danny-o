@@ -1,37 +1,64 @@
 {
   "ciProvider": "github",
   "mergeStrategy": "fast-forward",
-  "initialBranch": "main",
+  "initialBranch": "develop",
   "finalBranch": "main",
   "requireConventionalCommits": true,
   "branchFlow": [
     {
-      "name": "main",
-      "type": "production"
+      "name": "develop",
+      "type": "development",
+      "deploy": {
+        "environment": "development",
+        "provider": "flyio",
+        "app": "danny-tasks-api-dev"
+      }
     },
     {
-      "name": "develop",
-      "type": "development"
+      "name": "main",
+      "type": "production",
+      "deploy": {
+        "environment": "production",
+        "provider": "flyio",
+        "app": "danny-tasks-api-prod"
+      }
     }
   ],
   "domains": {
     "api": {
-      "paths": ["api"],
+      "paths": ["api/**"],
       "type": "backend",
-      "testCommand": "pnpm test",
-      "buildCommand": "pnpm build"
+      "workingDirectory": "api",
+      "testCommand": "pnpm lint && pnpm test",
+      "buildCommand": "pnpm build",
+      "deployCommand": "flyctl deploy --app $FLY_APP --remote-only",
+      "continueOnError": false
     },
     "web": {
-      "paths": ["web"],
+      "paths": ["web/**"],
       "type": "frontend",
-      "testCommand": "pnpm lint && pnpm build",
-      "buildCommand": "pnpm build"
+      "workingDirectory": "web",
+      "testCommand": "pnpm lint && pnpm test",
+      "buildCommand": "pnpm build",
+      "continueOnError": true
     },
     "extension": {
-      "paths": ["extension"],
+      "paths": ["extension/**"],
       "type": "extension",
-      "testCommand": "node -e \"JSON.parse(require('fs').readFileSync('manifest.json', 'utf8'))\"",
-      "buildCommand": "echo 'No build needed'"
+      "workingDirectory": "extension",
+      "testCommand": "pnpm lint && pnpm test",
+      "buildCommand": "pnpm build",
+      "continueOnError": true
+    }
+  },
+  "environments": {
+    "development": {
+      "branch": "develop",
+      "secrets": ["FLY_API_TOKEN"]
+    },
+    "production": {
+      "branch": "main",
+      "secrets": ["FLY_API_TOKEN"]
     }
   }
 }

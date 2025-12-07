@@ -2,20 +2,22 @@
 # Optimized for production deployment with minimal image size
 
 # Stage 1: Dependencies
-FROM node:22-alpine AS deps
+FROM node:24-alpine AS deps
 WORKDIR /app
 
-# Install pnpm
-RUN npm install -g pnpm
+# Install pnpm and build tools for native modules (better-sqlite3)
+RUN npm install -g pnpm && \
+    apk add --no-cache python3 make g++
 
 # Copy package files
-COPY package.json pnpm-lock.yaml .npmrc .nvmrc ./
+COPY package.json pnpm-lock.yaml ./
+COPY .npmrc* .nvmrc* ./
 
 # Install dependencies
 RUN pnpm install --frozen-lockfile
 
 # Stage 2: Builder
-FROM node:22-alpine AS builder
+FROM node:24-alpine AS builder
 WORKDIR /app
 
 # Install pnpm
@@ -34,7 +36,7 @@ RUN pnpm build
 RUN pnpm prune --prod
 
 # Stage 3: Runner (Production)
-FROM node:22-alpine AS runner
+FROM node:24-alpine AS runner
 WORKDIR /app
 
 # Install dumb-init and curl for cron jobs
@@ -49,7 +51,6 @@ COPY --from=builder --chown=nestjs:nodejs /app/dist ./dist
 COPY --from=builder --chown=nestjs:nodejs /app/node_modules ./node_modules
 COPY --from=builder --chown=nestjs:nodejs /app/package.json ./package.json
 COPY --from=builder --chown=nestjs:nodejs /app/config ./config
-COPY --from=builder --chown=nestjs:nodejs /app/migrations ./migrations
 COPY --from=builder --chown=nestjs:nodejs /app/scripts ./scripts
 
 # Create data directory for SQLite (if used)
@@ -60,11 +61,10 @@ USER nestjs
 
 # Environment variables (can be overridden)
 ENV NODE_ENV=production \
-    RUN_MODE=mcp \
-    DATABASE_TYPE=sqlite \
-    DATABASE_URL=/app/data/tasks.db
+    RUN_MODE=http \
+    PORT=8080
 
-# Expose port (Fly.io uses PORT env var, defaults to 8080)
+# Expose port (Fly.io uses PORT env var)
 EXPOSE 8080
 
 # Health check (Fly.io will use its own health checks)
@@ -74,6 +74,5 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
 # Use dumb-init to handle signals properly
 ENTRYPOINT ["dumb-init", "--"]
 
-# Default command (can be overridden for CLI mode)
+# Default command
 CMD ["node", "dist/main"]
-

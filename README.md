@@ -84,6 +84,84 @@ cd api
 pnpm mcp
 ```
 
+## CI/CD
+
+The project uses GitHub Actions for continuous integration and deployment, configured with [Pipecraft](https://www.npmjs.com/package/pipecraft).
+
+### Workflow Overview
+
+The CI pipeline (`.github/workflows/ci.yml`) runs on:
+- Push to `main` or `develop` branches
+- Pull requests to `main` or `develop`
+- Manual workflow dispatch
+- Scheduled daily runs at 2 AM UTC (for contract validation)
+
+### Test Jobs
+
+1. **API Unit & Integration Tests** (`api-unit-tests`)
+   - Runs Vitest unit tests
+   - Runs integration tests
+   - Runs E2E tests
+   - Generates coverage reports
+
+2. **API Contract Tests** (`api-contract-tests`)
+   - Uses Step-CI to run contract tests
+   - Tests user flow sequences:
+     - `sync-classify-complete.yaml`
+     - `ai-workflow.yaml`
+     - `task-lifecycle.yaml`
+
+3. **API Blueprint Tests** (`api-blueprint-tests`)
+   - Uses Step-CI to run blueprint tests
+   - Tests all API endpoints:
+     - Health, Tasks, Projects, Labels, AI, Stats, Errors
+
+4. **Web Domain Tests** (`web-tests`)
+   - Linting with ESLint
+   - Type checking with TypeScript
+   - Build validation
+
+5. **Extension Validation** (`extension-validation`)
+   - Validates `manifest.json` structure
+   - Checks required files exist
+   - Validates icon files
+
+### Environment Variables
+
+The CI workflow uses mocked external APIs for testing. No secrets are required for the standard CI runs.
+
+For optional real API testing (not enabled by default), you would need:
+- `TODOIST_API_TOKEN` - Todoist API key
+- `ANTHROPIC_API_KEY` - Anthropic/Claude API key
+
+These can be added as GitHub Secrets if needed for contract validation against real APIs.
+
+### Artifacts
+
+The workflow uploads the following artifacts:
+- API test coverage reports (30 day retention)
+- Step-CI test results (30 day retention)
+- Web build artifacts (7 day retention)
+
+### Local Testing
+
+To run the same tests locally:
+
+```bash
+# API tests
+cd api
+pnpm test                    # Unit tests
+pnpm test:integration        # Integration tests
+pnpm test:e2e                # E2E tests
+pnpm test:step-ci            # Step-CI tests (requires Docker)
+
+# Web tests
+cd web
+pnpm lint                    # Linting
+pnpm build                   # Build validation
+npx tsc --noEmit            # Type checking
+```
+
 ## Deployment
 
 - **API** → [Fly.io](https://fly.io) (container deployment)

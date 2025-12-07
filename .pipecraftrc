@@ -1,0 +1,37 @@
+{
+  "ciProvider": "github",
+  "mergeStrategy": "fast-forward",
+  "initialBranch": "main",
+  "finalBranch": "main",
+  "requireConventionalCommits": true,
+  "branchFlow": [
+    {
+      "name": "main",
+      "type": "production"
+    },
+    {
+      "name": "develop",
+      "type": "development"
+    }
+  ],
+  "domains": {
+    "api": {
+      "paths": ["api"],
+      "type": "backend",
+      "testCommand": "pnpm test",
+      "buildCommand": "pnpm build"
+    },
+    "web": {
+      "paths": ["web"],
+      "type": "frontend",
+      "testCommand": "pnpm lint && pnpm build",
+      "buildCommand": "pnpm build"
+    },
+    "extension": {
+      "paths": ["extension"],
+      "type": "extension",
+      "testCommand": "node -e \"JSON.parse(require('fs').readFileSync('manifest.json', 'utf8'))\"",
+      "buildCommand": "echo 'No build needed'"
+    }
+  }
+}

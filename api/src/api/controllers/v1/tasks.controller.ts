@@ -431,6 +431,51 @@ export class TasksController {
   // ==========================================================================
 
   /**
+   * Find and enrich all tasks that need URL enrichment
+   * POST /v1/tasks/enrich-urls
+   * 
+   * Batch operation to find URL-heavy tasks and enrich them.
+   * NOTE: This static route MUST come before parameterized :taskId routes.
+   */
+  @Post('enrich-urls')
+  @HttpCode(HttpStatus.OK)
+  async enrichAllUrlTasks(
+    @Body() body: {
+      limit?: number;
+      applyChanges?: boolean;
+      includeQuestions?: boolean;
+    } = {},
+  ): Promise<{
+    found: number;
+    enriched: number;
+    failed: number;
+    results: UrlEnrichmentResult[];
+  }> {
+    this.logger.log('Finding and enriching URL-heavy tasks');
+
+    const tasksNeedingEnrichment = await this.urlEnrichmentService.findTasksNeedingEnrichment();
+    const limit = body.limit ?? 10;
+    const tasksToProcess = tasksNeedingEnrichment.slice(0, limit);
+
+    this.logger.log(`Found ${tasksNeedingEnrichment.length} tasks needing enrichment, processing ${tasksToProcess.length}`);
+
+    const results = await this.urlEnrichmentService.enrichTasks(tasksToProcess, {
+      applyChanges: body.applyChanges ?? true,
+      includeQuestions: body.includeQuestions ?? true,
+    });
+
+    const enrichedCount = results.filter(r => r.enriched).length;
+    const failedCount = results.filter(r => !r.enriched && r.error).length;
+
+    return {
+      found: tasksNeedingEnrichment.length,
+      enriched: enrichedCount,
+      failed: failedCount,
+      results,
+    };
+  }
+
+  /**
    * Analyze a task for URL enrichment (dry run)
    * GET /v1/tasks/:taskId/analyze-url
    * 
@@ -514,50 +559,6 @@ export class TasksController {
     });
 
     return result;
-  }
-
-  /**
-   * Find and enrich all tasks that need URL enrichment
-   * POST /v1/tasks/enrich-urls
-   * 
-   * Batch operation to find URL-heavy tasks and enrich them.
-   */
-  @Post('enrich-urls')
-  @HttpCode(HttpStatus.OK)
-  async enrichAllUrlTasks(
-    @Body() body: {
-      limit?: number;
-      applyChanges?: boolean;
-      includeQuestions?: boolean;
-    } = {},
-  ): Promise<{
-    found: number;
-    enriched: number;
-    failed: number;
-    results: UrlEnrichmentResult[];
-  }> {
-    this.logger.log('Finding and enriching URL-heavy tasks');
-
-    const tasksNeedingEnrichment = await this.urlEnrichmentService.findTasksNeedingEnrichment();
-    const limit = body.limit ?? 10;
-    const tasksToProcess = tasksNeedingEnrichment.slice(0, limit);
-
-    this.logger.log(`Found ${tasksNeedingEnrichment.length} tasks needing enrichment, processing ${tasksToProcess.length}`);
-
-    const results = await this.urlEnrichmentService.enrichTasks(tasksToProcess, {
-      applyChanges: body.applyChanges ?? true,
-      includeQuestions: body.includeQuestions ?? true,
-    });
-
-    const enrichedCount = results.filter(r => r.enriched).length;
-    const failedCount = results.filter(r => !r.enriched && r.error).length;
-
-    return {
-      found: tasksNeedingEnrichment.length,
-      enriched: enrichedCount,
-      failed: failedCount,
-      results,
-    };
   }
 
   // ==========================================================================

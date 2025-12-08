@@ -63,6 +63,8 @@ export interface UrlEnrichmentResult {
   fetchResults: UrlFetchResult[];
   /** AI-generated context */
   context?: UrlContext;
+  /** New title (if updated) */
+  newTitle?: string;
   /** New description (if updated) */
   newDescription?: string;
   /** Error message if enrichment failed */
@@ -152,17 +154,31 @@ export class UrlEnrichmentService {
       context,
     );
 
+    // Determine new title if current one is URL-heavy
+    const newTitle = this.determineNewTitle(task, urlAnalysis, fetchResults, context);
+
     // Apply changes if requested
-    if (opts.applyChanges && newDescription && this.taskProvider) {
+    if (opts.applyChanges && this.taskProvider) {
       try {
-        await this.taskProvider.updateTask(task.id, {
-          description: newDescription,
-        });
-        this.logger.log(`Updated task ${task.id} with enriched description`);
+        const updates: { content?: string; description?: string } = {};
         
-        // Also update local storage if available
-        if (this.storage) {
-          await this.storage.updateTask(task.id, { description: newDescription } as any);
+        if (newTitle && newTitle !== task.content) {
+          updates.content = newTitle;
+          this.logger.log(`Updating task ${task.id} title: "${task.content}" → "${newTitle}"`);
+        }
+        
+        if (newDescription) {
+          updates.description = newDescription;
+        }
+
+        if (Object.keys(updates).length > 0) {
+          await this.taskProvider.updateTask(task.id, updates);
+          this.logger.log(`Updated task ${task.id} with enriched content`);
+          
+          // Also update local storage if available
+          if (this.storage) {
+            await this.storage.updateTask(task.id, updates as any);
+          }
         }
       } catch (error: any) {
         this.logger.error(`Failed to update task: ${error.message}`);
@@ -183,6 +199,7 @@ export class UrlEnrichmentService {
       urlAnalysis,
       fetchResults,
       context,
+      newTitle,
       newDescription,
     };
   }
@@ -351,7 +368,7 @@ export class UrlEnrichmentService {
         .join('\n\n');
     }
 
-    const prompt = `You are helping a user clarify the purpose of a task they created.
+    const prompt = `You are helping a user clarify the purpose of a task they saved (probably for later action).
 
 **Task Title:** ${task.content}
 **Current Description:** ${task.description || '(none)'}
@@ -363,17 +380,24 @@ ${urlContent ? `**Content from URL(s):**\n${urlContent}` : ''}
 
 ${failedFetches.length > 0 ? `**Note:** Could not fetch: ${failedFetches.map(f => `${f.url} (${f.error})`).join(', ')}` : ''}
 
-Based on the task title and URL content, provide:
-1. A brief summary of what the linked content is about (1-2 sentences)
-2. ${options.includeQuestions ? '1-2 clarifying questions to ask the user about what they want to do with this' : 'Skip questions'}
-3. If the task title is just a URL, suggest a better title
-4. Indicate if the task purpose is ambiguous (needs user clarification)
+Provide:
+1. **summary**: A brief summary of what the linked content is about (1-2 sentences)
+2. **questions**: ${options.includeQuestions ? '1-2 clarifying questions asking what the user wants to DO with this (read? buy? share? research?)' : 'Empty array'}
+3. **suggestedTitle**: If the task title is mostly a URL, suggest a SKIMMABLE, ACTIONABLE title. The title should:
+   - Be scannable in a task list (max ~60 chars)
+   - Hint at what action might be needed (e.g., "Read: ...", "Review: ...", "Consider: ...", "Check out: ...")
+   - NOT just be the page title verbatim
+   - If it's an article/blog, use "Read: [topic]"
+   - If it's a product/project, use "Check out: [name]" or "Consider: [name]"
+   - If it's unclear, use "Review: [brief description]"
+   - Return null only if the current title is already descriptive
+4. **isAmbiguous**: true if the task purpose is unclear and needs user clarification
 
 Respond in JSON format:
 {
-  "summary": "Brief summary of the URL content...",
-  "questions": ["Question 1?", "Question 2?"],
-  "suggestedTitle": "Better title if current is just URL, or null",
+  "summary": "Brief summary...",
+  "questions": ["What do you want to do with this?"],
+  "suggestedTitle": "Read: Article about X" or null,
   "isAmbiguous": true/false
 }`;
 
@@ -440,6 +464,79 @@ Respond in JSON format:
     }
 
     return parts.join('\n').trim();
+  }
+
+  /**
+   * Determine a new title for the task if the current one is URL-heavy
+   * 
+   * Priority:
+   * 1. AI-suggested title (if available and not null)
+   * 2. Page title from fetch (cleaned up)
+   * 3. Fallback: "Review: [domain]" or "Unclear link: [domain]"
+   */
+  private determineNewTitle(
+    task: Task,
+    urlAnalysis: UrlDetectionResult,
+    fetchResults: UrlFetchResult[],
+    context?: UrlContext,
+  ): string | undefined {
+    // Only update title if it's URL-heavy (mostly just a URL)
+    if (urlAnalysis.urlRatio < 0.5 || urlAnalysis.textWithoutUrls.length > 30) {
+      // Task already has meaningful text, don't override
+      return undefined;
+    }
+
+    // Priority 1: AI-suggested title
+    if (context?.suggestedTitle) {
+      return this.cleanTitle(context.suggestedTitle);
+    }
+
+    // Priority 2: Page title from successful fetch
+    const successfulFetch = fetchResults.find(r => r.success && r.title);
+    if (successfulFetch?.title) {
+      return this.cleanTitle(successfulFetch.title);
+    }
+
+    // Priority 3: Generate fallback from URL
+    const firstUrl = urlAnalysis.urls[0];
+    if (firstUrl) {
+      const domain = this.extractDomain(firstUrl);
+      const failedFetch = fetchResults.find(r => !r.success);
+      
+      if (failedFetch) {
+        // Couldn't fetch, indicate it needs attention
+        return `Review link: ${domain}`;
+      } else {
+        // Fetched but no title found
+        return `Unclear link: ${domain}`;
+      }
+    }
+
+    return undefined;
+  }
+
+  /**
+   * Clean up a title string
+   */
+  private cleanTitle(title: string): string {
+    return title
+      .replace(/\s+/g, ' ')           // Normalize whitespace
+      .replace(/^\s*[-|:]\s*/, '')    // Remove leading separators
+      .replace(/\s*[-|:]\s*$/, '')    // Remove trailing separators
+      .trim()
+      .slice(0, 150);                 // Limit length
+  }
+
+  /**
+   * Extract domain from URL for fallback titles
+   */
+  private extractDomain(url: string): string {
+    try {
+      const parsed = new URL(url);
+      return parsed.hostname.replace(/^www\./, '');
+    } catch {
+      return url.slice(0, 30);
+    }
   }
 
   /**

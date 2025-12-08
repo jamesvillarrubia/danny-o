@@ -16,6 +16,7 @@ import {
   HttpStatus,
   Inject,
   Logger,
+  Optional,
 } from '@nestjs/common';
 import { IStorageAdapter, ITaskProvider } from '../../../common/interfaces';
 import { SyncService } from '../../../task/services/sync.service';
@@ -109,7 +110,7 @@ export class ChatController {
     @Inject('IStorageAdapter') private readonly storage: IStorageAdapter,
     @Inject('ITaskProvider') private readonly taskProvider: ITaskProvider,
     private readonly syncService: SyncService,
-    private readonly claudeService: ClaudeService,
+    @Inject(ClaudeService) private readonly claudeService: ClaudeService,
   ) {}
 
   /**
@@ -120,6 +121,14 @@ export class ChatController {
   @HttpCode(HttpStatus.OK)
   async chat(@Body() body: ChatRequestDto): Promise<ChatResponseDto> {
     this.logger.log(`Chat message: ${body.message.substring(0, 100)}...`);
+
+    if (!this.claudeService) {
+      this.logger.error('ClaudeService is not available');
+      return {
+        response: 'Sorry, the AI service is not available. Please check that CLAUDE_API_KEY is set in your environment variables.',
+        success: false,
+      };
+    }
 
     const startTime = Date.now();
     const actions: ChatResponseDto['actions'] = [];
@@ -333,6 +342,10 @@ export class ChatController {
     tools: any[],
     maxTurns = 5,
   ): Promise<{ success: boolean; message: string; turns: number }> {
+    if (!this.claudeService) {
+      throw new Error('ClaudeService is not available');
+    }
+
     const messages: Anthropic.MessageParam[] = [
       {
         role: 'user',

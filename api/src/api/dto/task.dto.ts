@@ -31,8 +31,8 @@ export class ListTasksQueryDto {
   @Type(() => Number)
   @IsNumber()
   @Min(1)
-  @Max(100)
-  limit?: number = 50;
+  @Max(1000)
+  limit?: number = 1000;
 
   @IsOptional()
   @Type(() => Number)

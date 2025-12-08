@@ -30,7 +30,7 @@ export class ListCommand extends CommandRunner {
       const tasks = await this.storage.getTasks({
         category: options?.category,
         priority: options?.priority,
-        limit: options?.limit || 50,
+        limit: options?.limit || 1000,
         completed: false,
       });
 

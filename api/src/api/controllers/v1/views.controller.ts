@@ -330,7 +330,7 @@ export class ViewsController {
     // Build base filters
     const filters: TaskFilters = {
       completed: config.completed ?? false,
-      limit: limit || config.limit || 50,
+      limit: limit || config.limit || 1000,
     };
 
     // Priority filter
@@ -445,7 +445,7 @@ export class ViewsController {
     }
 
     // Apply limit
-    const finalLimit = limit || config.limit || 50;
+    const finalLimit = limit || config.limit || 1000;
     return tasks.slice(0, finalLimit);
   }
 

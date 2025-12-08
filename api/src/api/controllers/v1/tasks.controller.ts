@@ -60,8 +60,8 @@ export class TasksController {
   constructor(
     @Inject('IStorageAdapter') private readonly storage: IStorageAdapter,
     @Inject('ITaskProvider') private readonly taskProvider: ITaskProvider,
-    private readonly syncService: SyncService,
-    private readonly enrichmentService: EnrichmentService,
+    @Inject(SyncService) private readonly syncService: SyncService,
+    @Inject(EnrichmentService) private readonly enrichmentService: EnrichmentService,
   ) {}
 
   // ==========================================================================
@@ -86,7 +86,7 @@ export class TasksController {
 
     // Apply offset for pagination
     const offset = query.offset ?? 0;
-    const paginatedTasks = tasks.slice(offset, offset + (query.limit ?? 50));
+    const paginatedTasks = tasks.slice(offset, offset + (query.limit ?? 1000));
 
     return {
       tasks: paginatedTasks.map(this.mapTaskToResponse),

@@ -5,7 +5,7 @@
  * Uses Sentry's free tier for error capture.
  */
 
-import { Module, Global, OnModuleInit, Logger } from '@nestjs/common';
+import { Module, Global, OnModuleInit, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as Sentry from '@sentry/node';
 import { SentryFilter } from './sentry.filter';
@@ -23,9 +23,13 @@ import { APP_FILTER } from '@nestjs/core';
 export class SentryModule implements OnModuleInit {
   private readonly logger = new Logger(SentryModule.name);
 
-  constructor(private readonly configService: ConfigService) {}
+  constructor(@Optional() private readonly configService: ConfigService) {}
 
   onModuleInit() {
+    if (!this.configService) {
+      this.logger.warn('ConfigService not available - Sentry disabled');
+      return;
+    }
     const dsn = this.configService.get<string>('SENTRY_DSN');
     const environment = this.configService.get<string>('NODE_ENV', 'development');
 

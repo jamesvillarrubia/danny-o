@@ -6,7 +6,7 @@
  * @see https://developer.todoist.com/sync/v9#webhooks
  */
 
-import { Controller, Post, Body, Headers, HttpCode, HttpStatus, Logger, UnauthorizedException } from '@nestjs/common';
+import { Controller, Post, Body, Headers, HttpCode, HttpStatus, Logger, UnauthorizedException, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createHmac } from 'crypto';
 import { SyncService } from '../../task/services/sync.service';
@@ -29,11 +29,11 @@ export class WebhookController {
   private readonly webhookSecret?: string;
 
   constructor(
-    private readonly configService: ConfigService,
+    @Optional() private readonly configService: ConfigService,
     private readonly syncService: SyncService,
     private readonly aiOps: AIOperationsService,
   ) {
-    this.webhookSecret = this.configService.get<string>('TODOIST_WEBHOOK_SECRET');
+    this.webhookSecret = this.configService?.get<string>('TODOIST_WEBHOOK_SECRET') || undefined;
   }
 
   @Post('todoist')

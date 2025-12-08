@@ -7,7 +7,7 @@
  * @see https://vercel.com/docs/cron-jobs
  */
 
-import { Controller, Get, Headers, HttpCode, HttpStatus, Logger, UnauthorizedException } from '@nestjs/common';
+import { Controller, Get, Headers, HttpCode, HttpStatus, Logger, UnauthorizedException, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { SyncService } from '../../task/services/sync.service';
 import { AIOperationsService } from '../../ai/services/operations.service';
@@ -19,12 +19,12 @@ export class CronController {
   private readonly cronSecret?: string;
 
   constructor(
-    private readonly configService: ConfigService,
+    @Optional() private readonly configService: ConfigService,
     private readonly syncService: SyncService,
     private readonly aiOps: AIOperationsService,
     private readonly enrichmentService: EnrichmentService,
   ) {
-    this.cronSecret = this.configService.get<string>('CRON_SECRET');
+    this.cronSecret = this.configService?.get<string>('CRON_SECRET') || undefined;
   }
 
   /**

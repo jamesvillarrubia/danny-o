@@ -60,6 +60,7 @@ export interface ChatAction {
   type: string;
   description: string;
   taskId?: string;
+  filterConfig?: ViewFilterConfig;
 }
 
 export interface ChatResponse {
@@ -67,6 +68,7 @@ export interface ChatResponse {
   success: boolean;
   turns?: number;
   actions?: ChatAction[];
+  filterConfig?: ViewFilterConfig;
 }
 
 // API response types

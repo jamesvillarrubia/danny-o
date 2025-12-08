@@ -77,6 +77,17 @@ export async function getViewTasks(
   return fetchApi<ListTasksResponse>(endpoint);
 }
 
+export async function createView(data: {
+  name: string;
+  slug?: string;
+  filterConfig: View['filterConfig'];
+}): Promise<View> {
+  return fetchApi<View>('/views', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
 // ==================== Tasks API ====================
 
 export async function getTask(taskId: string): Promise<Task> {

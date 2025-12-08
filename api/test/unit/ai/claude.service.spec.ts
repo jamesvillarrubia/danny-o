@@ -1,5 +1,6 @@
-/**
 import { vi } from 'vitest';
+
+/**
  * Claude Service Unit Tests
  */
 

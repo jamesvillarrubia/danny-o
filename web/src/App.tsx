@@ -11,23 +11,29 @@ import { TaskDetail } from './components/TaskDetail';
 import { ChatInput } from './components/ChatInput';
 import { ViewSelector } from './components/ViewSelector';
 import { SettingsPanel } from './components/SettingsPanel';
+import { FilterDisplay } from './components/FilterDisplay';
 import { useTasks } from './hooks/useTasks';
 import { useViews } from './hooks/useViews';
 import { useSettings } from './hooks/useSettings';
-import type { Task } from './types';
+import { createView } from './api/client';
+import type { Task, View, ChatResponse } from './types';
 
 export default function App() {
   const { settings, updateApiKey } = useSettings();
-  const { views, isLoading: viewsLoading } = useViews();
+  const { views, isLoading: viewsLoading, refetch: refetchViews } = useViews();
   const [currentView, setCurrentView] = useState<string>('today');
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [showSettings, setShowSettings] = useState(!settings.apiKey);
+  const [temporaryView, setTemporaryView] = useState<View | null>(null);
+  const [activeFilter, setActiveFilter] = useState<View['filterConfig'] | null>(null);
 
   const { tasks, isLoading, refetch } = useTasks(currentView);
 
   const handleViewChange = useCallback((viewSlug: string) => {
     setCurrentView(viewSlug);
     setSelectedTask(null);
+    setActiveFilter(null); // Clear active filter when manually changing views
+    setTemporaryView(null);
   }, []);
 
   const handleTaskSelect = useCallback((task: Task) => {
@@ -46,10 +52,51 @@ export default function App() {
     }
   }, [refetch, selectedTask]);
 
-  const handleChatResponse = useCallback(() => {
-    // Refetch tasks after chat action
-    refetch();
+  const handleChatResponse = useCallback((response?: ChatResponse) => {
+    // Check if response contains a filter action
+    if (response?.filterConfig) {
+      // Store the active filter
+      setActiveFilter(response.filterConfig);
+      // Switch to "all" view to show all tasks with the filter applied
+      setCurrentView('all');
+      setSelectedTask(null);
+    } else {
+      // Just refetch tasks after chat action
+      refetch();
+    }
   }, [refetch]);
+
+  const handleClearFilter = useCallback(() => {
+    setActiveFilter(null);
+    setTemporaryView(null);
+  }, []);
+
+  const handleSaveFilter = useCallback(async () => {
+    if (!activeFilter) return;
+    
+    const viewName = prompt('Enter a name for this view:');
+    if (!viewName) return;
+
+    try {
+      const savedView = await createView({
+        name: viewName,
+        filterConfig: activeFilter,
+      });
+      
+      // Clear temporary filter and switch to the new view
+      setActiveFilter(null);
+      setTemporaryView(null);
+      setCurrentView(savedView.slug);
+      
+      // Refresh views list
+      await refetchViews();
+      
+      alert(`View "${viewName}" saved successfully!`);
+    } catch (error) {
+      console.error('Failed to save view:', error);
+      alert('Failed to save view. Please try again.');
+    }
+  }, [activeFilter, refetchViews]);
 
   // Show settings if no API key configured
   if (showSettings || !settings.apiKey) {
@@ -80,13 +127,26 @@ export default function App() {
         {/* Main Content */}
         <div className="flex-1 overflow-hidden flex">
           {/* Task List */}
-          <div className={`flex-1 overflow-y-auto ${selectedTask ? 'hidden md:block md:w-1/2 lg:w-2/5' : 'w-full'}`}>
-            <TaskList
-              tasks={tasks}
-              isLoading={isLoading}
-              onTaskSelect={handleTaskSelect}
-              selectedTaskId={selectedTask?.id}
-            />
+          <div className={`flex-1 flex flex-col overflow-hidden ${selectedTask ? 'hidden md:block md:w-1/2 lg:w-2/5' : 'w-full'}`}>
+            {/* Filter Display */}
+            {activeFilter && (
+              <FilterDisplay
+                filterConfig={activeFilter}
+                isTemporary={true}
+                onSave={handleSaveFilter}
+                onClear={handleClearFilter}
+              />
+            )}
+            
+            {/* Task List */}
+            <div className="flex-1 overflow-y-auto">
+              <TaskList
+                tasks={tasks}
+                isLoading={isLoading}
+                onTaskSelect={handleTaskSelect}
+                selectedTaskId={selectedTask?.id}
+              />
+            </div>
           </div>
 
           {/* Task Detail Panel */}

@@ -1,5 +1,6 @@
-/**
 import { vi } from 'vitest';
+
+/**
  * Enrichment Service Unit Tests
  */
 

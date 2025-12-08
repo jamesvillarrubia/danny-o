@@ -8,9 +8,10 @@ import { useState, useRef, useEffect } from 'react';
 import { Send, Loader2, Sparkles, X, ChevronUp, ChevronDown } from 'lucide-react';
 import clsx from 'clsx';
 import { useChat } from '../hooks/useChat';
+import type { ChatResponse } from '../types';
 
 interface ChatInputProps {
-  onResponse?: () => void;
+  onResponse?: (response?: ChatResponse) => void;
 }
 
 export function ChatInput({ onResponse }: ChatInputProps) {
@@ -46,7 +47,7 @@ export function ChatInput({ onResponse }: ChatInputProps) {
 
     const response = await sendMessage(message);
     if (response?.success && onResponse) {
-      onResponse();
+      onResponse(response);
     }
   };
 

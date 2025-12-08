@@ -89,6 +89,17 @@ interface ChatRequestDto {
   conversationId?: string; // For future multi-turn support
 }
 
+interface ViewFilterConfig {
+  priority?: number[];
+  categories?: string[];
+  projectId?: string;
+  dueWithin?: 'today' | '7d' | '14d' | '30d';
+  overdue?: boolean;
+  completed?: boolean;
+  taskIds?: string[];
+  limit?: number;
+}
+
 interface ChatResponseDto {
   response: string;
   success: boolean;
@@ -97,7 +108,9 @@ interface ChatResponseDto {
     type: string;
     description: string;
     taskId?: string;
+    filterConfig?: ViewFilterConfig;
   }>;
+  filterConfig?: ViewFilterConfig;
 }
 
 // ==================== Controller ====================
@@ -142,11 +155,16 @@ export class ChatController {
 
       this.logger.log(`Chat completed in ${Date.now() - startTime}ms, ${result.turns} turns`);
 
+      // Extract filter config from apply_filter action if present
+      const filterAction = actions.find((a) => a.type === 'apply_filter');
+      const filterConfig = filterAction?.filterConfig;
+
       return {
         response: result.message,
         success: result.success,
         turns: result.turns,
         actions: actions.length > 0 ? actions : undefined,
+        filterConfig: filterConfig,
       };
     } catch (error: any) {
       this.logger.error(`Chat error: ${error.message}`);
@@ -201,6 +219,12 @@ export class ChatController {
           },
         },
         handler: async (toolArgs: any) => {
+          // Build filter config for the frontend
+          const filterConfig: ViewFilterConfig = {
+            completed: false,
+            limit: toolArgs.limit || 10,
+          };
+
           let tasks = await this.storage.getTasks({
             completed: false,
             limit: toolArgs.limit || 20,
@@ -208,6 +232,7 @@ export class ChatController {
 
           // Filter by due date
           if (toolArgs.dueToday) {
+            filterConfig.dueWithin = 'today';
             const today = new Date();
             today.setHours(23, 59, 59, 999);
             tasks = tasks.filter((t) => {
@@ -218,7 +243,8 @@ export class ChatController {
 
           // Filter by priority
           if (toolArgs.highPriority) {
-            tasks = tasks.filter((t) => t.priority >= 3); // Todoist: 4 is highest, 1 is lowest
+            filterConfig.priority = [3, 4]; // Todoist: 4 is highest, 1 is lowest
+            tasks = tasks.filter((t) => t.priority >= 3);
           }
 
           // Sort by priority then due date
@@ -230,7 +256,18 @@ export class ChatController {
             return 0;
           });
 
-          return tasks.slice(0, toolArgs.limit || 10).map((t) => ({
+          const limitedTasks = tasks.slice(0, toolArgs.limit || 10);
+
+          // Add apply_filter action so frontend can update the view
+          actions.push({
+            type: 'apply_filter',
+            description: `Applied filter: ${
+              toolArgs.dueToday ? 'Due today, ' : ''
+            }${toolArgs.highPriority ? 'High priority, ' : ''}${limitedTasks.length} tasks`,
+            filterConfig: filterConfig,
+          });
+
+          return limitedTasks.map((t) => ({
             id: t.id,
             content: t.content,
             priority: t.priority,

@@ -63,12 +63,52 @@ export interface ChatAction {
   filterConfig?: ViewFilterConfig;
 }
 
+/** Raw message format from Anthropic API */
+export interface DebugMessage {
+  role: 'user' | 'assistant';
+  content: string | Array<{
+    type: string;
+    text?: string;
+    tool_use_id?: string;
+    name?: string;
+    input?: unknown;
+    content?: string;
+    is_error?: boolean;
+  }>;
+}
+
+/** Debug payload for inspecting AI conversations (The Net π) */
+export interface DebugPayload {
+  systemPrompt: string;
+  messages: DebugMessage[];
+  tools: Array<{
+    name: string;
+    description: string;
+    input_schema: unknown;
+  }>;
+}
+
 export interface ChatResponse {
   response: string;
   success: boolean;
   turns?: number;
   actions?: ChatAction[];
   filterConfig?: ViewFilterConfig;
+  debugMessages?: DebugPayload;
+}
+
+// Project types
+export interface Project {
+  id: string;
+  name: string;
+  color?: string;
+  parentId?: string | null;
+  order?: number;
+  commentCount?: number;
+  isFavorite?: boolean;
+  isShared?: boolean;
+  isInboxProject?: boolean;
+  viewStyle?: string;
 }
 
 // API response types
@@ -89,6 +129,10 @@ export interface ListTasksResponse {
 
 export interface ListViewsResponse {
   views: View[];
+}
+
+export interface ListProjectsResponse {
+  projects: Project[];
 }
 
 // Settings

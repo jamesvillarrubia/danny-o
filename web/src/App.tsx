@@ -5,18 +5,21 @@
  */
 
 import { useState, useCallback } from 'react';
+import clsx from 'clsx';
 import { Layout } from './components/Layout';
 import { TaskList } from './components/TaskList';
 import { TaskDetail } from './components/TaskDetail';
+import { TaskForm } from './components/TaskForm';
 import { ChatInput } from './components/ChatInput';
 import { ViewSelector } from './components/ViewSelector';
 import { SettingsPanel } from './components/SettingsPanel';
 import { FilterDisplay } from './components/FilterDisplay';
+import { DebugPanel } from './components/DebugPanel';
 import { useTasks } from './hooks/useTasks';
 import { useViews } from './hooks/useViews';
 import { useSettings } from './hooks/useSettings';
 import { createView } from './api/client';
-import type { Task, View, ChatResponse } from './types';
+import type { Task, View, ChatResponse, DebugPayload } from './types';
 
 export default function App() {
   const { settings, updateApiKey } = useSettings();
@@ -26,6 +29,10 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(!settings.apiKey);
   const [temporaryView, setTemporaryView] = useState<View | null>(null);
   const [activeFilter, setActiveFilter] = useState<View['filterConfig'] | null>(null);
+  const [showTaskForm, setShowTaskForm] = useState(false);
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [showDebugPanel, setShowDebugPanel] = useState(false);
+  const [debugData, setDebugData] = useState<DebugPayload | null>(null);
 
   const { tasks, isLoading, refetch } = useTasks(currentView);
 
@@ -53,6 +60,11 @@ export default function App() {
   }, [refetch, selectedTask]);
 
   const handleChatResponse = useCallback((response?: ChatResponse) => {
+    // Capture debug messages from response (The Net π)
+    if (response?.debugMessages) {
+      setDebugData(response.debugMessages);
+    }
+
     // Check if response contains a filter action
     if (response?.filterConfig) {
       // Store the active filter
@@ -98,6 +110,26 @@ export default function App() {
     }
   }, [activeFilter, refetchViews]);
 
+  const handleAddTask = useCallback(() => {
+    setEditingTask(null);
+    setShowTaskForm(true);
+  }, []);
+
+  const handleEditTask = useCallback((task: Task) => {
+    setEditingTask(task);
+    setShowTaskForm(true);
+  }, []);
+
+  const handleCloseTaskForm = useCallback(() => {
+    setShowTaskForm(false);
+    setEditingTask(null);
+  }, []);
+
+  const handleSaveTask = useCallback(async () => {
+    await refetch();
+    handleCloseTaskForm();
+  }, [refetch, handleCloseTaskForm]);
+
   // Show settings if no API key configured
   if (showSettings || !settings.apiKey) {
     return (
@@ -127,7 +159,7 @@ export default function App() {
         {/* Main Content */}
         <div className="flex-1 overflow-hidden flex">
           {/* Task List */}
-          <div className={`flex-1 flex flex-col overflow-hidden ${selectedTask ? 'hidden md:block md:w-1/2 lg:w-2/5' : 'w-full'}`}>
+          <div className={`flex flex-col ${selectedTask ? 'hidden md:flex md:w-1/2 lg:w-2/5' : 'flex-1'}`}>
             {/* Filter Display */}
             {activeFilter && (
               <FilterDisplay
@@ -138,24 +170,26 @@ export default function App() {
               />
             )}
             
-            {/* Task List */}
+            {/* Task List - Scrollable */}
             <div className="flex-1 overflow-y-auto">
               <TaskList
                 tasks={tasks}
                 isLoading={isLoading}
                 onTaskSelect={handleTaskSelect}
                 selectedTaskId={selectedTask?.id}
+                onTaskComplete={handleTaskComplete}
               />
             </div>
           </div>
 
           {/* Task Detail Panel */}
           {selectedTask && (
-            <div className="w-full md:w-1/2 lg:w-3/5 border-l border-zinc-200 overflow-y-auto bg-white">
+            <div className="w-full md:w-1/2 lg:w-3/5 border-l border-zinc-200 bg-white flex flex-col">
               <TaskDetail
                 task={selectedTask}
                 onClose={handleTaskClose}
                 onComplete={handleTaskComplete}
+                onEdit={handleEditTask}
               />
             </div>
           )}
@@ -164,6 +198,48 @@ export default function App() {
         {/* Chat Input */}
         <ChatInput onResponse={handleChatResponse} />
       </div>
+
+      {/* Add Task Button (Floating) - Left side to avoid conflicts */}
+      <button
+        onClick={handleAddTask}
+        className={clsx(
+          'fixed bottom-20 w-14 h-14 bg-gradient-to-br from-danny-500 to-danny-600 hover:from-danny-600 hover:to-danny-700 text-white rounded-full shadow-lg flex items-center justify-center transition-all cursor-pointer hover:scale-110 z-40',
+          selectedTask ? 'left-6' : 'right-6'
+        )}
+        aria-label="Add task"
+        title="Add new task"
+      >
+        <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+        </svg>
+      </button>
+
+      {/* Task Form Modal */}
+      {showTaskForm && (
+        <TaskForm
+          task={editingTask || undefined}
+          onClose={handleCloseTaskForm}
+          onSave={handleSaveTask}
+        />
+      )}
+
+      {/* Debug Panel (The Net π) - Hidden button in bottom right corner */}
+      <button
+        onClick={() => setShowDebugPanel(true)}
+        className="fixed bottom-3 right-0 w-4 p-0 m-0 leading-none text-[0.7rem] text-zinc-400 hover:text-green-400 opacity-30 hover:opacity-100 transition-all cursor-pointer font-mono z-30"
+        title="Debug Console (The Net)"
+        aria-label="Open debug console"
+      >
+        π
+      </button>
+
+      {/* Debug Panel Modal */}
+      {showDebugPanel && (
+        <DebugPanel
+          debugData={debugData}
+          onClose={() => setShowDebugPanel(false)}
+        />
+      )}
     </Layout>
   );
 }

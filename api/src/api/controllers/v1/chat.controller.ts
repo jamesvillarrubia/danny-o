@@ -74,6 +74,19 @@ The dentist call is overdue - want me to reschedule it or should we tackle that 
 **Danny**: *searches and completes*
 "Great work! I've marked 'Review project proposal' as complete. How long did it take you? (This helps me estimate similar tasks in the future)"
 
+# Page Context
+
+When the user sends a message from the browser extension, you may receive \`<page_context>\` at the start of their message. This contains information about the webpage they're viewing:
+- **URL**: The current page URL
+- **Title**: The page title
+- **Selected text**: Any text they highlighted before sending the message
+- **Page content**: Relevant text from the page
+
+Use this context to understand what the user is referring to. For example:
+- If they say "add this to my tasks", look at the page title, URL, or selected text
+- If they mention "this article" or "this story", use the page content
+- Include relevant URLs or quotes when creating tasks
+
 # Important Notes
 
 - Be conversational and helpful
@@ -84,9 +97,17 @@ The dentist call is overdue - want me to reschedule it or should we tackle that 
 
 // ==================== DTOs ====================
 
+interface PageContext {
+  url?: string;
+  title?: string;
+  text?: string;
+  selection?: string;
+}
+
 interface ChatRequestDto {
   message: string;
   conversationId?: string; // For future multi-turn support
+  pageContext?: PageContext;
 }
 
 interface ViewFilterConfig {
@@ -111,6 +132,12 @@ interface ChatResponseDto {
     filterConfig?: ViewFilterConfig;
   }>;
   filterConfig?: ViewFilterConfig;
+  /** Raw messages array for debugging (The Net π) */
+  debugMessages?: {
+    systemPrompt: string;
+    messages: Anthropic.MessageParam[];
+    tools: Array<{ name: string; description: string; input_schema: any }>;
+  };
 }
 
 // ==================== Controller ====================
@@ -150,8 +177,8 @@ export class ChatController {
       // Build tools
       const tools = this.buildChatTools(actions);
 
-      // Run conversation
-      const result = await this.runChatLoop(body.message, tools);
+      // Run conversation with page context if available
+      const result = await this.runChatLoop(body.message, tools, 5, body.pageContext);
 
       this.logger.log(`Chat completed in ${Date.now() - startTime}ms, ${result.turns} turns`);
 
@@ -165,6 +192,7 @@ export class ChatController {
         turns: result.turns,
         actions: actions.length > 0 ? actions : undefined,
         filterConfig: filterConfig,
+        debugMessages: result.debugMessages,
       };
     } catch (error: any) {
       this.logger.error(`Chat error: ${error.message}`);
@@ -378,15 +406,53 @@ export class ChatController {
     userMessage: string,
     tools: any[],
     maxTurns = 5,
-  ): Promise<{ success: boolean; message: string; turns: number }> {
+    pageContext?: PageContext,
+  ): Promise<{ 
+    success: boolean; 
+    message: string; 
+    turns: number;
+    debugMessages: {
+      systemPrompt: string;
+      messages: Anthropic.MessageParam[];
+      tools: Array<{ name: string; description: string; input_schema: any }>;
+    };
+  }> {
     if (!this.claudeService) {
       throw new Error('ClaudeService is not available');
+    }
+
+    // Build the user message with page context if available
+    let fullUserMessage = userMessage;
+    if (pageContext && (pageContext.url || pageContext.title || pageContext.text || pageContext.selection)) {
+      const contextParts: string[] = ['<page_context>'];
+      
+      if (pageContext.url) {
+        contextParts.push(`URL: ${pageContext.url}`);
+      }
+      if (pageContext.title) {
+        contextParts.push(`Title: ${pageContext.title}`);
+      }
+      if (pageContext.selection) {
+        contextParts.push(`Selected text: "${pageContext.selection}"`);
+      }
+      if (pageContext.text) {
+        // Limit page text to avoid token bloat
+        const truncatedText = pageContext.text.slice(0, 3000);
+        contextParts.push(`Page content:\n${truncatedText}${pageContext.text.length > 3000 ? '...' : ''}`);
+      }
+      
+      contextParts.push('</page_context>');
+      contextParts.push('');
+      contextParts.push(userMessage);
+      
+      fullUserMessage = contextParts.join('\n');
+      this.logger.debug(`Chat includes page context from: ${pageContext.url || pageContext.title}`);
     }
 
     const messages: Anthropic.MessageParam[] = [
       {
         role: 'user',
-        content: userMessage,
+        content: fullUserMessage,
       },
     ];
 
@@ -471,10 +537,22 @@ export class ChatController {
       finalResponse = "I'm still working on that. Let me know if you need anything else!";
     }
 
+    // Build debug-safe tools (without handler functions)
+    const debugTools = tools.map(({ name, description, input_schema }) => ({
+      name,
+      description,
+      input_schema,
+    }));
+
     return {
       success: true,
       message: finalResponse,
       turns: turnCount,
+      debugMessages: {
+        systemPrompt: DANNY_CHAT_SYSTEM_PROMPT,
+        messages,
+        tools: debugTools,
+      },
     };
   }
 }

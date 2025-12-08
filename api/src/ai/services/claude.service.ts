@@ -28,13 +28,13 @@ interface BatchOptions {
 @Injectable()
 export class ClaudeService implements OnModuleInit {
   private readonly logger = new Logger(ClaudeService.name);
-  private client: Anthropic;
+  private client?: Anthropic;
   private model: string;
   private maxTokens: number;
   private temperature: number;
 
   constructor(
-    @Inject(ConfigService) private readonly configService: ConfigService,
+    @Optional() @Inject(ConfigService) private readonly configService?: ConfigService,
     @Inject(PromptsService) private readonly promptsService: PromptsService,
     @Optional() @Inject('IStorageAdapter') private readonly storage?: IStorageAdapter,
   ) {
@@ -46,9 +46,18 @@ export class ClaudeService implements OnModuleInit {
   }
 
   onModuleInit() {
-    const apiKey = this.configService?.get<string>('CLAUDE_API_KEY') || process.env.CLAUDE_API_KEY;
+    // Try to get API key from ConfigService first, then fall back to process.env
+    let apiKey: string | undefined;
+    if (this.configService) {
+      apiKey = this.configService.get<string>('CLAUDE_API_KEY');
+    }
+    if (!apiKey) {
+      apiKey = process.env.CLAUDE_API_KEY;
+    }
+    
     if (!apiKey) {
       this.logger.warn('Claude API key not found - AI features will be unavailable');
+      this.logger.warn('Please set CLAUDE_API_KEY in your environment variables or .env file');
       return;
     }
 
@@ -60,6 +69,9 @@ export class ClaudeService implements OnModuleInit {
    * Get the Anthropic client (for advanced use cases like agentic tools)
    */
   getClient(): Anthropic {
+    if (!this.client) {
+      throw new Error('Claude client not initialized. Please check that CLAUDE_API_KEY is set in your environment variables.');
+    }
     return this.client;
   }
 
@@ -74,6 +86,10 @@ export class ClaudeService implements OnModuleInit {
    * Send a prompt to Claude and get structured JSON response
    */
   async query(prompt: string, options: QueryOptions = {}): Promise<any> {
+    if (!this.client) {
+      throw new Error('Claude client not initialized. Please check that CLAUDE_API_KEY is set in your environment variables.');
+    }
+    
     const startTime = Date.now();
     
     try {
@@ -177,6 +193,10 @@ export class ClaudeService implements OnModuleInit {
    * Send a prompt to Claude and get plain text response (no JSON parsing)
    */
   async queryText(prompt: string, options: QueryOptions = {}): Promise<string> {
+    if (!this.client) {
+      throw new Error('Claude client not initialized. Please check that CLAUDE_API_KEY is set in your environment variables.');
+    }
+    
     try {
       this.logger.log('Sending text query to Claude...');
 
@@ -254,6 +274,10 @@ export class ClaudeService implements OnModuleInit {
    * Stream a response from Claude (for interactive use)
    */
   async stream(prompt: string, onToken: (token: string) => void): Promise<string> {
+    if (!this.client) {
+      throw new Error('Claude client not initialized. Please check that CLAUDE_API_KEY is set in your environment variables.');
+    }
+    
     this.logger.log('Starting streaming query...');
 
     const stream = await this.client.messages.stream({

@@ -12,6 +12,7 @@ import { ConfigService } from '@nestjs/config';
 import { SyncService } from '../../task/services/sync.service';
 import { AIOperationsService } from '../../ai/services/operations.service';
 import { EnrichmentService } from '../../task/services/enrichment.service';
+import { UrlEnrichmentService } from '../../task/services/url-enrichment.service';
 
 @Controller('cron')
 export class CronController {
@@ -23,6 +24,7 @@ export class CronController {
     private readonly syncService: SyncService,
     private readonly aiOps: AIOperationsService,
     private readonly enrichmentService: EnrichmentService,
+    private readonly urlEnrichmentService: UrlEnrichmentService,
   ) {
     this.cronSecret = this.configService?.get<string>('CRON_SECRET') || undefined;
   }
@@ -168,6 +170,70 @@ export class CronController {
       };
     } catch (error: any) {
       this.logger.error(`Cron classify failed: ${error.message}`);
+      return {
+        success: false,
+        error: error.message,
+        duration: Date.now() - startTime,
+      };
+    }
+  }
+
+  /**
+   * URL Enrichment cron job - runs every 15 minutes
+   * Enriches URL-heavy tasks with fetched content and AI context
+   */
+  @Get('enrich-urls')
+  @HttpCode(HttpStatus.OK)
+  async cronEnrichUrls(@Headers('authorization') authorization?: string) {
+    if (!this.verifyCronSecret(authorization)) {
+      this.logger.warn('Cron enrich-urls: Invalid or missing authorization');
+      throw new UnauthorizedException('Invalid cron secret');
+    }
+
+    this.logger.log('Cron URL enrichment triggered');
+
+    const startTime = Date.now();
+    const batchSize = 5; // Fewer tasks since URL fetching is slow
+
+    try {
+      // Find tasks needing URL enrichment
+      const tasksNeedingEnrichment = await this.urlEnrichmentService.findTasksNeedingEnrichment();
+
+      if (tasksNeedingEnrichment.length === 0) {
+        return {
+          success: true,
+          data: {
+            tasksFound: 0,
+            tasksEnriched: 0,
+            duration: Date.now() - startTime,
+          },
+        };
+      }
+
+      // Limit tasks for this cron run
+      const tasksToProcess = tasksNeedingEnrichment.slice(0, batchSize);
+      
+      // Enrich tasks
+      const results = await this.urlEnrichmentService.enrichTasks(tasksToProcess, {
+        applyChanges: true,
+        includeQuestions: true,
+      });
+
+      const enrichedCount = results.filter(r => r.enriched).length;
+      const failedCount = results.filter(r => !r.enriched && r.error).length;
+
+      return {
+        success: true,
+        data: {
+          tasksFound: tasksNeedingEnrichment.length,
+          tasksProcessed: tasksToProcess.length,
+          tasksEnriched: enrichedCount,
+          tasksFailed: failedCount,
+          duration: Date.now() - startTime,
+        },
+      };
+    } catch (error: any) {
+      this.logger.error(`Cron URL enrichment failed: ${error.message}`);
       return {
         success: false,
         error: error.message,

@@ -409,6 +409,8 @@ export class KyselyAdapter implements IStorageAdapter {
   async getTasks(filters: TaskFilters = {}): Promise<Task[]> {
     const db = this.getDb();
     
+    console.log(`[DEBUG KyselyAdapter] getTasks called with filters:`, JSON.stringify(filters));
+    
     let query = db
       .selectFrom('tasks as t')
       .leftJoin('task_metadata as m', 't.id', 'm.task_id')
@@ -441,10 +443,17 @@ export class KyselyAdapter implements IStorageAdapter {
       query = query.where('t.is_completed', '=', filters.completed ? 1 : 0);
     }
     if (filters.limit) {
+      console.log(`[DEBUG KyselyAdapter] Applying limit: ${filters.limit} (type: ${typeof filters.limit})`);
       query = query.limit(filters.limit);
     }
 
+    // Log the SQL query
+    const compiledQuery = query.compile();
+    console.log(`[DEBUG KyselyAdapter] SQL:`, compiledQuery.sql);
+    console.log(`[DEBUG KyselyAdapter] Parameters:`, compiledQuery.parameters);
+
     const rows = await query.execute();
+    console.log(`[DEBUG KyselyAdapter] Query returned ${rows.length} rows`);
     return rows.map(row => this.rowToTask(row));
   }
 

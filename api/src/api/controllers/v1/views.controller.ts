@@ -31,6 +31,7 @@ import {
   Inject,
   Logger,
 } from '@nestjs/common';
+import { Transform } from 'class-transformer';
 import { IStorageAdapter, Task, TaskFilters } from '../../../common/interfaces';
 
 // ==================== DTOs ====================
@@ -67,8 +68,11 @@ interface ViewResponseDto {
   orderIndex: number;
 }
 
-interface ViewTasksQueryDto {
+class ViewTasksQueryDto {
+  @Transform(({ value }) => value ? parseInt(value, 10) : undefined)
   limit?: number;
+  
+  @Transform(({ value }) => value ? parseInt(value, 10) : undefined)
   offset?: number;
 }
 

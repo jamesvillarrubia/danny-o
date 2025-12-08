@@ -716,7 +716,13 @@ export class KyselyAdapter implements IStorageAdapter {
     if (!row || !row.last_synced_state) return null;
 
     return {
-      taskState: JSON.parse(row.last_synced_state),
+      taskState: (() => {
+        try {
+          return JSON.parse(row.last_synced_state);
+        } catch (e) {
+          return {};
+        }
+      })(),
       syncedAt: new Date(row.last_synced_at!),
     };
   }
@@ -1116,9 +1122,21 @@ export class KyselyAdapter implements IStorageAdapter {
       id: row.id,
       interactionType: row.interaction_type,
       taskId: row.task_id || undefined,
-      inputContext: row.input_context ? JSON.parse(row.input_context as string) : undefined,
+      inputContext: row.input_context ? (() => {
+        try {
+          return JSON.parse(row.input_context as string);
+        } catch (e) {
+          return undefined;
+        }
+      })() : undefined,
       promptUsed: row.prompt_used || undefined,
-      aiResponse: row.ai_response ? JSON.parse(row.ai_response as string) : undefined,
+      aiResponse: row.ai_response ? (() => {
+        try {
+          return JSON.parse(row.ai_response as string);
+        } catch (e) {
+          return undefined;
+        }
+      })() : undefined,
       actionTaken: row.action_taken || undefined,
       success: row.success === 1,
       errorMessage: row.error_message || undefined,
@@ -1151,7 +1169,13 @@ export class KyselyAdapter implements IStorageAdapter {
       name: row.name,
       slug: row.slug,
       filterConfig: typeof row.filter_config === 'string' 
-        ? JSON.parse(row.filter_config) 
+        ? (() => {
+            try {
+              return JSON.parse(row.filter_config);
+            } catch (e) {
+              return {};
+            }
+          })()
         : row.filter_config,
       isDefault: row.is_default === 1,
       orderIndex: row.order_index,
@@ -1185,7 +1209,13 @@ export class KyselyAdapter implements IStorageAdapter {
       name: row.name,
       slug: row.slug,
       filterConfig: typeof row.filter_config === 'string' 
-        ? JSON.parse(row.filter_config) 
+        ? (() => {
+            try {
+              return JSON.parse(row.filter_config);
+            } catch (e) {
+              return {};
+            }
+          })()
         : row.filter_config,
       isDefault: row.is_default === 1,
       orderIndex: row.order_index,
@@ -1319,7 +1349,14 @@ export class KyselyAdapter implements IStorageAdapter {
       projectId: row.project_id || undefined,
       parentId: row.parent_id || undefined,
       priority: row.priority,
-      labels: row.labels ? JSON.parse(row.labels) : [],
+      labels: row.labels && typeof row.labels === 'string' && row.labels.trim() ? (() => {
+        try {
+          return JSON.parse(row.labels);
+        } catch (e) {
+          // If JSON parse fails, return empty array
+          return [];
+        }
+      })() : (Array.isArray(row.labels) ? row.labels : []),
       due: row.due_date
         ? {
             date: row.due_date,

@@ -136,11 +136,9 @@ export function DonutChart({
   const innerRadius = variant === 'donut' ? (showLabel ? '40%' : '60%') : 0;
   const outerRadius = showLabel ? '55%' : '80%';
   
-  // Custom label renderer for smaller, cleaner labels
+  // Custom label renderer - show name and percentage
   const renderLabel = showLabel 
     ? ({ name, percent }: { name: string; percent: number }) => {
-        // Only show label if segment is large enough (>5%)
-        if (percent < 0.05) return null;
         return `${name} ${(percent * 100).toFixed(0)}%`;
       }
     : undefined;

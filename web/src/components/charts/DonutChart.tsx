@@ -70,14 +70,14 @@ function ChartLegend({ payload }: LegendProps) {
   if (!payload?.length) return null;
   
   return (
-    <div className="flex flex-wrap justify-center gap-4 mt-4">
+    <div className="flex flex-wrap justify-center gap-3 mt-3">
       {payload.map((entry, index) => (
-        <div key={index} className="flex items-center gap-2">
+        <div key={index} className="flex items-center gap-1.5">
           <span
-            className="w-3 h-3 rounded-full"
+            className="w-2 h-2 rounded-full"
             style={{ backgroundColor: entry.color }}
           />
-          <span className="text-sm text-zinc-600">{entry.value}</span>
+          <span className="text-xs text-zinc-500">{entry.value}</span>
         </div>
       ))}
     </div>

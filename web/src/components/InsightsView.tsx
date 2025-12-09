@@ -316,31 +316,37 @@ export function InsightsView({ data, isLoading, error, onRefresh, onTaskClick }:
             <InsightCard>
               <h3 className="font-medium text-zinc-900">Daily Completions</h3>
               <p className="text-sm text-zinc-500">Tasks completed per day over the last 30 days</p>
-              <AreaChart
-                className="h-64 mt-4"
-                data={dailyCompletionsData}
-                index="date"
-                categories={['Completed']}
-                colors={['blue']}
-                showLegend={false}
-                showAnimation={true}
-                curveType="monotone"
-              />
+              <div className="tremor-chart-wrapper mt-4">
+                <AreaChart
+                  className="h-64"
+                  data={dailyCompletionsData}
+                  index="date"
+                  categories={['Completed']}
+                  colors={['blue']}
+                  showLegend={false}
+                  showAnimation={true}
+                  curveType="monotone"
+                  valueFormatter={(value) => `${value} tasks`}
+                />
+              </div>
             </InsightCard>
 
             <div className="grid sm:grid-cols-2 gap-4">
               <InsightCard>
                 <h3 className="font-medium text-zinc-900">Completions by Day</h3>
                 <p className="text-sm text-zinc-500">When do you get the most done?</p>
-                <BarChart
-                  className="h-40 mt-4"
-                  data={dayOfWeekData}
-                  index="name"
-                  categories={['completed']}
-                  colors={['violet']}
-                  showLegend={false}
-                  showAnimation={true}
-                />
+                <div className="tremor-chart-wrapper mt-4">
+                  <BarChart
+                    className="h-40"
+                    data={dayOfWeekData}
+                    index="name"
+                    categories={['completed']}
+                    colors={['violet']}
+                    showLegend={false}
+                    showAnimation={true}
+                    valueFormatter={(value) => `${value}`}
+                  />
+                </div>
                 {peakDay && (
                   <div className="mt-3 flex items-center gap-2 text-sm">
                     <Zap className="w-4 h-4 text-violet-500" />
@@ -354,15 +360,18 @@ export function InsightsView({ data, isLoading, error, onRefresh, onTaskClick }:
               <InsightCard>
                 <h3 className="font-medium text-zinc-900">Task Age Distribution</h3>
                 <p className="text-sm text-zinc-500">How old are your active tasks?</p>
-                <BarChart
-                  className="h-40 mt-4"
-                  data={ageDistributionData}
-                  index="name"
-                  categories={['tasks']}
-                  colors={['cyan']}
-                  showLegend={false}
-                  showAnimation={true}
-                />
+                <div className="tremor-chart-wrapper mt-4">
+                  <BarChart
+                    className="h-40"
+                    data={ageDistributionData}
+                    index="name"
+                    categories={['tasks']}
+                    colors={['cyan']}
+                    showLegend={false}
+                    showAnimation={true}
+                    valueFormatter={(value) => `${value}`}
+                  />
+                </div>
                 {stats.taskAgeBuckets.stale > 5 && (
                   <div className="mt-3 flex items-center gap-2 text-sm text-amber-600">
                     <AlertTriangle className="w-4 h-4" />
@@ -379,14 +388,17 @@ export function InsightsView({ data, isLoading, error, onRefresh, onTaskClick }:
             <div className="grid sm:grid-cols-2 gap-4">
               <InsightCard>
                 <h3 className="font-medium text-zinc-900">Active Tasks by Category</h3>
-                <DonutChart
-                  className="h-52 mt-4"
-                  data={categoryData}
-                  index="name"
-                  category="value"
-                  showAnimation={true}
-                  showLabel={true}
-                />
+                <div className="tremor-chart-wrapper mt-4">
+                  <DonutChart
+                    className="h-52"
+                    data={categoryData}
+                    index="name"
+                    category="value"
+                    showAnimation={true}
+                    showLabel={true}
+                    valueFormatter={(value) => `${value}`}
+                  />
+                </div>
               </InsightCard>
 
               <InsightCard>
@@ -439,14 +451,17 @@ export function InsightsView({ data, isLoading, error, onRefresh, onTaskClick }:
               <InsightCard>
                 <h3 className="font-medium text-zinc-900">Procrastination Analysis</h3>
                 <p className="text-sm text-zinc-500">Completion timing vs due dates</p>
-                <DonutChart
-                  className="h-44 mt-4"
-                  data={procrastinationData}
-                  index="name"
-                  category="value"
-                  colors={['emerald', 'yellow', 'red']}
-                  showAnimation={true}
-                />
+                <div className="tremor-chart-wrapper mt-4">
+                  <DonutChart
+                    className="h-44"
+                    data={procrastinationData}
+                    index="name"
+                    category="value"
+                    colors={['emerald', 'yellow', 'red']}
+                    showAnimation={true}
+                    valueFormatter={(value) => `${value}`}
+                  />
+                </div>
               </InsightCard>
 
               <InsightCard>

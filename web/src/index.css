@@ -135,77 +135,241 @@
   --tw-color-amber-700: #b45309;
 }
 
-/* Force Tremor/Recharts chart fills to use our colors */
-/* Blue */
-[class*="fill-blue"] { fill: #3b82f6 !important; }
-[class*="stroke-blue"] { stroke: #3b82f6 !important; }
-[class*="bg-blue-500"] { background-color: #3b82f6 !important; }
+/* ============================================
+   Tremor/Recharts Chart Styling
+   More aggressive selectors to override defaults
+   ============================================ */
 
-/* Violet */
-[class*="fill-violet"] { fill: #8b5cf6 !important; }
-[class*="stroke-violet"] { stroke: #8b5cf6 !important; }
-[class*="bg-violet-500"] { background-color: #8b5cf6 !important; }
+/* Force chart bar/area/line colors via SVG fill/stroke */
+/* Blue - for daily completions area chart */
+.recharts-area-area[fill="#3b82f6"],
+.recharts-area path[fill="#3b82f6"],
+[class*="fill-blue-500"] { fill: #3b82f6 !important; }
+[class*="stroke-blue-500"] { stroke: #3b82f6 !important; }
+.recharts-line[stroke="#3b82f6"] { stroke: #3b82f6 !important; }
 
-/* Cyan */
-[class*="fill-cyan"] { fill: #06b6d4 !important; }
-[class*="stroke-cyan"] { stroke: #06b6d4 !important; }
-[class*="bg-cyan-500"] { background-color: #06b6d4 !important; }
+/* Violet - for day of week bar chart */
+.recharts-bar-rectangle[fill="#8b5cf6"] path,
+[class*="fill-violet-500"] { fill: #8b5cf6 !important; }
+[class*="stroke-violet-500"] { stroke: #8b5cf6 !important; }
 
-/* Emerald */
-[class*="fill-emerald"] { fill: #10b981 !important; }
-[class*="stroke-emerald"] { stroke: #10b981 !important; }
-[class*="bg-emerald-500"] { background-color: #10b981 !important; }
+/* Cyan - for age distribution bar chart */  
+.recharts-bar-rectangle[fill="#06b6d4"] path,
+[class*="fill-cyan-500"] { fill: #06b6d4 !important; }
+[class*="stroke-cyan-500"] { stroke: #06b6d4 !important; }
+
+/* Emerald - for procrastination donut */
+[class*="fill-emerald-500"] { fill: #10b981 !important; }
+[class*="stroke-emerald-500"] { stroke: #10b981 !important; }
 
 /* Yellow */
-[class*="fill-yellow"] { fill: #eab308 !important; }
-[class*="stroke-yellow"] { stroke: #eab308 !important; }
-[class*="bg-yellow-500"] { background-color: #eab308 !important; }
+[class*="fill-yellow-500"] { fill: #eab308 !important; }
+[class*="stroke-yellow-500"] { stroke: #eab308 !important; }
 
 /* Red */
-[class*="fill-red"] { fill: #ef4444 !important; }
-[class*="stroke-red"] { stroke: #ef4444 !important; }
-[class*="bg-red-500"] { background-color: #ef4444 !important; }
+[class*="fill-red-500"] { fill: #ef4444 !important; }
+[class*="stroke-red-500"] { stroke: #ef4444 !important; }
 
 /* Amber */
-[class*="fill-amber"] { fill: #f59e0b !important; }
-[class*="stroke-amber"] { stroke: #f59e0b !important; }
-[class*="bg-amber-500"] { background-color: #f59e0b !important; }
+[class*="fill-amber-500"] { fill: #f59e0b !important; }
+[class*="stroke-amber-500"] { stroke: #f59e0b !important; }
 
-/* Override Tremor's tooltip styling to match app design */
-.recharts-tooltip-wrapper .recharts-default-tooltip {
-  background: white !important;
-  border: 1px solid #e4e4e7 !important;
-  border-radius: 0.5rem !important;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1) !important;
-  padding: 0.75rem 1rem !important;
+/* Override black fills - Tremor sometimes defaults to black */
+.recharts-bar-rectangle path:not([fill]),
+.recharts-bar-rectangle rect:not([fill]) {
+  fill: #3b82f6 !important;
 }
 
-.recharts-tooltip-label {
+/* Recharts bar colors - direct SVG targeting */
+.recharts-rectangle.recharts-bar-rectangle {
+  fill: currentColor;
+}
+
+/* Area chart gradient and fill */
+.recharts-area-curve {
+  stroke-width: 2;
+}
+
+/* ============================================
+   Tooltip Styling - Multiple selector patterns
+   ============================================ */
+
+/* Target Recharts tooltip container */
+.recharts-tooltip-wrapper {
+  z-index: 1000 !important;
+  pointer-events: none;
+}
+
+/* Main tooltip box - multiple selectors for different render paths */
+.recharts-default-tooltip,
+.recharts-tooltip-wrapper .recharts-default-tooltip,
+div.recharts-default-tooltip {
+  background-color: #ffffff !important;
+  background: #ffffff !important;
+  border: 1px solid #e4e4e7 !important;
+  border-radius: 8px !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15), 0 2px 4px rgba(0, 0, 0, 0.1) !important;
+  padding: 12px 16px !important;
+  opacity: 1 !important;
+}
+
+/* Tooltip header/label */
+.recharts-tooltip-label,
+.recharts-default-tooltip .recharts-tooltip-label {
   color: #18181b !important;
   font-weight: 600 !important;
-  font-size: 0.875rem !important;
-  margin-bottom: 0.375rem !important;
+  font-size: 13px !important;
+  margin-bottom: 8px !important;
+  padding-bottom: 6px !important;
+  border-bottom: 1px solid #f4f4f5 !important;
 }
 
-.recharts-tooltip-item {
+/* Tooltip item list */
+.recharts-tooltip-item-list {
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+/* Individual tooltip items */
+.recharts-tooltip-item,
+.recharts-default-tooltip .recharts-tooltip-item {
   color: #3f3f46 !important;
-  font-size: 0.8125rem !important;
-  padding: 0.125rem 0 !important;
+  font-size: 13px !important;
+  padding: 4px 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
 }
 
+/* Item name (category label) */
 .recharts-tooltip-item-name {
   color: #71717a !important;
+  font-weight: 400 !important;
 }
 
+/* Item separator */
+.recharts-tooltip-item-separator {
+  color: #a1a1aa !important;
+  margin: 0 4px !important;
+}
+
+/* Item value */
 .recharts-tooltip-item-value {
   color: #18181b !important;
-  font-weight: 500 !important;
+  font-weight: 600 !important;
 }
+
+/* Tremor's custom tooltip wrapper */
+[class*="tremor-Tooltip"],
+[data-tremor-tooltip] {
+  background: #ffffff !important;
+  border: 1px solid #e4e4e7 !important;
+  border-radius: 8px !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
+  padding: 12px 16px !important;
+}
+
+/* ============================================
+   Chart Element Styling
+   ============================================ */
 
 /* Rounded bar corners */
 .recharts-bar-rectangle path,
 .recharts-bar-rectangle rect {
   rx: 4;
+  ry: 4;
+}
+
+/* Grid lines - subtle */
+.recharts-cartesian-grid line {
+  stroke: #f4f4f5 !important;
+}
+
+/* Axis lines */
+.recharts-cartesian-axis-line {
+  stroke: #e4e4e7 !important;
+}
+
+/* Axis tick text */
+.recharts-cartesian-axis-tick-value {
+  fill: #71717a !important;
+  font-size: 12px !important;
+}
+
+/* Legend */
+.recharts-legend-item-text {
+  color: #3f3f46 !important;
+  font-size: 13px !important;
+}
+
+/* Donut/Pie chart */
+.recharts-pie-sector {
+  stroke: #ffffff !important;
+  stroke-width: 2px !important;
+}
+
+/* Area chart fill opacity */
+.recharts-area-area {
+  fill-opacity: 0.3;
+}
+
+/* ============================================
+   Scoped Chart Wrapper Styles
+   ============================================ */
+
+/* Wrapper class for all Tremor charts */
+.tremor-chart-wrapper {
+  /* Force tooltip styling via CSS custom properties */
+  --tremor-content-strong: #18181b;
+  --tremor-content-default: #3f3f46;
+  --tremor-content-subtle: #71717a;
+  --tremor-background-default: #ffffff;
+  --tremor-background-subtle: #f4f4f5;
+  --tremor-border-default: #e4e4e7;
+  --tremor-ring: rgba(248, 106, 82, 0.3);
+}
+
+/* Target all SVG rect elements in Tremor charts (bars) */
+.tremor-chart-wrapper .recharts-bar rect,
+.tremor-chart-wrapper .recharts-bar-rectangle rect,
+.tremor-chart-wrapper svg rect[fill="#000"],
+.tremor-chart-wrapper svg rect[fill="black"],
+.tremor-chart-wrapper svg rect:not([fill]) {
+  fill: currentColor !important;
+}
+
+/* Default bar colors if not specified */
+.tremor-chart-wrapper .recharts-bar-rectangles rect {
+  rx: 4 !important;
+  ry: 4 !important;
+}
+
+/* Tremor bar chart specific overrides */
+.tremor-chart-wrapper [class*="tremor-BarChart"] rect {
+  rx: 4;
+  ry: 4;
+}
+
+/* Target Tremor's internal tooltip component */
+.tremor-chart-wrapper [class*="tremor-Tooltip"],
+.tremor-chart-wrapper [role="tooltip"],
+.tremor-chart-wrapper div[style*="position: absolute"][style*="pointer-events"] {
+  background: #ffffff !important;
+  border: 1px solid #e4e4e7 !important;
+  border-radius: 8px !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15), 0 1px 3px rgba(0, 0, 0, 0.1) !important;
+  padding: 10px 14px !important;
+}
+
+/* Fix for any black text in tooltips */
+.tremor-chart-wrapper [class*="tremor-Tooltip"] *,
+.tremor-chart-wrapper .recharts-tooltip-wrapper * {
+  color: inherit;
+}
+
+/* Tooltip positioning fix */
+.tremor-chart-wrapper .recharts-tooltip-wrapper {
+  outline: none !important;
 }
 
 /* Base styles */

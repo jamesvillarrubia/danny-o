@@ -120,6 +120,8 @@ export class AIOperationsService {
             category: result.category,
             labels: existingLabels,
             suggestedLabels: suggestedLabels,
+            requiresDriving: result.requiresDriving ?? false,
+            timeConstraint: result.timeConstraint ?? 'anytime',
             confidence: result.confidence,
             reasoning: result.reasoning,
           });
@@ -213,14 +215,20 @@ export class AIOperationsService {
     this.logger.log(`Estimated: ${result.estimate} (${result.size})`);
 
     // Parse time estimate to minutes if not provided
-    const timeEstimateMinutes =
-      result.timeEstimateMinutes || this.parseTimeToMinutes(result.estimate);
+    // If needsBreakdown is true, timeEstimateMinutes should be null
+    const needsBreakdown = result.needsBreakdown === true || result.estimate === 'needs-breakdown';
+    const timeEstimateMinutes = needsBreakdown 
+      ? null 
+      : (result.timeEstimateMinutes || this.parseTimeToMinutes(result.estimate));
 
     return {
       taskId: task.id,
       timeEstimate: result.estimate,
       timeEstimateMinutes,
+      needsBreakdown,
       size: result.size,
+      requiresDriving: result.requiresDriving ?? false,
+      timeConstraint: result.timeConstraint ?? 'anytime',
       confidence: result.confidence,
       reasoning: result.reasoning,
     };
@@ -474,9 +482,17 @@ export class AIOperationsService {
 
     const currentTasks = await this.storage.getTasks({ completed: false });
 
-    // For now, use a simple prompt
-    const prompt = `Analyze patterns from ${history.length} completed tasks and ${currentTasks.length} active tasks`;
-    const result = await this.claude.query(prompt);
+    this.logger.log(`Analyzing ${history.length} completed tasks and ${currentTasks.length} active tasks`);
+
+    // Build a proper prompt with actual task data
+    const prompt = this.prompts.getInsightsPrompt(history, currentTasks);
+    const result = await this.claude.query(prompt, {
+      interactionType: 'insights',
+      inputContext: {
+        completedTaskCount: history.length,
+        activeTaskCount: currentTasks.length,
+      },
+    });
 
     this.logger.log('Insights generated');
     return result;

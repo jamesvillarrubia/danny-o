@@ -74,6 +74,14 @@ When analyzing tasks:
 5. Account for setup/teardown time (opening email, making a call, etc.)
 6. Choose ONE project (the primary context) and 0-3 labels (cross-cutting themes)
 7. Feel free to suggest new labels if existing ones don't fit (they'll be reviewed by the user)
+8. Identify scheduling constraints:
+   - requiresDriving: Does this task require physically going somewhere? (store, appointment, office)
+   - timeConstraint: When can this task be done?
+     * "business-hours" - Must be done Mon-Fri 9am-5pm (banks, offices, business calls, doctor appointments)
+     * "weekdays-only" - Must be done Mon-Fri but not time-restricted (contractor meetings, deliveries)
+     * "evenings" - Best done after work hours (family activities, personal projects)
+     * "weekends" - Best done Sat/Sun (yard work, home projects, family time)
+     * "anytime" - No scheduling constraints (online tasks, flexible activities)
 
 Always provide reasoning for your decisions and be honest about confidence levels.`;
 
@@ -146,6 +154,7 @@ IMPORTANT:
 - Project: Choose ONE that best represents where this task belongs
 - Labels: Choose 0-3 existing labels that add context (or suggest new ones with "new:" prefix)
 - Suggested labels will be reviewed by the user before being added to the system
+- For each task, also identify scheduling constraints (requiresDriving, timeConstraint)
 
 Respond with JSON array in this exact format (NOTE: taskIndex is ZERO-BASED, starts at 0):
 [
@@ -153,17 +162,30 @@ Respond with JSON array in this exact format (NOTE: taskIndex is ZERO-BASED, sta
     "taskIndex": 0,
     "category": "project-name",
     "labels": ["existing-label-id", "new:suggested-label"],
+    "requiresDriving": true|false,
+    "timeConstraint": "business-hours|weekdays-only|evenings|weekends|anytime",
     "confidence": 0.0-1.0,
-    "reasoning": "brief explanation of project and label choices"
+    "reasoning": "brief explanation of project, label, and scheduling choices"
   },
   {
     "taskIndex": 1,
     "category": "project-name",
     "labels": [],
+    "requiresDriving": false,
+    "timeConstraint": "anytime",
     "confidence": 0.0-1.0,
     "reasoning": "explanation"
   }
-]`;
+]
+
+Scheduling constraints:
+- requiresDriving: Does this require physically going somewhere? (stores, appointments, offices)
+- timeConstraint options:
+  * "business-hours" - Must be done Mon-Fri 9am-5pm (banks, offices, medical)
+  * "weekdays-only" - Must be done Mon-Fri but flexible time
+  * "evenings" - Best done after work hours
+  * "weekends" - Best done Sat/Sun
+  * "anytime" - No constraints`;
   }
 
   /**
@@ -177,7 +199,7 @@ Respond with JSON array in this exact format (NOTE: taskIndex is ZERO-BASED, sta
 - Completed tasks: ${categoryHistory.count}`
       : '';
 
-    return `Estimate the time required to complete this task.
+    return `Estimate the time required to complete this task and identify scheduling constraints.
 
 Task: "${task.content}"
 ${task.description ? `Description: ${task.description}` : ''}
@@ -192,21 +214,49 @@ Also consider:
 - Actual work time
 - Teardown/cleanup time
 - Any research or decision-making needed
+- Travel time if the task requires going somewhere
+
+TIME BUCKETS - Estimate to fit ONE of these buckets:
+- 15 minutes or less
+- 30 minutes
+- 45 minutes
+- 1 hour (60 min)
+- 90 minutes
+- 2 hours (120 min)
+
+If a task would take MORE than 2 hours, it needs to be broken down into smaller subtasks.
+Set timeEstimateMinutes to null and needsBreakdown to true.
+
+If you cannot estimate the task (too vague, unclear scope, needs research first), 
+set timeEstimateMinutes to null and needsBreakdown to true.
 
 Respond with JSON in this exact format:
 {
-  "estimate": "20-30min|30-45min|1-2hrs|etc",
+  "estimate": "15min|30min|45min|1hr|90min|2hr|needs-breakdown",
+  "timeEstimateMinutes": 30,
+  "needsBreakdown": false,
   "size": "XS|S|M|L|XL",
+  "requiresDriving": true|false,
+  "timeConstraint": "business-hours|weekdays-only|evenings|weekends|anytime",
   "confidence": 0.0-1.0,
-  "reasoning": "Explanation including why this time is needed"
+  "reasoning": "Explanation including why this time is needed and any scheduling considerations"
 }
 
 Size guide:
-- XS: < 5 minutes (very rare)
-- S: 5-15 minutes  
-- M: 15-30 minutes
-- L: 30-60 minutes
-- XL: > 60 minutes`;
+- XS: ≤15 minutes
+- S: 16-30 minutes  
+- M: 31-60 minutes
+- L: 61-120 minutes
+- XL: > 120 minutes (needs breakdown!)
+
+Scheduling constraints:
+- requiresDriving: Does this require physically going somewhere? (stores, appointments, offices)
+- timeConstraint options:
+  * "business-hours" - Must be done Mon-Fri 9am-5pm (banks, offices, business calls, medical appointments)
+  * "weekdays-only" - Must be done Mon-Fri but flexible time (contractor meetings, deliveries)
+  * "evenings" - Best done after work hours (family activities, personal projects)
+  * "weekends" - Best done Sat/Sun (yard work, home improvement, family time)
+  * "anytime" - No constraints (online tasks, flexible personal tasks)`;
   }
 
   /**
@@ -279,7 +329,69 @@ Priority to Todoist mapping:
 - "archive" → todoistPriority: 1 (mark for archival)`;
   }
 
-  // Additional prompt methods will be added as I continue the migration...
-  // For now, these are the core ones used by the operations service
+  /**
+   * Prompt for generating task insights
+   */
+  getInsightsPrompt(
+    completedTasks: TaskHistory[],
+    activeTasks: Task[],
+  ): string {
+    // Build a summary of completed tasks (limit to avoid token overflow)
+    const completedSummary = completedTasks.slice(0, 50).map((h) => {
+      const duration = h.durationMinutes ? `${h.durationMinutes}min` : 'unknown duration';
+      return `- "${h.taskContent}" (${h.category || 'uncategorized'}, ${duration})`;
+    }).join('\n');
+
+    // Build a summary of active tasks (limit to avoid token overflow)
+    const activeSummary = activeTasks.slice(0, 100).map((t) => {
+      const age = Math.floor((Date.now() - new Date(t.createdAt).getTime()) / (1000 * 60 * 60 * 24));
+      const category = t.metadata?.category || 'inbox';
+      const estimate = t.metadata?.timeEstimate || 'no estimate';
+      return `- "${t.content}" (${category}, ${estimate}, ${age} days old)`;
+    }).join('\n');
+
+    // Category distribution for active tasks
+    const categoryDistribution = activeTasks.reduce((acc, t) => {
+      const cat = t.metadata?.category || 'inbox';
+      acc[cat] = (acc[cat] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+
+    return `Analyze task management patterns from the following data.
+
+COMPLETED TASKS (Last 30 days, showing up to 50):
+${completedSummary || 'No completed tasks in this period.'}
+
+ACTIVE TASKS (${activeTasks.length} total, showing up to 100):
+${activeSummary || 'No active tasks.'}
+
+CATEGORY DISTRIBUTION (active tasks):
+${Object.entries(categoryDistribution).map(([cat, count]) => `- ${cat}: ${count}`).join('\n')}
+
+Based on this data, provide insights about:
+1. Completion patterns (what types of tasks get done vs. languish)
+2. Potential bottlenecks or problem areas
+3. Time estimation accuracy (if data available)
+4. Category imbalances
+5. Actionable recommendations
+
+Respond with JSON in this exact format:
+{
+  "insights": "A 2-3 sentence high-level summary of the most important findings",
+  "recommendations": [
+    "Specific actionable recommendation 1",
+    "Specific actionable recommendation 2",
+    "Specific actionable recommendation 3"
+  ],
+  "patterns": [
+    {
+      "observation": "What you noticed",
+      "category": "completion|bottleneck|time|balance|other",
+      "significance": "high|medium|low"
+    }
+  ],
+  "summary": "One sentence TL;DR for quick reference"
+}`;
+  }
 }
 

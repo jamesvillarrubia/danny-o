@@ -481,6 +481,7 @@ export class AIOperationsService {
     // Build prompt with structured statistics (not raw task lists)
     const prompt = this.prompts.getInsightsPrompt(stats);
     const result = await this.claude.query(prompt, {
+      temperature: 0.3, // Lower temperature for more deterministic JSON output
       interactionType: 'insights',
       inputContext: {
         totalActive: stats.totalActive,

@@ -361,7 +361,9 @@ Priority to Todoist mapping:
       .map(l => `  - ${l.label}: ${l.count} tasks`)
       .join('\n');
 
-    return `Analyze the following PRE-COMPUTED task management statistics. These numbers are exact counts from the database - do not estimate or recalculate them.
+    return `You are a data analyst. Your response MUST be valid JSON only - no explanations, no markdown, no text before or after the JSON object.
+
+Analyze the following PRE-COMPUTED task management statistics. These numbers are exact counts from the database - do not estimate or recalculate them.
 
 === OVERVIEW ===
 Total active tasks: ${stats.totalActive}
@@ -401,13 +403,14 @@ ${labelList || '  (no labels)'}
 === STALEST TASKS (Candidates for Archival) ===
 ${staleTaskList || '  (none over 90 days)'}
 
-Based on these statistics, provide insights about:
+Based on these statistics, analyze:
 1. Productivity patterns (what's getting done vs. accumulating)
 2. Category imbalances (over/under-represented areas)
 3. Task hygiene issues (stale tasks, missing estimates, overdue items)
 4. Specific actionable recommendations
 
-Respond with JSON in this exact format:
+IMPORTANT: Respond with ONLY a JSON object, no other text. Use this exact structure:
+
 {
   "insights": "A 2-3 sentence high-level summary of the most important findings",
   "recommendations": [
@@ -423,7 +426,9 @@ Respond with JSON in this exact format:
     }
   ],
   "summary": "One sentence TL;DR for quick reference"
-}`;
+}
+
+Remember: Output ONLY the JSON object. No introduction, no explanation, no markdown code fences.`;
   }
 }
 

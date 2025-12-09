@@ -137,58 +137,78 @@
 
 /* ============================================
    Tremor/Recharts Chart Styling
-   More aggressive selectors to override defaults
+   Tailwind v4 doesn't generate these utility classes.
+   Tremor maps color names like 'blue' to classes like 'fill-blue-500'.
+   We must define these explicitly.
    ============================================ */
 
-/* Force chart bar/area/line colors via SVG fill/stroke */
-/* Blue - for daily completions area chart */
-.recharts-area-area[fill="#3b82f6"],
-.recharts-area path[fill="#3b82f6"],
-[class*="fill-blue-500"] { fill: #3b82f6 !important; }
-[class*="stroke-blue-500"] { stroke: #3b82f6 !important; }
-.recharts-line[stroke="#3b82f6"] { stroke: #3b82f6 !important; }
+/* === EXPLICIT TAILWIND UTILITY CLASSES FOR TREMOR === */
+/* Fill utilities - used for bar/area/pie fills */
+.fill-blue-500 { fill: #3b82f6; }
+.fill-violet-500 { fill: #8b5cf6; }
+.fill-cyan-500 { fill: #06b6d4; }
+.fill-emerald-500 { fill: #10b981; }
+.fill-yellow-500 { fill: #eab308; }
+.fill-red-500 { fill: #ef4444; }
+.fill-amber-500 { fill: #f59e0b; }
+.fill-indigo-500 { fill: #6366f1; }
+.fill-pink-500 { fill: #ec4899; }
+.fill-lime-500 { fill: #84cc16; }
+.fill-fuchsia-500 { fill: #d946ef; }
+.fill-gray-500 { fill: #6b7280; }
 
-/* Violet - for day of week bar chart */
-.recharts-bar-rectangle[fill="#8b5cf6"] path,
-[class*="fill-violet-500"] { fill: #8b5cf6 !important; }
-[class*="stroke-violet-500"] { stroke: #8b5cf6 !important; }
+/* Stroke utilities - used for line/area chart lines */
+.stroke-blue-500 { stroke: #3b82f6; }
+.stroke-violet-500 { stroke: #8b5cf6; }
+.stroke-cyan-500 { stroke: #06b6d4; }
+.stroke-emerald-500 { stroke: #10b981; }
+.stroke-yellow-500 { stroke: #eab308; }
+.stroke-red-500 { stroke: #ef4444; }
+.stroke-amber-500 { stroke: #f59e0b; }
+.stroke-indigo-500 { stroke: #6366f1; }
+.stroke-pink-500 { stroke: #ec4899; }
+.stroke-lime-500 { stroke: #84cc16; }
+.stroke-fuchsia-500 { stroke: #d946ef; }
+.stroke-gray-500 { stroke: #6b7280; }
 
-/* Cyan - for age distribution bar chart */  
-.recharts-bar-rectangle[fill="#06b6d4"] path,
-[class*="fill-cyan-500"] { fill: #06b6d4 !important; }
-[class*="stroke-cyan-500"] { stroke: #06b6d4 !important; }
+/* Background utilities - used for legend dots */
+.bg-blue-500 { background-color: #3b82f6; }
+.bg-violet-500 { background-color: #8b5cf6; }
+.bg-cyan-500 { background-color: #06b6d4; }
+.bg-emerald-500 { background-color: #10b981; }
+.bg-yellow-500 { background-color: #eab308; }
+.bg-red-500 { background-color: #ef4444; }
+.bg-amber-500 { background-color: #f59e0b; }
+.bg-indigo-500 { background-color: #6366f1; }
+.bg-pink-500 { background-color: #ec4899; }
+.bg-lime-500 { background-color: #84cc16; }
+.bg-fuchsia-500 { background-color: #d946ef; }
+.bg-gray-500 { background-color: #6b7280; }
 
-/* Emerald - for procrastination donut */
-[class*="fill-emerald-500"] { fill: #10b981 !important; }
-[class*="stroke-emerald-500"] { stroke: #10b981 !important; }
+/* Text color utilities */
+.text-blue-500 { color: #3b82f6; }
+.text-violet-500 { color: #8b5cf6; }
+.text-cyan-500 { color: #06b6d4; }
+.text-emerald-500 { color: #10b981; }
+.text-yellow-500 { color: #eab308; }
+.text-red-500 { color: #ef4444; }
+.text-amber-500 { color: #f59e0b; }
 
-/* Yellow */
-[class*="fill-yellow-500"] { fill: #eab308 !important; }
-[class*="stroke-yellow-500"] { stroke: #eab308 !important; }
+/* Light shades for gradients */
+.fill-blue-200 { fill: #bfdbfe; }
+.fill-violet-200 { fill: #ddd6fe; }
+.fill-cyan-200 { fill: #a5f3fc; }
+.fill-emerald-200 { fill: #a7f3d0; }
 
-/* Red */
-[class*="fill-red-500"] { fill: #ef4444 !important; }
-[class*="stroke-red-500"] { stroke: #ef4444 !important; }
+/* Area fill with opacity */
+.fill-blue-500\/30, .fill-blue-500\/20 { fill: rgba(59, 130, 246, 0.3); }
+.fill-violet-500\/30, .fill-violet-500\/20 { fill: rgba(139, 92, 246, 0.3); }
+.fill-cyan-500\/30, .fill-cyan-500\/20 { fill: rgba(6, 182, 212, 0.3); }
+.fill-emerald-500\/30, .fill-emerald-500\/20 { fill: rgba(16, 185, 129, 0.3); }
 
-/* Amber */
-[class*="fill-amber-500"] { fill: #f59e0b !important; }
-[class*="stroke-amber-500"] { stroke: #f59e0b !important; }
-
-/* Override black fills - Tremor sometimes defaults to black */
-.recharts-bar-rectangle path:not([fill]),
-.recharts-bar-rectangle rect:not([fill]) {
-  fill: #3b82f6 !important;
-}
-
-/* Recharts bar colors - direct SVG targeting */
-.recharts-rectangle.recharts-bar-rectangle {
-  fill: currentColor;
-}
-
-/* Area chart gradient and fill */
-.recharts-area-curve {
-  stroke-width: 2;
-}
+/* Area chart styling */
+.recharts-area-area { fill-opacity: 0.3; }
+.recharts-area-curve { stroke-width: 2; }
 
 /* ============================================
    Tooltip Styling - Multiple selector patterns

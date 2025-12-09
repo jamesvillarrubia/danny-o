@@ -15,6 +15,7 @@ import {
   AreaChart,
   DonutChart,
 } from '@tremor/react';
+import type { CustomTooltipProps } from '@tremor/react';
 import {
   TrendingUp,
   AlertTriangle,
@@ -31,6 +32,42 @@ import {
 } from 'lucide-react';
 import clsx from 'clsx';
 import { type ComprehensiveInsightsResponse } from '../api/client';
+
+/**
+ * Custom tooltip component for Tremor charts
+ * Styled to match the app's design system
+ */
+function ChartTooltip({ payload, active, label }: CustomTooltipProps) {
+  if (!active || !payload || payload.length === 0) return null;
+
+  return (
+    <div className="bg-white border border-zinc-200 rounded-lg shadow-lg p-3 min-w-[120px]">
+      {label && (
+        <p className="text-sm font-medium text-zinc-900 mb-2 pb-2 border-b border-zinc-100">
+          {label}
+        </p>
+      )}
+      <div className="space-y-1">
+        {payload.map((item, index) => (
+          <div key={index} className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-2">
+              <div 
+                className="w-2.5 h-2.5 rounded-full" 
+                style={{ backgroundColor: item.color || '#3b82f6' }}
+              />
+              <span className="text-xs text-zinc-500">
+                {item.name || item.dataKey}
+              </span>
+            </div>
+            <span className="text-sm font-semibold text-zinc-900">
+              {typeof item.value === 'number' ? item.value.toLocaleString() : item.value}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 interface InsightsViewProps {
   /** Pre-loaded insights data (managed at App level) */

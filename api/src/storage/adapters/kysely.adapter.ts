@@ -1066,18 +1066,19 @@ export class KyselyAdapter implements IStorageAdapter {
       .executeTakeFirst();
     const totalCompletedLast30Days = Number(completedCountResult?.count || 0);
 
-    // 3. Active tasks by category (excluding backlog projects)
-    let activeByCategoryQuery = db
+    // 3. Active tasks by project (excluding backlog projects)
+    // Group by actual project name, with "Inbox" for tasks with no project
+    let activeByProjectQuery = db
       .selectFrom('tasks')
-      .leftJoin('task_metadata', 'tasks.id', 'task_metadata.task_id')
+      .leftJoin('projects', 'tasks.project_id', 'projects.id')
       .select([
-        sql<string>`COALESCE(task_metadata.category, 'inbox')`.as('category'),
+        sql<string>`COALESCE(projects.name, 'Inbox')`.as('project_name'),
         sql<number>`COUNT(*)`.as('count'),
       ])
       .where('tasks.is_completed', '=', 0);
     
     if (hasBacklogExclusions) {
-      activeByCategoryQuery = activeByCategoryQuery.where(eb => 
+      activeByProjectQuery = activeByProjectQuery.where(eb => 
         eb.or([
           eb('tasks.project_id', 'is', null),
           eb('tasks.project_id', 'not in', backlogProjectIds),
@@ -1085,13 +1086,14 @@ export class KyselyAdapter implements IStorageAdapter {
       );
     }
     
-    const activeByCategoryRows = await activeByCategoryQuery
-      .groupBy(sql`COALESCE(task_metadata.category, 'inbox')`)
+    const activeByProjectRows = await activeByProjectQuery
+      .groupBy(sql`COALESCE(projects.name, 'Inbox')`)
       .execute();
     
+    // Use activeByCategory name for compatibility with existing interface
     const activeByCategory: Record<string, number> = {};
-    for (const row of activeByCategoryRows) {
-      activeByCategory[row.category || 'inbox'] = Number(row.count);
+    for (const row of activeByProjectRows) {
+      activeByCategory[row.project_name || 'Inbox'] = Number(row.count);
     }
 
     // 4. Completed tasks by category (last 30 days)

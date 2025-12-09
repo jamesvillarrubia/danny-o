@@ -389,6 +389,7 @@ export function InsightsView({ data, isLoading, error, onRefresh, onTaskClick }:
                     category="name"
                     value="value"
                     showLabel={true}
+                    showLegend={false}
                     valueFormatter={(value) => `${value}`}
                   />
                 </div>
@@ -451,6 +452,8 @@ export function InsightsView({ data, isLoading, error, onRefresh, onTaskClick }:
                     category="name"
                     value="value"
                     colors={['emerald', 'yellow', 'red']}
+                    showLabel={true}
+                    showLegend={false}
                     valueFormatter={(value) => `${value}`}
                   />
                 </div>

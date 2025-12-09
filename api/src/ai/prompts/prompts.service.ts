@@ -6,7 +6,7 @@
  */
 
 import { Injectable } from '@nestjs/common';
-import { Task, TaskHistory } from '../../common/interfaces';
+import { Task, TaskHistory, TaskInsightStats } from '../../common/interfaces';
 
 interface Label {
   id: string;
@@ -330,63 +330,95 @@ Priority to Todoist mapping:
   }
 
   /**
-   * Prompt for generating task insights
+   * Prompt for generating task insights from pre-computed statistics
+   * Statistics are computed in SQL, not by the AI (for accuracy)
    */
-  getInsightsPrompt(
-    completedTasks: TaskHistory[],
-    activeTasks: Task[],
-  ): string {
-    // Build a summary of completed tasks (limit to avoid token overflow)
-    const completedSummary = completedTasks.slice(0, 50).map((h) => {
-      const duration = h.durationMinutes ? `${h.durationMinutes}min` : 'unknown duration';
-      return `- "${h.taskContent}" (${h.category || 'uncategorized'}, ${duration})`;
-    }).join('\n');
+  getInsightsPrompt(stats: TaskInsightStats): string {
+    // Format category distributions
+    const activeCategoryList = Object.entries(stats.activeByCategory)
+      .sort((a, b) => b[1] - a[1])
+      .map(([cat, count]) => `  - ${cat}: ${count}`)
+      .join('\n');
 
-    // Build a summary of active tasks (limit to avoid token overflow)
-    const activeSummary = activeTasks.slice(0, 100).map((t) => {
-      const age = Math.floor((Date.now() - new Date(t.createdAt).getTime()) / (1000 * 60 * 60 * 24));
-      const category = t.metadata?.category || 'inbox';
-      const estimate = t.metadata?.timeEstimate || 'no estimate';
-      return `- "${t.content}" (${category}, ${estimate}, ${age} days old)`;
-    }).join('\n');
+    const completedCategoryList = Object.entries(stats.completedByCategory)
+      .sort((a, b) => b[1] - a[1])
+      .map(([cat, count]) => `  - ${cat}: ${count}`)
+      .join('\n');
 
-    // Category distribution for active tasks
-    const categoryDistribution = activeTasks.reduce((acc, t) => {
-      const cat = t.metadata?.category || 'inbox';
-      acc[cat] = (acc[cat] || 0) + 1;
-      return acc;
-    }, {} as Record<string, number>);
+    // Format completion times
+    const completionTimeList = Object.entries(stats.avgCompletionTimeByCategory)
+      .filter(([, time]) => time !== null)
+      .map(([cat, time]) => `  - ${cat}: ${Math.round(time as number)} min avg`)
+      .join('\n');
 
-    return `Analyze task management patterns from the following data.
+    // Format stale tasks for archival suggestions
+    const staleTaskList = stats.stalestTasks
+      .map(t => `  - "${t.content}" (${t.category}, ${t.ageInDays} days old)`)
+      .join('\n');
 
-COMPLETED TASKS (Last 30 days, showing up to 50):
-${completedSummary || 'No completed tasks in this period.'}
+    // Format top labels
+    const labelList = stats.topLabels
+      .map(l => `  - ${l.label}: ${l.count} tasks`)
+      .join('\n');
 
-ACTIVE TASKS (${activeTasks.length} total, showing up to 100):
-${activeSummary || 'No active tasks.'}
+    return `Analyze the following PRE-COMPUTED task management statistics. These numbers are exact counts from the database - do not estimate or recalculate them.
 
-CATEGORY DISTRIBUTION (active tasks):
-${Object.entries(categoryDistribution).map(([cat, count]) => `- ${cat}: ${count}`).join('\n')}
+=== OVERVIEW ===
+Total active tasks: ${stats.totalActive}
+Completed in last 30 days: ${stats.totalCompletedLast30Days}
 
-Based on this data, provide insights about:
-1. Completion patterns (what types of tasks get done vs. languish)
-2. Potential bottlenecks or problem areas
-3. Time estimation accuracy (if data available)
-4. Category imbalances
-5. Actionable recommendations
+=== ACTIVE TASKS BY CATEGORY ===
+${activeCategoryList || '  (no data)'}
+
+=== COMPLETED TASKS BY CATEGORY (Last 30 Days) ===
+${completedCategoryList || '  (no data)'}
+
+=== TASK AGE DISTRIBUTION (Active Tasks) ===
+  - Recent (<7 days): ${stats.taskAgeBuckets.recent}
+  - 7-30 days: ${stats.taskAgeBuckets.week}
+  - 30-90 days: ${stats.taskAgeBuckets.month}
+  - Stale (90+ days): ${stats.taskAgeBuckets.stale}
+
+=== COMPLETION METRICS ===
+  - 7-day completion rate: ${(stats.completionRateLast7Days * 100).toFixed(1)}%
+  - 30-day completion rate: ${(stats.completionRateLast30Days * 100).toFixed(1)}%
+
+=== AVERAGE COMPLETION TIME BY CATEGORY ===
+${completionTimeList || '  (no data)'}
+
+=== ESTIMATE COVERAGE ===
+  - Tasks with time estimates: ${stats.tasksWithEstimates}
+  - Tasks without estimates: ${stats.tasksWithoutEstimates}
+  - Coverage: ${stats.totalActive > 0 ? ((stats.tasksWithEstimates / stats.totalActive) * 100).toFixed(1) : 0}%
+
+=== DUE DATE STATUS ===
+  - Overdue tasks: ${stats.overdueTasks}
+  - Due in next 7 days: ${stats.dueSoon}
+
+=== TOP LABELS (Active Tasks) ===
+${labelList || '  (no labels)'}
+
+=== STALEST TASKS (Candidates for Archival) ===
+${staleTaskList || '  (none over 90 days)'}
+
+Based on these statistics, provide insights about:
+1. Productivity patterns (what's getting done vs. accumulating)
+2. Category imbalances (over/under-represented areas)
+3. Task hygiene issues (stale tasks, missing estimates, overdue items)
+4. Specific actionable recommendations
 
 Respond with JSON in this exact format:
 {
   "insights": "A 2-3 sentence high-level summary of the most important findings",
   "recommendations": [
     "Specific actionable recommendation 1",
-    "Specific actionable recommendation 2",
+    "Specific actionable recommendation 2", 
     "Specific actionable recommendation 3"
   ],
   "patterns": [
     {
-      "observation": "What you noticed",
-      "category": "completion|bottleneck|time|balance|other",
+      "observation": "What you noticed in the data",
+      "category": "productivity|balance|hygiene|bottleneck|other",
       "significance": "high|medium|low"
     }
   ],

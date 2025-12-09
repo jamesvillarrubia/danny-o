@@ -467,30 +467,26 @@ export class AIOperationsService {
 
   /**
    * Analyze completion patterns and provide insights
+   * Uses pre-computed statistics from the database (not raw task data)
    */
   async generateInsights(): Promise<InsightsDto> {
     this.logger.log('Generating insights...');
 
-    // Get recent history
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    // Get pre-computed statistics from the database
+    // This is more accurate and uses fewer tokens than sending raw task data
+    const stats = await this.storage.getTaskInsightStats();
 
-    const history = await this.storage.getTaskHistory({
-      startDate: thirtyDaysAgo,
-      limit: 1000,
-    });
+    this.logger.log(`Stats: ${stats.totalActive} active, ${stats.totalCompletedLast30Days} completed (30d), ${stats.taskAgeBuckets.stale} stale`);
 
-    const currentTasks = await this.storage.getTasks({ completed: false });
-
-    this.logger.log(`Analyzing ${history.length} completed tasks and ${currentTasks.length} active tasks`);
-
-    // Build a proper prompt with actual task data
-    const prompt = this.prompts.getInsightsPrompt(history, currentTasks);
+    // Build prompt with structured statistics (not raw task lists)
+    const prompt = this.prompts.getInsightsPrompt(stats);
     const result = await this.claude.query(prompt, {
       interactionType: 'insights',
       inputContext: {
-        completedTaskCount: history.length,
-        activeTaskCount: currentTasks.length,
+        totalActive: stats.totalActive,
+        totalCompletedLast30Days: stats.totalCompletedLast30Days,
+        staleTaskCount: stats.taskAgeBuckets.stale,
+        overdueTasks: stats.overdueTasks,
       },
     });
 

@@ -5,7 +5,7 @@
  * Implementations: SQLite, PostgreSQL, etc.
  */
 
-import { Task, TaskMetadata, TaskHistory, Project, Label, TaskFilters } from './task.interface';
+import { Task, TaskMetadata, TaskHistory, Project, Label, TaskFilters, TaskInsightStats } from './task.interface';
 
 export interface SyncState {
   taskState: any;
@@ -110,6 +110,12 @@ export abstract class IStorageAdapter {
     avgDuration: number;
     commonPatterns: string[];
   }>;
+
+  /**
+   * Get pre-computed statistics for task insights
+   * Aggregations are done in SQL, not by the AI
+   */
+  abstract getTaskInsightStats(): Promise<TaskInsightStats>;
 
   // ==================== Projects & Labels ====================
 

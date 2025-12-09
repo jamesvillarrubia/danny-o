@@ -78,9 +78,9 @@ function ChartLegend({ payload }: LegendProps) {
   if (!payload?.length) return null;
   
   return (
-    <div className="flex flex-wrap justify-center gap-3 mt-3">
+    <div className="flex flex-wrap justify-center gap-x-3 gap-y-1 mt-2">
       {payload.map((entry, index) => (
-        <div key={index} className="flex items-center gap-1.5">
+        <div key={index} className="flex items-center gap-1">
           <span
             className="w-2 h-2 rounded-full"
             style={{ backgroundColor: entry.color }}

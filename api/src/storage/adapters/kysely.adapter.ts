@@ -1351,24 +1351,29 @@ export class KyselyAdapter implements IStorageAdapter {
 
     // 16. Procrastination stats (tasks with due dates)
     // Use dialect-specific date casting for comparison
+    // PostgreSQL: need to cast both completed_at and due_date to date for comparison
+    // SQLite: date() function works on both
     const completedDateExpr = isPg 
       ? 'task_history.completed_at::date'
       : 'date(task_history.completed_at)';
+    const dueDateExpr = isPg
+      ? 'tasks.due_date::date'
+      : 'tasks.due_date';
     
     const procrastinationRows = await db
       .selectFrom('task_history')
       .innerJoin('tasks', 'task_history.task_id', 'tasks.id')
       .select([
         sql<number>`SUM(CASE 
-          WHEN tasks.due_date IS NOT NULL AND ${sql.raw(completedDateExpr)} < tasks.due_date THEN 1 
+          WHEN tasks.due_date IS NOT NULL AND ${sql.raw(completedDateExpr)} < ${sql.raw(dueDateExpr)} THEN 1 
           ELSE 0 
         END)`.as('onTime'),
         sql<number>`SUM(CASE 
-          WHEN tasks.due_date IS NOT NULL AND ${sql.raw(completedDateExpr)} = tasks.due_date THEN 1 
+          WHEN tasks.due_date IS NOT NULL AND ${sql.raw(completedDateExpr)} = ${sql.raw(dueDateExpr)} THEN 1 
           ELSE 0 
         END)`.as('lastMinute'),
         sql<number>`SUM(CASE 
-          WHEN tasks.due_date IS NOT NULL AND ${sql.raw(completedDateExpr)} > tasks.due_date THEN 1 
+          WHEN tasks.due_date IS NOT NULL AND ${sql.raw(completedDateExpr)} > ${sql.raw(dueDateExpr)} THEN 1 
           ELSE 0 
         END)`.as('late'),
       ])

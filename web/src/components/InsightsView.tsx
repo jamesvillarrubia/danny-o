@@ -2,20 +2,16 @@
  * Insights View Component
  * 
  * Comprehensive dashboard showing productivity statistics, behavioral patterns,
- * and AI-generated recommendations using Tremor charts.
+ * and AI-generated recommendations.
  * 
+ * Uses custom chart components (Tremor Raw style) built on Recharts.
  * Styled to match the app's design system (rounded-lg borders, zinc colors).
  * 
  * Data is managed at App level to persist across tab switches.
  */
 
 import { useState } from 'react';
-import {
-  BarChart,
-  AreaChart,
-  DonutChart,
-} from '@tremor/react';
-import type { CustomTooltipProps } from '@tremor/react';
+import { BarChart, AreaChart, DonutChart } from './charts';
 import {
   TrendingUp,
   AlertTriangle,
@@ -32,42 +28,6 @@ import {
 } from 'lucide-react';
 import clsx from 'clsx';
 import { type ComprehensiveInsightsResponse } from '../api/client';
-
-/**
- * Custom tooltip component for Tremor charts
- * Styled to match the app's design system
- */
-function ChartTooltip({ payload, active, label }: CustomTooltipProps) {
-  if (!active || !payload || payload.length === 0) return null;
-
-  return (
-    <div className="bg-white border border-zinc-200 rounded-lg shadow-lg p-3 min-w-[120px]">
-      {label && (
-        <p className="text-sm font-medium text-zinc-900 mb-2 pb-2 border-b border-zinc-100">
-          {label}
-        </p>
-      )}
-      <div className="space-y-1">
-        {payload.map((item, index) => (
-          <div key={index} className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-2">
-              <div 
-                className="w-2.5 h-2.5 rounded-full" 
-                style={{ backgroundColor: item.color || '#3b82f6' }}
-              />
-              <span className="text-xs text-zinc-500">
-                {item.name || item.dataKey}
-              </span>
-            </div>
-            <span className="text-sm font-semibold text-zinc-900">
-              {typeof item.value === 'number' ? item.value.toLocaleString() : item.value}
-            </span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 interface InsightsViewProps {
   /** Pre-loaded insights data (managed at App level) */
@@ -154,7 +114,7 @@ function InsightCallout({
   return (
     <div className={clsx('rounded-lg border p-3', styles[type])}>
       <div className="flex items-start gap-2">
-        {Icon && <Icon className={clsx('w-4 h-4 mt-0.5 flex-shrink-0', iconStyles[type])} />}
+        {Icon && <Icon className={clsx('w-4 h-4 mt-0.5 shrink-0', iconStyles[type])} />}
         <div>
           <p className="font-medium text-sm">{title}</p>
           <p className="text-sm mt-1 opacity-90">{children}</p>
@@ -353,7 +313,7 @@ export function InsightsView({ data, isLoading, error, onRefresh, onTaskClick }:
             <InsightCard>
               <h3 className="font-medium text-zinc-900">Daily Completions</h3>
               <p className="text-sm text-zinc-500">Tasks completed per day over the last 30 days</p>
-              <div className="tremor-chart-wrapper mt-4">
+              <div className="mt-4">
                 <AreaChart
                   className="h-64"
                   data={dailyCompletionsData}
@@ -361,7 +321,6 @@ export function InsightsView({ data, isLoading, error, onRefresh, onTaskClick }:
                   categories={['Completed']}
                   colors={['blue']}
                   showLegend={false}
-                  showAnimation={true}
                   curveType="monotone"
                   valueFormatter={(value) => `${value} tasks`}
                 />
@@ -372,7 +331,7 @@ export function InsightsView({ data, isLoading, error, onRefresh, onTaskClick }:
               <InsightCard>
                 <h3 className="font-medium text-zinc-900">Completions by Day</h3>
                 <p className="text-sm text-zinc-500">When do you get the most done?</p>
-                <div className="tremor-chart-wrapper mt-4">
+                <div className="mt-4">
                   <BarChart
                     className="h-40"
                     data={dayOfWeekData}
@@ -380,7 +339,6 @@ export function InsightsView({ data, isLoading, error, onRefresh, onTaskClick }:
                     categories={['completed']}
                     colors={['violet']}
                     showLegend={false}
-                    showAnimation={true}
                     valueFormatter={(value) => `${value}`}
                   />
                 </div>
@@ -397,7 +355,7 @@ export function InsightsView({ data, isLoading, error, onRefresh, onTaskClick }:
               <InsightCard>
                 <h3 className="font-medium text-zinc-900">Task Age Distribution</h3>
                 <p className="text-sm text-zinc-500">How old are your active tasks?</p>
-                <div className="tremor-chart-wrapper mt-4">
+                <div className="mt-4">
                   <BarChart
                     className="h-40"
                     data={ageDistributionData}
@@ -405,7 +363,6 @@ export function InsightsView({ data, isLoading, error, onRefresh, onTaskClick }:
                     categories={['tasks']}
                     colors={['cyan']}
                     showLegend={false}
-                    showAnimation={true}
                     valueFormatter={(value) => `${value}`}
                   />
                 </div>
@@ -425,13 +382,12 @@ export function InsightsView({ data, isLoading, error, onRefresh, onTaskClick }:
             <div className="grid sm:grid-cols-2 gap-4">
               <InsightCard>
                 <h3 className="font-medium text-zinc-900">Active Tasks by Category</h3>
-                <div className="tremor-chart-wrapper mt-4">
+                <div className="mt-4">
                   <DonutChart
                     className="h-52"
                     data={categoryData}
-                    index="name"
-                    category="value"
-                    showAnimation={true}
+                    category="name"
+                    value="value"
                     showLabel={true}
                     valueFormatter={(value) => `${value}`}
                   />
@@ -448,7 +404,7 @@ export function InsightsView({ data, isLoading, error, onRefresh, onTaskClick }:
                     .map(([category, data]) => (
                       <div key={category} className="flex items-center justify-between py-1.5 border-b border-zinc-100 last:border-0">
                         <span className="text-sm text-zinc-700 truncate">{category}</span>
-                        <span className="text-xs text-zinc-500 flex-shrink-0 ml-2">
+                        <span className="text-xs text-zinc-500 shrink-0 ml-2">
                           {data.completed} done
                           {data.avgDaysToComplete !== null && (
                             <span className="text-zinc-400"> · {data.avgDaysToComplete}d avg</span>
@@ -488,14 +444,13 @@ export function InsightsView({ data, isLoading, error, onRefresh, onTaskClick }:
               <InsightCard>
                 <h3 className="font-medium text-zinc-900">Procrastination Analysis</h3>
                 <p className="text-sm text-zinc-500">Completion timing vs due dates</p>
-                <div className="tremor-chart-wrapper mt-4">
+                <div className="mt-4">
                   <DonutChart
                     className="h-44"
                     data={procrastinationData}
-                    index="name"
-                    category="value"
+                    category="name"
+                    value="value"
                     colors={['emerald', 'yellow', 'red']}
-                    showAnimation={true}
                     valueFormatter={(value) => `${value}`}
                   />
                 </div>

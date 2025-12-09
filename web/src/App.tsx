@@ -23,7 +23,7 @@ import { useViews } from './hooks/useViews';
 import { useSettings } from './hooks/useSettings';
 import { useProjects } from './hooks/useProjects';
 import { useBackendHealth } from './hooks/useBackendHealth';
-import { createView, estimateTasksBatch, completeTask, reopenTask, getViewTasks, fullResyncTasks, enrichUrlTasks, getProductivityInsights } from './api/client';
+import { createView, estimateTasksBatch, completeTask, reopenTask, getViewTasks, fullResyncTasks, enrichUrlTasks, getProductivityInsights, getComprehensiveInsights } from './api/client';
 import type { Task, View, ChatResponse, DebugPayload } from './types';
 
 /** Duration in ms before completed tasks are removed from view (2 minutes) */
@@ -114,6 +114,11 @@ function AppContent() {
   const [isSyncingTodoist, setIsSyncingTodoist] = useState(false);
   const [isEnrichingUrls, setIsEnrichingUrls] = useState(false);
   const [isGettingInsights, setIsGettingInsights] = useState(false);
+  
+  // Insights data - persisted at app level so it doesn't reload on tab switch
+  const [insightsData, setInsightsData] = useState<Awaited<ReturnType<typeof getComprehensiveInsights>> | null>(null);
+  const [insightsLoading, setInsightsLoading] = useState(false);
+  const [insightsError, setInsightsError] = useState<string | null>(null);
   
   // Quick filter state
   const [sortBy, setSortBy] = useState<SortOption>('due');
@@ -321,6 +326,27 @@ function AppContent() {
     setShowInsights(false);
     setSelectedTask(null);
   }, []);
+
+  /**
+   * Load comprehensive insights data
+   * Only loads if not already loaded or if force refresh
+   */
+  const loadInsights = useCallback(async (forceRefresh = false) => {
+    // Don't reload if we already have data (unless forcing refresh)
+    if (insightsData && !forceRefresh) return;
+    
+    setInsightsLoading(true);
+    setInsightsError(null);
+    try {
+      const data = await getComprehensiveInsights();
+      setInsightsData(data);
+    } catch (err) {
+      console.error('Failed to load insights:', err);
+      setInsightsError(err instanceof Error ? err.message : 'Failed to load insights');
+    } finally {
+      setInsightsLoading(false);
+    }
+  }, [insightsData]);
 
   /**
    * Generate time estimates for tasks that don't have them
@@ -672,6 +698,7 @@ function AppContent() {
           onInsightsClick={() => {
             setShowFiller(false);
             setShowInsights(true);
+            loadInsights(); // Load insights if not already loaded
           }}
           isInsightsActive={showInsights}
         />
@@ -692,6 +719,10 @@ function AppContent() {
           {showInsights ? (
             <div className="flex-1 overflow-y-auto bg-zinc-50">
               <InsightsView
+                data={insightsData}
+                isLoading={insightsLoading}
+                error={insightsError}
+                onRefresh={() => loadInsights(true)}
                 onTaskClick={(taskId) => {
                   // Could navigate to task or show task detail
                   const task = allTasks.find(t => t.id === taskId);

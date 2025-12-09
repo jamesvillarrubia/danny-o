@@ -1019,12 +1019,43 @@ export class KyselyAdapter implements IStorageAdapter {
     const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
     const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
 
-    // 1. Get total active tasks count
-    const activeCountResult = await db
+    // === BACKLOG PROJECT EXCLUSION ===
+    // These are long-term idea storage projects that shouldn't count in productivity metrics.
+    // Get IDs of backlog projects to exclude from productivity metrics
+    const backlogProjectRows = await db
+      .selectFrom('projects')
+      .select('id')
+      .where(eb => eb.or([
+        eb('name', '=', 'Big Ideas'),
+        eb('name', '=', 'Inspiration'),
+        eb('name', 'like', '%Home Renovation%'),
+        eb('name', 'like', '%Home Improvement%'),
+      ]))
+      .execute();
+    
+    const backlogProjectIds = backlogProjectRows.map(r => r.id);
+    
+    this.logger.log(`Excluding ${backlogProjectIds.length} backlog projects from productivity metrics`);
+
+    // Helper to check if we have backlog projects to exclude
+    const hasBacklogExclusions = backlogProjectIds.length > 0;
+
+    // 1. Get total active tasks count (excluding backlog projects)
+    let activeCountQuery = db
       .selectFrom('tasks')
       .select(sql<number>`COUNT(*)`.as('count'))
-      .where('is_completed', '=', 0)
-      .executeTakeFirst();
+      .where('is_completed', '=', 0);
+    
+    if (hasBacklogExclusions) {
+      activeCountQuery = activeCountQuery.where(eb => 
+        eb.or([
+          eb('project_id', 'is', null),
+          eb('project_id', 'not in', backlogProjectIds),
+        ])
+      );
+    }
+    
+    const activeCountResult = await activeCountQuery.executeTakeFirst();
     const totalActive = Number(activeCountResult?.count || 0);
 
     // 2. Get completed tasks count (last 30 days)
@@ -1068,8 +1099,8 @@ export class KyselyAdapter implements IStorageAdapter {
       completedByCategory[row.category || 'inbox'] = Number(row.count);
     }
 
-    // 5. Age distribution of active tasks
-    const ageBucketsResult = await db
+    // 5. Age distribution of active tasks (excluding backlog projects)
+    let ageBucketsQuery = db
       .selectFrom('tasks')
       .select([
         sql<number>`SUM(CASE WHEN created_at >= ${sevenDaysAgo.toISOString()} THEN 1 ELSE 0 END)`.as('recent'),
@@ -1077,8 +1108,18 @@ export class KyselyAdapter implements IStorageAdapter {
         sql<number>`SUM(CASE WHEN created_at < ${thirtyDaysAgo.toISOString()} AND created_at >= ${ninetyDaysAgo.toISOString()} THEN 1 ELSE 0 END)`.as('month'),
         sql<number>`SUM(CASE WHEN created_at < ${ninetyDaysAgo.toISOString()} THEN 1 ELSE 0 END)`.as('stale'),
       ])
-      .where('is_completed', '=', 0)
-      .executeTakeFirst();
+      .where('is_completed', '=', 0);
+    
+    if (hasBacklogExclusions) {
+      ageBucketsQuery = ageBucketsQuery.where(eb => 
+        eb.or([
+          eb('project_id', 'is', null),
+          eb('project_id', 'not in', backlogProjectIds),
+        ])
+      );
+    }
+    
+    const ageBucketsResult = await ageBucketsQuery.executeTakeFirst();
 
     const taskAgeBuckets = {
       recent: Number(ageBucketsResult?.recent || 0),
@@ -1103,12 +1144,22 @@ export class KyselyAdapter implements IStorageAdapter {
       avgCompletionTimeByCategory[row.category || 'inbox'] = row.avgDuration ? Number(row.avgDuration) : null;
     }
 
-    // 7. Completion rates
-    const tasksCreatedLast7Days = await db
+    // 7. Completion rates (excluding backlog projects for created task counts)
+    let tasksCreated7Query = db
       .selectFrom('tasks')
       .select(sql<number>`COUNT(*)`.as('count'))
-      .where('created_at', '>=', sevenDaysAgo.toISOString())
-      .executeTakeFirst();
+      .where('created_at', '>=', sevenDaysAgo.toISOString());
+    
+    if (hasBacklogExclusions) {
+      tasksCreated7Query = tasksCreated7Query.where(eb => 
+        eb.or([
+          eb('project_id', 'is', null),
+          eb('project_id', 'not in', backlogProjectIds),
+        ])
+      );
+    }
+    
+    const tasksCreatedLast7Days = await tasksCreated7Query.executeTakeFirst();
     
     const tasksCompletedLast7Days = await db
       .selectFrom('task_history')
@@ -1120,49 +1171,89 @@ export class KyselyAdapter implements IStorageAdapter {
     const completed7 = Number(tasksCompletedLast7Days?.count || 0);
     const completionRateLast7Days = created7 > 0 ? completed7 / created7 : 0;
 
-    const tasksCreatedLast30Days = await db
+    let tasksCreated30Query = db
       .selectFrom('tasks')
       .select(sql<number>`COUNT(*)`.as('count'))
-      .where('created_at', '>=', thirtyDaysAgo.toISOString())
-      .executeTakeFirst();
+      .where('created_at', '>=', thirtyDaysAgo.toISOString());
+    
+    if (hasBacklogExclusions) {
+      tasksCreated30Query = tasksCreated30Query.where(eb => 
+        eb.or([
+          eb('project_id', 'is', null),
+          eb('project_id', 'not in', backlogProjectIds),
+        ])
+      );
+    }
+    
+    const tasksCreatedLast30Days = await tasksCreated30Query.executeTakeFirst();
     
     const created30 = Number(tasksCreatedLast30Days?.count || 0);
     const completionRateLast30Days = created30 > 0 ? totalCompletedLast30Days / created30 : 0;
 
-    // 8. Estimate coverage
-    const estimateCoverageResult = await db
+    // 8. Estimate coverage (excluding backlog projects)
+    let estimateCoverageQuery = db
       .selectFrom('tasks')
       .leftJoin('task_metadata', 'tasks.id', 'task_metadata.task_id')
       .select([
         sql<number>`SUM(CASE WHEN task_metadata.time_estimate IS NOT NULL THEN 1 ELSE 0 END)`.as('withEstimates'),
         sql<number>`SUM(CASE WHEN task_metadata.time_estimate IS NULL THEN 1 ELSE 0 END)`.as('withoutEstimates'),
       ])
-      .where('tasks.is_completed', '=', 0)
-      .executeTakeFirst();
+      .where('tasks.is_completed', '=', 0);
+    
+    if (hasBacklogExclusions) {
+      estimateCoverageQuery = estimateCoverageQuery.where(eb => 
+        eb.or([
+          eb('tasks.project_id', 'is', null),
+          eb('tasks.project_id', 'not in', backlogProjectIds),
+        ])
+      );
+    }
+    
+    const estimateCoverageResult = await estimateCoverageQuery.executeTakeFirst();
 
     const tasksWithEstimates = Number(estimateCoverageResult?.withEstimates || 0);
     const tasksWithoutEstimates = Number(estimateCoverageResult?.withoutEstimates || 0);
 
-    // 9. Due date analysis
+    // 9. Due date analysis (excluding backlog projects)
     const nowStr = now.toISOString().split('T')[0]; // YYYY-MM-DD
     const sevenDaysFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
-    const overdueResult = await db
+    let overdueQuery = db
       .selectFrom('tasks')
       .select(sql<number>`COUNT(*)`.as('count'))
       .where('is_completed', '=', 0)
       .where('due_date', '<', nowStr)
-      .where('due_date', 'is not', null)
-      .executeTakeFirst();
+      .where('due_date', 'is not', null);
+    
+    if (hasBacklogExclusions) {
+      overdueQuery = overdueQuery.where(eb => 
+        eb.or([
+          eb('project_id', 'is', null),
+          eb('project_id', 'not in', backlogProjectIds),
+        ])
+      );
+    }
+    
+    const overdueResult = await overdueQuery.executeTakeFirst();
     const overdueTasks = Number(overdueResult?.count || 0);
 
-    const dueSoonResult = await db
+    let dueSoonQuery = db
       .selectFrom('tasks')
       .select(sql<number>`COUNT(*)`.as('count'))
       .where('is_completed', '=', 0)
       .where('due_date', '>=', nowStr)
-      .where('due_date', '<=', sevenDaysFromNow)
-      .executeTakeFirst();
+      .where('due_date', '<=', sevenDaysFromNow);
+    
+    if (hasBacklogExclusions) {
+      dueSoonQuery = dueSoonQuery.where(eb => 
+        eb.or([
+          eb('project_id', 'is', null),
+          eb('project_id', 'not in', backlogProjectIds),
+        ])
+      );
+    }
+    
+    const dueSoonResult = await dueSoonQuery.executeTakeFirst();
     const dueSoon = Number(dueSoonResult?.count || 0);
 
     // 10. Top labels on active tasks
@@ -1196,8 +1287,8 @@ export class KyselyAdapter implements IStorageAdapter {
       .slice(0, 10)
       .map(([label, count]) => ({ label, count }));
 
-    // 11. Stalest tasks (for archival suggestions)
-    const stalestTasksRows = await db
+    // 11. Stalest tasks (for archival suggestions, excluding backlog projects)
+    let stalestTasksQuery = db
       .selectFrom('tasks')
       .leftJoin('task_metadata', 'tasks.id', 'task_metadata.task_id')
       .select([
@@ -1207,7 +1298,18 @@ export class KyselyAdapter implements IStorageAdapter {
         sql<string>`COALESCE(task_metadata.category, 'inbox')`.as('category'),
       ])
       .where('tasks.is_completed', '=', 0)
-      .where('tasks.created_at', '<', ninetyDaysAgo.toISOString())
+      .where('tasks.created_at', '<', ninetyDaysAgo.toISOString());
+    
+    if (hasBacklogExclusions) {
+      stalestTasksQuery = stalestTasksQuery.where(eb => 
+        eb.or([
+          eb('tasks.project_id', 'is', null),
+          eb('tasks.project_id', 'not in', backlogProjectIds),
+        ])
+      );
+    }
+    
+    const stalestTasksRows = await stalestTasksQuery
       .orderBy('tasks.created_at', 'asc')
       .limit(10)
       .execute();

@@ -437,6 +437,73 @@ export async function getProductivityInsights(options?: {
   });
 }
 
+/**
+ * Comprehensive insights response type
+ */
+export interface ComprehensiveInsightsResponse {
+  stats: {
+    totalActive: number;
+    totalCompletedLast30Days: number;
+    activeByCategory: Record<string, number>;
+    completedByCategory: Record<string, number>;
+    taskAgeBuckets: {
+      recent: number;
+      week: number;
+      month: number;
+      stale: number;
+    };
+    completionRateLast7Days: number;
+    completionRateLast30Days: number;
+    tasksWithEstimates: number;
+    tasksWithoutEstimates: number;
+    overdueTasks: number;
+    dueSoon: number;
+    topLabels: Array<{ label: string; count: number }>;
+    stalestTasks: Array<{ id: string; content: string; ageInDays: number; category: string }>;
+    completionsByDayOfWeek: Record<string, number>;
+    dailyCompletions: Array<{ date: string; count: number }>;
+    currentStreak: number;
+    longestStreak: number;
+    lastCompletionDate: string | null;
+    productivityScore: number;
+    categoryVelocity: Record<string, { completed: number; avgDaysToComplete: number | null }>;
+    procrastinationStats: {
+      completedOnTime: number;
+      completedLastMinute: number;
+      completedLate: number;
+    };
+  };
+  aiAnalysis: {
+    summary: string;
+    keyFindings: Array<{
+      title: string;
+      description: string;
+      type: 'positive' | 'warning' | 'neutral';
+      significance: 'high' | 'medium' | 'low';
+    }>;
+    habits: {
+      good: string[];
+      needsWork: string[];
+    };
+    recommendations: Array<{
+      action: string;
+      reasoning: string;
+      priority: 'now' | 'soon' | 'later';
+    }>;
+  };
+  generatedAt: string;
+  periodDays: number;
+}
+
+/**
+ * Get comprehensive productivity insights with full stats and AI analysis.
+ */
+export async function getComprehensiveInsights(): Promise<ComprehensiveInsightsResponse> {
+  return fetchApi('/ai/insights/comprehensive', {
+    method: 'GET',
+  });
+}
+
 // ==================== Settings ====================
 
 /**

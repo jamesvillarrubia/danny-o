@@ -16,6 +16,7 @@
 import {
   Controller,
   Post,
+  Get,
   Body,
   HttpCode,
   HttpStatus,
@@ -602,6 +603,16 @@ export class AIController {
         mostProductiveCategory,
       },
     };
+  }
+
+  /**
+   * Get comprehensive productivity insights with full stats and AI analysis
+   * GET /v1/ai/insights/comprehensive
+   */
+  @Get('insights/comprehensive')
+  async getComprehensiveInsights() {
+    this.logger.log('Getting comprehensive insights');
+    return this.aiOps.generateComprehensiveInsights();
   }
 }
 

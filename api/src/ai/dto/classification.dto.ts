@@ -214,3 +214,79 @@ export class InsightsDto {
   summary?: string;
 }
 
+/**
+ * AI-generated analysis for comprehensive insights
+ */
+export class AIInsightsAnalysisDto {
+  @IsString()
+  summary: string;
+
+  @IsArray()
+  keyFindings: Array<{
+    title: string;
+    description: string;
+    type: 'positive' | 'warning' | 'neutral';
+    significance: 'high' | 'medium' | 'low';
+  }>;
+
+  @IsOptional()
+  habits?: {
+    good: string[];
+    needsWork: string[];
+  };
+
+  @IsArray()
+  recommendations: Array<{
+    action: string;
+    reasoning: string;
+    priority: 'now' | 'soon' | 'later';
+  }>;
+}
+
+/**
+ * Comprehensive insights response with stats and AI analysis
+ */
+export class ComprehensiveInsightsDto {
+  // Pre-computed statistics from the database
+  stats: {
+    totalActive: number;
+    totalCompletedLast30Days: number;
+    activeByCategory: Record<string, number>;
+    completedByCategory: Record<string, number>;
+    taskAgeBuckets: {
+      recent: number;
+      week: number;
+      month: number;
+      stale: number;
+    };
+    completionRateLast7Days: number;
+    completionRateLast30Days: number;
+    tasksWithEstimates: number;
+    tasksWithoutEstimates: number;
+    overdueTasks: number;
+    dueSoon: number;
+    topLabels: Array<{ label: string; count: number }>;
+    stalestTasks: Array<{ id: string; content: string; ageInDays: number; category: string }>;
+    // Behavioral metrics
+    completionsByDayOfWeek: Record<string, number>;
+    dailyCompletions: Array<{ date: string; count: number }>;
+    currentStreak: number;
+    longestStreak: number;
+    lastCompletionDate: string | null;
+    productivityScore: number;
+    categoryVelocity: Record<string, { completed: number; avgDaysToComplete: number | null }>;
+    procrastinationStats: {
+      completedOnTime: number;
+      completedLastMinute: number;
+      completedLate: number;
+    };
+  };
+
+  // AI-generated analysis
+  aiAnalysis: AIInsightsAnalysisDto;
+
+  // Metadata
+  generatedAt: string;
+  periodDays: number;
+}
+

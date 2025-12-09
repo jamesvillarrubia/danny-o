@@ -1193,6 +1193,171 @@ export class KyselyAdapter implements IStorageAdapter {
       category: row.category || 'inbox',
     }));
 
+    // 12. Completions by day of week (from task_history)
+    const dayOfWeekRows = await db
+      .selectFrom('task_history')
+      .select([
+        sql<string>`strftime('%w', completed_at)`.as('dayOfWeek'),
+        sql<number>`COUNT(*)`.as('count'),
+      ])
+      .where('completed_at', '>=', thirtyDaysAgo.toISOString())
+      .groupBy(sql`strftime('%w', completed_at)`)
+      .execute();
+
+    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const completionsByDayOfWeek: Record<string, number> = {};
+    for (const day of dayNames) {
+      completionsByDayOfWeek[day] = 0;
+    }
+    for (const row of dayOfWeekRows) {
+      const dayIndex = parseInt(row.dayOfWeek || '0', 10);
+      if (dayIndex >= 0 && dayIndex < 7) {
+        completionsByDayOfWeek[dayNames[dayIndex]] = Number(row.count);
+      }
+    }
+
+    // 13. Daily completions for trend chart (last 30 days)
+    const dailyCompletionsRows = await db
+      .selectFrom('task_history')
+      .select([
+        sql<string>`date(completed_at)`.as('date'),
+        sql<number>`COUNT(*)`.as('count'),
+      ])
+      .where('completed_at', '>=', thirtyDaysAgo.toISOString())
+      .groupBy(sql`date(completed_at)`)
+      .orderBy('date', 'asc')
+      .execute();
+
+    // Fill in missing dates with 0
+    const dailyCompletions: Array<{ date: string; count: number }> = [];
+    const dateMap = new Map(dailyCompletionsRows.map(r => [r.date, Number(r.count)]));
+    for (let i = 29; i >= 0; i--) {
+      const date = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
+      const dateStr = date.toISOString().split('T')[0];
+      dailyCompletions.push({
+        date: dateStr,
+        count: dateMap.get(dateStr) || 0,
+      });
+    }
+
+    // 14. Calculate streaks
+    let currentStreak = 0;
+    let longestStreak = 0;
+    let tempStreak = 0;
+    let lastCompletionDate: string | null = null;
+
+    // Get completion dates in order
+    const completionDatesRows = await db
+      .selectFrom('task_history')
+      .select(sql<string>`date(completed_at)`.as('date'))
+      .groupBy(sql`date(completed_at)`)
+      .orderBy('date', 'desc')
+      .execute();
+
+    if (completionDatesRows.length > 0) {
+      lastCompletionDate = completionDatesRows[0].date;
+      
+      // Calculate current streak (consecutive days from today/yesterday)
+      const today = now.toISOString().split('T')[0];
+      const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+      
+      let checkDate = completionDatesRows[0].date === today ? today : 
+                      completionDatesRows[0].date === yesterday ? yesterday : null;
+      
+      if (checkDate) {
+        let currentCheckDate: string = checkDate;
+        for (const row of completionDatesRows) {
+          if (row.date === currentCheckDate) {
+            currentStreak++;
+            const prevDate = new Date(new Date(currentCheckDate).getTime() - 24 * 60 * 60 * 1000);
+            currentCheckDate = prevDate.toISOString().split('T')[0];
+          } else {
+            break;
+          }
+        }
+      }
+
+      // Calculate longest streak
+      const sortedDates = completionDatesRows.map(r => r.date).sort();
+      tempStreak = 1;
+      for (let i = 1; i < sortedDates.length; i++) {
+        const prevDate = new Date(sortedDates[i - 1]);
+        const currDate = new Date(sortedDates[i]);
+        const diffDays = Math.round((currDate.getTime() - prevDate.getTime()) / (24 * 60 * 60 * 1000));
+        
+        if (diffDays === 1) {
+          tempStreak++;
+        } else {
+          longestStreak = Math.max(longestStreak, tempStreak);
+          tempStreak = 1;
+        }
+      }
+      longestStreak = Math.max(longestStreak, tempStreak, currentStreak);
+    }
+
+    // 15. Category velocity (avg days to complete by category)
+    const velocityRows = await db
+      .selectFrom('task_history')
+      .innerJoin('tasks', 'task_history.task_id', 'tasks.id')
+      .select([
+        sql<string>`COALESCE(task_history.category, 'inbox')`.as('category'),
+        sql<number>`COUNT(*)`.as('completed'),
+        sql<number>`AVG(julianday(task_history.completed_at) - julianday(tasks.created_at))`.as('avgDays'),
+      ])
+      .where('task_history.completed_at', '>=', thirtyDaysAgo.toISOString())
+      .groupBy(sql`COALESCE(task_history.category, 'inbox')`)
+      .execute();
+
+    const categoryVelocity: Record<string, { completed: number; avgDaysToComplete: number | null }> = {};
+    for (const row of velocityRows) {
+      categoryVelocity[row.category || 'inbox'] = {
+        completed: Number(row.completed),
+        avgDaysToComplete: row.avgDays ? Math.round(Number(row.avgDays) * 10) / 10 : null,
+      };
+    }
+
+    // 16. Procrastination stats (tasks with due dates)
+    const procrastinationRows = await db
+      .selectFrom('task_history')
+      .innerJoin('tasks', 'task_history.task_id', 'tasks.id')
+      .select([
+        sql<number>`SUM(CASE 
+          WHEN tasks.due_date IS NOT NULL AND date(task_history.completed_at) < tasks.due_date THEN 1 
+          ELSE 0 
+        END)`.as('onTime'),
+        sql<number>`SUM(CASE 
+          WHEN tasks.due_date IS NOT NULL AND date(task_history.completed_at) = tasks.due_date THEN 1 
+          ELSE 0 
+        END)`.as('lastMinute'),
+        sql<number>`SUM(CASE 
+          WHEN tasks.due_date IS NOT NULL AND date(task_history.completed_at) > tasks.due_date THEN 1 
+          ELSE 0 
+        END)`.as('late'),
+      ])
+      .where('task_history.completed_at', '>=', thirtyDaysAgo.toISOString())
+      .executeTakeFirst();
+
+    const procrastinationStats = {
+      completedOnTime: Number(procrastinationRows?.onTime || 0),
+      completedLastMinute: Number(procrastinationRows?.lastMinute || 0),
+      completedLate: Number(procrastinationRows?.late || 0),
+    };
+
+    // 17. Calculate productivity score (0-100)
+    // Factors: completion rate, streak, estimate coverage, overdue ratio, stale ratio
+    const completionScore = Math.min(completionRateLast30Days * 100, 40); // Max 40 points
+    const streakScore = Math.min(currentStreak * 5, 20); // Max 20 points
+    const estimateCoverage = totalActive > 0 ? (tasksWithEstimates / totalActive) : 0;
+    const estimateScore = estimateCoverage * 15; // Max 15 points
+    const overdueRatio = totalActive > 0 ? 1 - (overdueTasks / totalActive) : 1;
+    const overdueScore = overdueRatio * 15; // Max 15 points
+    const staleRatio = totalActive > 0 ? 1 - (taskAgeBuckets.stale / totalActive) : 1;
+    const staleScore = staleRatio * 10; // Max 10 points
+    
+    const productivityScore = Math.round(
+      completionScore + streakScore + estimateScore + overdueScore + staleScore
+    );
+
     return {
       totalActive,
       totalCompletedLast30Days,
@@ -1208,6 +1373,15 @@ export class KyselyAdapter implements IStorageAdapter {
       dueSoon,
       topLabels,
       stalestTasks,
+      // New behavioral metrics
+      completionsByDayOfWeek,
+      dailyCompletions,
+      currentStreak,
+      longestStreak,
+      lastCompletionDate,
+      productivityScore,
+      categoryVelocity,
+      procrastinationStats,
     };
   }
 

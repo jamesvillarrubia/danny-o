@@ -11,4 +11,5 @@ export * from './ChatInput';
 export * from './SettingsPanel';
 export * from './DebugPanel';
 export * from './FillerPanel';
+export * from './InsightsView';
 

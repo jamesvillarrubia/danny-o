@@ -17,6 +17,7 @@ import { SettingsPanel } from './components/SettingsPanel';
 import { FilterDisplay } from './components/FilterDisplay';
 import { DebugPanel } from './components/DebugPanel';
 import { FillerPanel } from './components/FillerPanel';
+import { InsightsView } from './components/InsightsView';
 import { useTasks } from './hooks/useTasks';
 import { useViews } from './hooks/useViews';
 import { useSettings } from './hooks/useSettings';
@@ -108,6 +109,7 @@ function AppContent() {
   
   // Filler panel state
   const [showFiller, setShowFiller] = useState(false);
+  const [showInsights, setShowInsights] = useState(false);
   const [isGeneratingEstimates, setIsGeneratingEstimates] = useState(false);
   const [isSyncingTodoist, setIsSyncingTodoist] = useState(false);
   const [isEnrichingUrls, setIsEnrichingUrls] = useState(false);
@@ -308,6 +310,7 @@ function AppContent() {
     setActiveFilter(null); // Clear active filter when manually changing views
     setTemporaryView(null);
     setShowFiller(false); // Exit filler mode when switching views
+    setShowInsights(false); // Exit insights mode when switching views
   }, []);
 
   /**
@@ -315,6 +318,7 @@ function AppContent() {
    */
   const handleFillerClick = useCallback(() => {
     setShowFiller(prev => !prev);
+    setShowInsights(false);
     setSelectedTask(null);
   }, []);
 
@@ -664,6 +668,12 @@ function AppContent() {
           showFillerTab={true}
           onFillerClick={handleFillerClick}
           isFillerActive={showFiller}
+          showInsightsTab={true}
+          onInsightsClick={() => {
+            setShowFiller(false);
+            setShowInsights(true);
+          }}
+          isInsightsActive={showInsights}
         />
         {/* Quick Filters - Hidden when in Filler mode */}
         {!showFiller && (
@@ -678,8 +688,21 @@ function AppContent() {
 
         {/* Main Content */}
         <div className="flex-1 overflow-hidden flex">
-          {/* Filler Panel - When filler mode is active */}
-          {showFiller ? (
+          {/* Insights View - When insights mode is active */}
+          {showInsights ? (
+            <div className="flex-1 overflow-y-auto bg-zinc-50">
+              <InsightsView
+                onTaskClick={(taskId) => {
+                  // Could navigate to task or show task detail
+                  const task = allTasks.find(t => t.id === taskId);
+                  if (task) {
+                    setSelectedTask(task);
+                  }
+                }}
+              />
+            </div>
+          ) : showFiller ? (
+            /* Filler Panel - When filler mode is active */
             <div className={`flex flex-col min-w-0 ${selectedTask ? 'hidden md:flex md:w-1/2 lg:w-2/5' : 'flex-1'}`}>
               <FillerPanel
                 tasks={allTasks}

@@ -199,5 +199,66 @@ export interface TaskInsightStats {
 
   // Stale task examples (for AI to suggest archiving)
   stalestTasks: Array<{ id: string; content: string; ageInDays: number; category: string }>;
+
+  // === Behavioral Patterns ===
+  
+  // Completion patterns by day of week (0=Sunday, 6=Saturday)
+  completionsByDayOfWeek: Record<string, number>;
+  
+  // Daily completion counts for trend chart (last 30 days)
+  dailyCompletions: Array<{ date: string; count: number }>;
+  
+  // Streaks and momentum
+  currentStreak: number;           // Consecutive days with at least 1 completion
+  longestStreak: number;           // Best streak ever
+  lastCompletionDate: string | null;
+  
+  // Productivity score (0-100 based on multiple factors)
+  productivityScore: number;
+  
+  // Category velocity - how fast tasks get done per category
+  categoryVelocity: Record<string, {
+    completed: number;
+    avgDaysToComplete: number | null;
+  }>;
+
+  // Tasks completed close to or after due date (procrastination indicator)
+  procrastinationStats: {
+    completedOnTime: number;      // Before due date
+    completedLastMinute: number;  // Within 24h of due
+    completedLate: number;        // After due date
+  };
+}
+
+/**
+ * Comprehensive insights response including AI analysis
+ */
+export interface ComprehensiveInsights {
+  // Pre-computed statistics
+  stats: TaskInsightStats;
+  
+  // AI-generated analysis
+  aiAnalysis: {
+    summary: string;
+    keyFindings: Array<{
+      title: string;
+      description: string;
+      type: 'positive' | 'warning' | 'neutral';
+      significance: 'high' | 'medium' | 'low';
+    }>;
+    habits: {
+      good: string[];
+      needsWork: string[];
+    };
+    recommendations: Array<{
+      action: string;
+      reasoning: string;
+      priority: 'now' | 'soon' | 'later';
+    }>;
+  };
+  
+  // Metadata
+  generatedAt: string;
+  periodDays: number;
 }
 

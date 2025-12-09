@@ -22,6 +22,7 @@ import {
   SupplyAnalysisDto,
   SearchResultDto,
   InsightsDto,
+  ComprehensiveInsightsDto,
 } from '../dto';
 
 interface Label {
@@ -493,6 +494,68 @@ export class AIOperationsService {
 
     this.logger.log('Insights generated');
     return result;
+  }
+
+  /**
+   * Generate comprehensive insights with full stats and AI analysis
+   * This is the enhanced version that returns everything for the Insights view
+   */
+  async generateComprehensiveInsights(): Promise<ComprehensiveInsightsDto> {
+    this.logger.log('Generating comprehensive insights...');
+
+    // Get pre-computed statistics from the database
+    const stats = await this.storage.getTaskInsightStats();
+
+    this.logger.log(`Stats: ${stats.totalActive} active, ${stats.totalCompletedLast30Days} completed (30d), score: ${stats.productivityScore}`);
+
+    // Build prompt and get AI analysis
+    const prompt = this.prompts.getInsightsPrompt(stats);
+    const aiResult = await this.claude.query(prompt, {
+      temperature: 0.3,
+      interactionType: 'comprehensive-insights',
+      inputContext: {
+        totalActive: stats.totalActive,
+        totalCompletedLast30Days: stats.totalCompletedLast30Days,
+        productivityScore: stats.productivityScore,
+        currentStreak: stats.currentStreak,
+      },
+    });
+
+    this.logger.log('Comprehensive insights generated');
+
+    return {
+      stats: {
+        totalActive: stats.totalActive,
+        totalCompletedLast30Days: stats.totalCompletedLast30Days,
+        activeByCategory: stats.activeByCategory,
+        completedByCategory: stats.completedByCategory,
+        taskAgeBuckets: stats.taskAgeBuckets,
+        completionRateLast7Days: stats.completionRateLast7Days,
+        completionRateLast30Days: stats.completionRateLast30Days,
+        tasksWithEstimates: stats.tasksWithEstimates,
+        tasksWithoutEstimates: stats.tasksWithoutEstimates,
+        overdueTasks: stats.overdueTasks,
+        dueSoon: stats.dueSoon,
+        topLabels: stats.topLabels,
+        stalestTasks: stats.stalestTasks,
+        completionsByDayOfWeek: stats.completionsByDayOfWeek,
+        dailyCompletions: stats.dailyCompletions,
+        currentStreak: stats.currentStreak,
+        longestStreak: stats.longestStreak,
+        lastCompletionDate: stats.lastCompletionDate,
+        productivityScore: stats.productivityScore,
+        categoryVelocity: stats.categoryVelocity,
+        procrastinationStats: stats.procrastinationStats,
+      },
+      aiAnalysis: {
+        summary: aiResult.summary || '',
+        keyFindings: aiResult.keyFindings || [],
+        habits: aiResult.habits || { good: [], needsWork: [] },
+        recommendations: aiResult.recommendations || [],
+      },
+      generatedAt: new Date().toISOString(),
+      periodDays: 30,
+    };
   }
 
   // ==================== Helper Methods ====================

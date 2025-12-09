@@ -330,7 +330,7 @@ Priority to Todoist mapping:
   }
 
   /**
-   * Prompt for generating task insights from pre-computed statistics
+   * Prompt for generating comprehensive task insights from pre-computed statistics
    * Statistics are computed in SQL, not by the AI (for accuracy)
    */
   getInsightsPrompt(stats: TaskInsightStats): string {
@@ -345,12 +345,6 @@ Priority to Todoist mapping:
       .map(([cat, count]) => `  - ${cat}: ${count}`)
       .join('\n');
 
-    // Format completion times
-    const completionTimeList = Object.entries(stats.avgCompletionTimeByCategory)
-      .filter(([, time]) => time !== null)
-      .map(([cat, time]) => `  - ${cat}: ${Math.round(time as number)} min avg`)
-      .join('\n');
-
     // Format stale tasks for archival suggestions
     const staleTaskList = stats.stalestTasks
       .map(t => `  - "${t.content}" (${t.category}, ${t.ageInDays} days old)`)
@@ -361,19 +355,46 @@ Priority to Todoist mapping:
       .map(l => `  - ${l.label}: ${l.count} tasks`)
       .join('\n');
 
-    return `You are a data analyst. Your response MUST be valid JSON only - no explanations, no markdown, no text before or after the JSON object.
+    // Format day of week completions
+    const dayOfWeekList = Object.entries(stats.completionsByDayOfWeek)
+      .map(([day, count]) => `  - ${day}: ${count}`)
+      .join('\n');
 
-Analyze the following PRE-COMPUTED task management statistics. These numbers are exact counts from the database - do not estimate or recalculate them.
+    // Format category velocity
+    const velocityList = Object.entries(stats.categoryVelocity)
+      .map(([cat, data]) => `  - ${cat}: ${data.completed} completed, avg ${data.avgDaysToComplete ?? '?'} days to complete`)
+      .join('\n');
+
+    // Find peak completion day
+    const peakDay = Object.entries(stats.completionsByDayOfWeek)
+      .sort((a, b) => b[1] - a[1])[0];
+
+    return `You are a productivity analyst and behavioral coach. Your response MUST be valid JSON only - no explanations, no markdown, no text before or after the JSON object.
+
+Analyze the following PRE-COMPUTED task management statistics. These numbers are exact counts from the database - do not estimate or recalculate them. Your job is to interpret patterns, identify habits (good and bad), and provide actionable recommendations.
 
 === OVERVIEW ===
 Total active tasks: ${stats.totalActive}
 Completed in last 30 days: ${stats.totalCompletedLast30Days}
+Productivity Score: ${stats.productivityScore}/100
+
+=== STREAKS & MOMENTUM ===
+Current streak: ${stats.currentStreak} consecutive days
+Longest streak: ${stats.longestStreak} days
+Last completion: ${stats.lastCompletionDate || 'Never'}
+
+=== COMPLETION PATTERNS BY DAY OF WEEK ===
+${dayOfWeekList}
+Peak productivity day: ${peakDay ? `${peakDay[0]} (${peakDay[1]} tasks)` : 'N/A'}
 
 === ACTIVE TASKS BY CATEGORY ===
 ${activeCategoryList || '  (no data)'}
 
 === COMPLETED TASKS BY CATEGORY (Last 30 Days) ===
 ${completedCategoryList || '  (no data)'}
+
+=== CATEGORY VELOCITY (How fast tasks get done) ===
+${velocityList || '  (no data)'}
 
 === TASK AGE DISTRIBUTION (Active Tasks) ===
   - Recent (<7 days): ${stats.taskAgeBuckets.recent}
@@ -385,8 +406,10 @@ ${completedCategoryList || '  (no data)'}
   - 7-day completion rate: ${(stats.completionRateLast7Days * 100).toFixed(1)}%
   - 30-day completion rate: ${(stats.completionRateLast30Days * 100).toFixed(1)}%
 
-=== AVERAGE COMPLETION TIME BY CATEGORY ===
-${completionTimeList || '  (no data)'}
+=== PROCRASTINATION ANALYSIS (tasks with due dates) ===
+  - Completed early/on-time: ${stats.procrastinationStats.completedOnTime}
+  - Completed on due date (last minute): ${stats.procrastinationStats.completedLastMinute}
+  - Completed late: ${stats.procrastinationStats.completedLate}
 
 === ESTIMATE COVERAGE ===
   - Tasks with time estimates: ${stats.tasksWithEstimates}
@@ -403,29 +426,37 @@ ${labelList || '  (no labels)'}
 === STALEST TASKS (Candidates for Archival) ===
 ${staleTaskList || '  (none over 90 days)'}
 
-Based on these statistics, analyze:
-1. Productivity patterns (what's getting done vs. accumulating)
-2. Category imbalances (over/under-represented areas)
-3. Task hygiene issues (stale tasks, missing estimates, overdue items)
-4. Specific actionable recommendations
+Analyze this data to identify:
+1. Behavioral patterns and habits
+2. Productivity strengths and weaknesses
+3. Categories being avoided vs. categories getting attention
+4. Procrastination tendencies
+5. Task hygiene issues
+6. Specific, actionable recommendations
 
-IMPORTANT: Respond with ONLY a JSON object, no other text. Use this exact structure:
+IMPORTANT: Respond with ONLY a JSON object. Use this exact structure:
 
 {
-  "insights": "A 2-3 sentence high-level summary of the most important findings",
-  "recommendations": [
-    "Specific actionable recommendation 1",
-    "Specific actionable recommendation 2", 
-    "Specific actionable recommendation 3"
-  ],
-  "patterns": [
+  "summary": "One sentence TL;DR capturing the most important insight",
+  "keyFindings": [
     {
-      "observation": "What you noticed in the data",
-      "category": "productivity|balance|hygiene|bottleneck|other",
+      "title": "Short finding title",
+      "description": "Detailed explanation of what this means",
+      "type": "positive|warning|neutral",
       "significance": "high|medium|low"
     }
   ],
-  "summary": "One sentence TL;DR for quick reference"
+  "habits": {
+    "good": ["Good habit 1 observed in the data", "Good habit 2"],
+    "needsWork": ["Habit that needs improvement 1", "Habit 2"]
+  },
+  "recommendations": [
+    {
+      "action": "Specific action to take",
+      "reasoning": "Why this will help based on the data",
+      "priority": "now|soon|later"
+    }
+  ]
 }
 
 Remember: Output ONLY the JSON object. No introduction, no explanation, no markdown code fences.`;

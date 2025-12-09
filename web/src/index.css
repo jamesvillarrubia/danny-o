@@ -2,6 +2,30 @@
 
 /* Custom theme overrides for Tailwind v4 */
 @theme {
+  /* Tremor chart colors - required for @tremor/react charts */
+  --color-tremor-brand: #f86a52;
+  --color-tremor-brand-muted: #ffd5cd;
+  --color-tremor-brand-faint: #fff5f3;
+  --color-tremor-content-DEFAULT: #3f3f46;
+  --color-tremor-content-subtle: #71717a;
+  --color-tremor-content-emphasis: #18181b;
+  --color-tremor-background-DEFAULT: #ffffff;
+  --color-tremor-background-muted: #fafafa;
+  --color-tremor-background-subtle: #f4f4f5;
+  --color-tremor-border-DEFAULT: #e4e4e7;
+  
+  /* Chart color palette for Tremor */
+  --color-blue-500: #3b82f6;
+  --color-violet-500: #8b5cf6;
+  --color-cyan-500: #06b6d4;
+  --color-emerald-500: #10b981;
+  --color-yellow-500: #eab308;
+  --color-red-500: #ef4444;
+  --color-indigo-500: #6366f1;
+  --color-rose-500: #f43f5e;
+  --color-amber-500: #f59e0b;
+  --color-teal-500: #14b8a6;
+
   /* Danny brand colors - warm coral/salmon palette */
   --color-danny-50: #fff5f3;
   --color-danny-100: #ffe8e4;
@@ -30,6 +54,158 @@
   --animate-slide-up: slideUp 0.2s ease-out;
   --animate-fade-in: fadeIn 0.15s ease-out;
   --animate-pulse-subtle: pulseSubtle 2s ease-in-out infinite;
+}
+
+/* ============================================
+   Tremor Chart Color & Tooltip Styling
+   Tremor v3 expects Tailwind v3 color system.
+   These explicit definitions fix Tailwind v4 compatibility.
+   ============================================ */
+
+/* Tremor uses these CSS variables for chart colors */
+:root {
+  /* Blue palette */
+  --tw-color-blue-50: #eff6ff;
+  --tw-color-blue-100: #dbeafe;
+  --tw-color-blue-200: #bfdbfe;
+  --tw-color-blue-300: #93c5fd;
+  --tw-color-blue-400: #60a5fa;
+  --tw-color-blue-500: #3b82f6;
+  --tw-color-blue-600: #2563eb;
+  --tw-color-blue-700: #1d4ed8;
+  
+  /* Violet palette */
+  --tw-color-violet-50: #f5f3ff;
+  --tw-color-violet-100: #ede9fe;
+  --tw-color-violet-200: #ddd6fe;
+  --tw-color-violet-300: #c4b5fd;
+  --tw-color-violet-400: #a78bfa;
+  --tw-color-violet-500: #8b5cf6;
+  --tw-color-violet-600: #7c3aed;
+  --tw-color-violet-700: #6d28d9;
+  
+  /* Cyan palette */
+  --tw-color-cyan-50: #ecfeff;
+  --tw-color-cyan-100: #cffafe;
+  --tw-color-cyan-200: #a5f3fc;
+  --tw-color-cyan-300: #67e8f9;
+  --tw-color-cyan-400: #22d3ee;
+  --tw-color-cyan-500: #06b6d4;
+  --tw-color-cyan-600: #0891b2;
+  --tw-color-cyan-700: #0e7490;
+  
+  /* Emerald palette */
+  --tw-color-emerald-50: #ecfdf5;
+  --tw-color-emerald-100: #d1fae5;
+  --tw-color-emerald-200: #a7f3d0;
+  --tw-color-emerald-300: #6ee7b7;
+  --tw-color-emerald-400: #34d399;
+  --tw-color-emerald-500: #10b981;
+  --tw-color-emerald-600: #059669;
+  --tw-color-emerald-700: #047857;
+  
+  /* Yellow palette */
+  --tw-color-yellow-50: #fefce8;
+  --tw-color-yellow-100: #fef9c3;
+  --tw-color-yellow-200: #fef08a;
+  --tw-color-yellow-300: #fde047;
+  --tw-color-yellow-400: #facc15;
+  --tw-color-yellow-500: #eab308;
+  --tw-color-yellow-600: #ca8a04;
+  --tw-color-yellow-700: #a16207;
+  
+  /* Red palette */
+  --tw-color-red-50: #fef2f2;
+  --tw-color-red-100: #fee2e2;
+  --tw-color-red-200: #fecaca;
+  --tw-color-red-300: #fca5a5;
+  --tw-color-red-400: #f87171;
+  --tw-color-red-500: #ef4444;
+  --tw-color-red-600: #dc2626;
+  --tw-color-red-700: #b91c1c;
+  
+  /* Amber palette */
+  --tw-color-amber-50: #fffbeb;
+  --tw-color-amber-100: #fef3c7;
+  --tw-color-amber-200: #fde68a;
+  --tw-color-amber-300: #fcd34d;
+  --tw-color-amber-400: #fbbf24;
+  --tw-color-amber-500: #f59e0b;
+  --tw-color-amber-600: #d97706;
+  --tw-color-amber-700: #b45309;
+}
+
+/* Force Tremor/Recharts chart fills to use our colors */
+/* Blue */
+[class*="fill-blue"] { fill: #3b82f6 !important; }
+[class*="stroke-blue"] { stroke: #3b82f6 !important; }
+[class*="bg-blue-500"] { background-color: #3b82f6 !important; }
+
+/* Violet */
+[class*="fill-violet"] { fill: #8b5cf6 !important; }
+[class*="stroke-violet"] { stroke: #8b5cf6 !important; }
+[class*="bg-violet-500"] { background-color: #8b5cf6 !important; }
+
+/* Cyan */
+[class*="fill-cyan"] { fill: #06b6d4 !important; }
+[class*="stroke-cyan"] { stroke: #06b6d4 !important; }
+[class*="bg-cyan-500"] { background-color: #06b6d4 !important; }
+
+/* Emerald */
+[class*="fill-emerald"] { fill: #10b981 !important; }
+[class*="stroke-emerald"] { stroke: #10b981 !important; }
+[class*="bg-emerald-500"] { background-color: #10b981 !important; }
+
+/* Yellow */
+[class*="fill-yellow"] { fill: #eab308 !important; }
+[class*="stroke-yellow"] { stroke: #eab308 !important; }
+[class*="bg-yellow-500"] { background-color: #eab308 !important; }
+
+/* Red */
+[class*="fill-red"] { fill: #ef4444 !important; }
+[class*="stroke-red"] { stroke: #ef4444 !important; }
+[class*="bg-red-500"] { background-color: #ef4444 !important; }
+
+/* Amber */
+[class*="fill-amber"] { fill: #f59e0b !important; }
+[class*="stroke-amber"] { stroke: #f59e0b !important; }
+[class*="bg-amber-500"] { background-color: #f59e0b !important; }
+
+/* Override Tremor's tooltip styling to match app design */
+.recharts-tooltip-wrapper .recharts-default-tooltip {
+  background: white !important;
+  border: 1px solid #e4e4e7 !important;
+  border-radius: 0.5rem !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1) !important;
+  padding: 0.75rem 1rem !important;
+}
+
+.recharts-tooltip-label {
+  color: #18181b !important;
+  font-weight: 600 !important;
+  font-size: 0.875rem !important;
+  margin-bottom: 0.375rem !important;
+}
+
+.recharts-tooltip-item {
+  color: #3f3f46 !important;
+  font-size: 0.8125rem !important;
+  padding: 0.125rem 0 !important;
+}
+
+.recharts-tooltip-item-name {
+  color: #71717a !important;
+}
+
+.recharts-tooltip-item-value {
+  color: #18181b !important;
+  font-weight: 500 !important;
+}
+
+/* Rounded bar corners */
+.recharts-bar-rectangle path,
+.recharts-bar-rectangle rect {
+  rx: 4;
 }
 
 /* Base styles */

@@ -1096,20 +1096,34 @@ export class KyselyAdapter implements IStorageAdapter {
       activeByCategory[row.project_name || 'Inbox'] = Number(row.count);
     }
 
-    // 4. Completed tasks by category (last 30 days)
-    const completedByCategoryRows = await db
+    // 4. Completed tasks by project (last 30 days)
+    // Join task_history → tasks → projects to get actual project name
+    let completedByProjectQuery = db
       .selectFrom('task_history')
+      .innerJoin('tasks', 'task_history.task_id', 'tasks.id')
+      .leftJoin('projects', 'tasks.project_id', 'projects.id')
       .select([
-        sql<string>`COALESCE(category, 'inbox')`.as('category'),
+        sql<string>`COALESCE(projects.name, 'Inbox')`.as('project_name'),
         sql<number>`COUNT(*)`.as('count'),
       ])
-      .where('completed_at', '>=', thirtyDaysAgo.toISOString())
-      .groupBy(sql`COALESCE(category, 'inbox')`)
+      .where('task_history.completed_at', '>=', thirtyDaysAgo.toISOString());
+    
+    if (hasBacklogExclusions) {
+      completedByProjectQuery = completedByProjectQuery.where(eb => 
+        eb.or([
+          eb('tasks.project_id', 'is', null),
+          eb('tasks.project_id', 'not in', backlogProjectIds),
+        ])
+      );
+    }
+    
+    const completedByProjectRows = await completedByProjectQuery
+      .groupBy(sql`COALESCE(projects.name, 'Inbox')`)
       .execute();
     
     const completedByCategory: Record<string, number> = {};
-    for (const row of completedByCategoryRows) {
-      completedByCategory[row.category || 'inbox'] = Number(row.count);
+    for (const row of completedByProjectRows) {
+      completedByCategory[row.project_name || 'Inbox'] = Number(row.count);
     }
 
     // 5. Age distribution of active tasks (excluding backlog projects)
@@ -1141,20 +1155,34 @@ export class KyselyAdapter implements IStorageAdapter {
       stale: Number(ageBucketsResult?.stale || 0),
     };
 
-    // 6. Average completion time by category
-    const avgCompletionRows = await db
+    // 6. Average completion time by project
+    // Join task_history → tasks → projects to get actual project name
+    let avgCompletionQuery = db
       .selectFrom('task_history')
+      .innerJoin('tasks', 'task_history.task_id', 'tasks.id')
+      .leftJoin('projects', 'tasks.project_id', 'projects.id')
       .select([
-        sql<string>`COALESCE(category, 'inbox')`.as('category'),
-        sql<number>`AVG(actual_duration)`.as('avgDuration'),
+        sql<string>`COALESCE(projects.name, 'Inbox')`.as('project_name'),
+        sql<number>`AVG(task_history.actual_duration)`.as('avgDuration'),
       ])
-      .where('actual_duration', 'is not', null)
-      .groupBy(sql`COALESCE(category, 'inbox')`)
+      .where('task_history.actual_duration', 'is not', null);
+    
+    if (hasBacklogExclusions) {
+      avgCompletionQuery = avgCompletionQuery.where(eb => 
+        eb.or([
+          eb('tasks.project_id', 'is', null),
+          eb('tasks.project_id', 'not in', backlogProjectIds),
+        ])
+      );
+    }
+    
+    const avgCompletionRows = await avgCompletionQuery
+      .groupBy(sql`COALESCE(projects.name, 'Inbox')`)
       .execute();
 
     const avgCompletionTimeByCategory: Record<string, number | null> = {};
     for (const row of avgCompletionRows) {
-      avgCompletionTimeByCategory[row.category || 'inbox'] = row.avgDuration ? Number(row.avgDuration) : null;
+      avgCompletionTimeByCategory[row.project_name || 'Inbox'] = row.avgDuration ? Number(row.avgDuration) : null;
     }
 
     // 7. Completion rates (excluding backlog projects for created task counts)
@@ -1465,28 +1493,40 @@ export class KyselyAdapter implements IStorageAdapter {
       longestStreak = Math.max(longestStreak, tempStreak, currentStreak);
     }
 
-    // 15. Category velocity (avg days to complete by category)
+    // 15. Project velocity (avg days to complete by project)
     // PostgreSQL: EXTRACT(EPOCH FROM (t2 - t1)) / 86400
     // SQLite: julianday(t2) - julianday(t1)
     const avgDaysExpr = isPg
       ? sql<number>`AVG(EXTRACT(EPOCH FROM (task_history.completed_at::timestamp - tasks.created_at::timestamp)) / 86400)`
       : sql<number>`AVG(julianday(task_history.completed_at) - julianday(tasks.created_at))`;
     
-    const velocityRows = await db
+    let velocityQuery = db
       .selectFrom('task_history')
       .innerJoin('tasks', 'task_history.task_id', 'tasks.id')
+      .leftJoin('projects', 'tasks.project_id', 'projects.id')
       .select([
-        sql<string>`COALESCE(task_history.category, 'inbox')`.as('category'),
+        sql<string>`COALESCE(projects.name, 'Inbox')`.as('project_name'),
         sql<number>`COUNT(*)`.as('completed'),
         avgDaysExpr.as('avgDays'),
       ])
-      .where('task_history.completed_at', '>=', thirtyDaysAgo.toISOString())
-      .groupBy(sql`COALESCE(task_history.category, 'inbox')`)
+      .where('task_history.completed_at', '>=', thirtyDaysAgo.toISOString());
+    
+    if (hasBacklogExclusions) {
+      velocityQuery = velocityQuery.where(eb => 
+        eb.or([
+          eb('tasks.project_id', 'is', null),
+          eb('tasks.project_id', 'not in', backlogProjectIds),
+        ])
+      );
+    }
+    
+    const velocityRows = await velocityQuery
+      .groupBy(sql`COALESCE(projects.name, 'Inbox')`)
       .execute();
 
     const categoryVelocity: Record<string, { completed: number; avgDaysToComplete: number | null }> = {};
     for (const row of velocityRows) {
-      categoryVelocity[row.category || 'inbox'] = {
+      categoryVelocity[row.project_name || 'Inbox'] = {
         completed: Number(row.completed),
         avgDaysToComplete: row.avgDays ? Math.round(Number(row.avgDays) * 10) / 10 : null,
       };

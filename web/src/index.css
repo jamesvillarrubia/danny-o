@@ -112,6 +112,17 @@ input:disabled, button:disabled, select:disabled, textarea:disabled {
   box-shadow: 0 0 0 3px rgba(248, 106, 82, 0.15);
 }
 
+/* Recharts pie/donut chart labels */
+.recharts-pie-label-text {
+  font-size: 11px;
+  fill: #52525b;
+}
+
+.recharts-pie-label-line {
+  stroke: #a1a1aa;
+  stroke-width: 1;
+}
+
 @keyframes slideUp {
   from {
     opacity: 0;

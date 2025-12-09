@@ -132,13 +132,23 @@ export function DonutChart({
   
   const total = chartData.reduce((sum, item) => sum + item.value, 0);
   
-  const innerRadius = variant === 'donut' ? '60%' : 0;
-  const outerRadius = '80%';
+  // Reduce radius when showing labels to make room for them
+  const innerRadius = variant === 'donut' ? (showLabel ? '40%' : '60%') : 0;
+  const outerRadius = showLabel ? '55%' : '80%';
+  
+  // Custom label renderer for smaller, cleaner labels
+  const renderLabel = showLabel 
+    ? ({ name, percent }: { name: string; percent: number }) => {
+        // Only show label if segment is large enough (>5%)
+        if (percent < 0.05) return null;
+        return `${name} ${(percent * 100).toFixed(0)}%`;
+      }
+    : undefined;
   
   return (
     <div className={cx('w-full h-64 relative', className)}>
       <ResponsiveContainer width="100%" height="100%">
-        <PieChart>
+        <PieChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
           <Pie
             data={chartData}
             dataKey="value"
@@ -148,8 +158,8 @@ export function DonutChart({
             innerRadius={innerRadius}
             outerRadius={outerRadius}
             paddingAngle={2}
-            label={showLabel ? ({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%` : undefined}
-            labelLine={showLabel}
+            label={renderLabel}
+            labelLine={showLabel ? { stroke: '#a1a1aa', strokeWidth: 1 } : false}
           >
             {chartData.map((entry, index) => (
               <Cell 

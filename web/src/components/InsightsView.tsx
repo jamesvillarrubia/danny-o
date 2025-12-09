@@ -384,7 +384,7 @@ export function InsightsView({ data, isLoading, error, onRefresh, onTaskClick }:
                 <h3 className="font-medium text-zinc-900">Active Tasks by Category</h3>
                 <div className="mt-4">
                   <DonutChart
-                    className="h-52"
+                    className="h-72"
                     data={categoryData}
                     category="name"
                     value="value"
@@ -447,7 +447,7 @@ export function InsightsView({ data, isLoading, error, onRefresh, onTaskClick }:
                 <p className="text-sm text-zinc-500">Completion timing vs due dates</p>
                 <div className="mt-4">
                   <DonutChart
-                    className="h-44"
+                    className="h-64"
                     data={procrastinationData}
                     category="name"
                     value="value"

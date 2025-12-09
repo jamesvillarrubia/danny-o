@@ -145,26 +145,27 @@ export function DonutChart({
   const isMedium = containerWidth >= 250 && containerWidth < 350;
   
   // Adjust radius based on size and whether labels are shown
+  // Using larger percentages - Recharts uses min(width, height) as base
   const getRadius = () => {
     if (showLabel) {
-      // Labels need room outside the pie
-      if (isSmall) return { inner: '30%', outer: '50%' };
-      if (isMedium) return { inner: '32%', outer: '55%' };
-      return { inner: '35%', outer: '60%' };
+      // Labels need room outside the pie - use larger values
+      if (isSmall) return { inner: '40%', outer: '65%' };
+      if (isMedium) return { inner: '42%', outer: '70%' };
+      return { inner: '45%', outer: '75%' };
     }
     // No labels - fill most of the space
-    if (isSmall) return { inner: '55%', outer: '85%' };
-    return { inner: '60%', outer: '90%' };
+    if (isSmall) return { inner: '55%', outer: '90%' };
+    return { inner: '60%', outer: '95%' };
   };
   
   const radius = getRadius();
   const innerRadius = variant === 'donut' ? radius.inner : 0;
   const outerRadius = radius.outer;
   
-  // Minimal margins - just enough for labels
+  // Minimal margins
   const margin = showLabel
-    ? { top: 25, right: 25, bottom: 25, left: 25 }
-    : { top: 5, right: 5, bottom: 5, left: 5 };
+    ? { top: 20, right: 20, bottom: 20, left: 20 }
+    : { top: 2, right: 2, bottom: 2, left: 2 };
   
   // Custom label renderer - shorter format on small screens
   const renderLabel = showLabel 

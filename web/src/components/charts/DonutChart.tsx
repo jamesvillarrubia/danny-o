@@ -147,26 +147,24 @@ export function DonutChart({
   // Adjust radius based on size and whether labels are shown
   const getRadius = () => {
     if (showLabel) {
-      // Labels need more room
-      if (isSmall) return { inner: '35%', outer: '45%' };
-      if (isMedium) return { inner: '38%', outer: '50%' };
-      return { inner: '40%', outer: '55%' };
+      // Labels need room outside the pie
+      if (isSmall) return { inner: '30%', outer: '50%' };
+      if (isMedium) return { inner: '32%', outer: '55%' };
+      return { inner: '35%', outer: '60%' };
     }
-    // No labels - can use more space
-    if (isSmall) return { inner: '50%', outer: '75%' };
-    return { inner: '60%', outer: '80%' };
+    // No labels - fill most of the space
+    if (isSmall) return { inner: '55%', outer: '85%' };
+    return { inner: '60%', outer: '90%' };
   };
   
   const radius = getRadius();
   const innerRadius = variant === 'donut' ? radius.inner : 0;
   const outerRadius = radius.outer;
   
-  // Responsive margins
-  const margin = isSmall 
-    ? { top: 10, right: 10, bottom: 10, left: 10 }
-    : isMedium
-    ? { top: 15, right: 15, bottom: 15, left: 15 }
-    : { top: 20, right: 30, bottom: 20, left: 30 };
+  // Minimal margins - just enough for labels
+  const margin = showLabel
+    ? { top: 25, right: 25, bottom: 25, left: 25 }
+    : { top: 5, right: 5, bottom: 5, left: 5 };
   
   // Custom label renderer - shorter format on small screens
   const renderLabel = showLabel 

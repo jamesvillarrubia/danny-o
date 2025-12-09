@@ -497,9 +497,11 @@ export interface ComprehensiveInsightsResponse {
 
 /**
  * Get comprehensive productivity insights with full stats and AI analysis.
+ * @param forceRefresh If true, bypasses server cache and regenerates insights
  */
-export async function getComprehensiveInsights(): Promise<ComprehensiveInsightsResponse> {
-  return fetchApi('/ai/insights/comprehensive', {
+export async function getComprehensiveInsights(forceRefresh: boolean = false): Promise<ComprehensiveInsightsResponse> {
+  const url = forceRefresh ? '/ai/insights/comprehensive?refresh=true' : '/ai/insights/comprehensive';
+  return fetchApi(url, {
     method: 'GET',
   });
 }

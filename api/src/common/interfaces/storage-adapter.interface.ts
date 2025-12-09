@@ -261,4 +261,29 @@ export abstract class IStorageAdapter {
    * Delete a view (cannot delete default views)
    */
   abstract deleteView(slugOrId: string | number): Promise<boolean>;
+
+  // ==================== Cached Insights ====================
+
+  /**
+   * Get cached insights by key
+   * Returns null if cache doesn't exist or is expired
+   */
+  abstract getCachedInsights<T>(cacheKey: string): Promise<{
+    data: T;
+    generatedAt: string;
+    expiresAt: string;
+  } | null>;
+
+  /**
+   * Save insights to cache
+   * @param cacheKey Unique key for this cache entry (e.g., 'comprehensive-insights')
+   * @param data The data to cache
+   * @param ttlHours How long the cache is valid (default 24 hours)
+   */
+  abstract setCachedInsights<T>(cacheKey: string, data: T, ttlHours?: number): Promise<void>;
+
+  /**
+   * Invalidate cached insights by key
+   */
+  abstract invalidateCachedInsights(cacheKey: string): Promise<void>;
 }

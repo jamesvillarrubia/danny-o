@@ -18,6 +18,7 @@ import {
   Post,
   Get,
   Body,
+  Query,
   HttpCode,
   HttpStatus,
   NotFoundException,
@@ -608,11 +609,14 @@ export class AIController {
   /**
    * Get comprehensive productivity insights with full stats and AI analysis
    * GET /v1/ai/insights/comprehensive
+   * 
+   * @param refresh If 'true', bypasses cache and regenerates insights
    */
   @Get('insights/comprehensive')
-  async getComprehensiveInsights() {
-    this.logger.log('Getting comprehensive insights');
-    return this.aiOps.generateComprehensiveInsights();
+  async getComprehensiveInsights(@Query('refresh') refresh?: string) {
+    const forceRefresh = refresh === 'true';
+    this.logger.log(`Getting comprehensive insights (forceRefresh: ${forceRefresh})`);
+    return this.aiOps.generateComprehensiveInsights(forceRefresh);
   }
 }
 

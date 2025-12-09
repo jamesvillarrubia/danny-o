@@ -267,6 +267,18 @@ export class KyselyAdapter implements IStorageAdapter {
       .addColumn('updated_at', 'text', col => col.defaultTo(sql`CURRENT_TIMESTAMP`))
       .execute();
 
+    // Cached insights table - stores expensive AI-generated insights
+    await db.schema
+      .createTable('cached_insights')
+      .ifNotExists()
+      .addColumn('id', isPg ? 'serial' : 'integer', col => isPg ? col.primaryKey() : col.primaryKey().autoIncrement())
+      .addColumn('cache_key', 'text', col => col.notNull().unique())
+      .addColumn('data', isPg ? 'jsonb' : 'text', col => col.notNull())
+      .addColumn('generated_at', 'text', col => col.notNull())
+      .addColumn('expires_at', 'text', col => col.notNull())
+      .addColumn('created_at', 'text', col => col.defaultTo(sql`CURRENT_TIMESTAMP`))
+      .execute();
+
     // Create indices
     await sql`CREATE INDEX IF NOT EXISTS idx_tasks_project_id ON tasks(project_id)`.execute(db);
     await sql`CREATE INDEX IF NOT EXISTS idx_tasks_is_completed ON tasks(is_completed)`.execute(db);
@@ -384,6 +396,22 @@ export class KyselyAdapter implements IStorageAdapter {
         .execute();
       
       this.logger.log('Fixed high-priority view filter: [1,2] -> [3,4]');
+    });
+
+    // Migration: Add cached_insights table for caching expensive AI-generated insights
+    await this.runMigration('add_cached_insights_table', async () => {
+      const isPg = this.options.dialect === 'postgres';
+      await db.schema
+        .createTable('cached_insights')
+        .ifNotExists()
+        .addColumn('id', isPg ? 'serial' : 'integer', col => isPg ? col.primaryKey() : col.primaryKey().autoIncrement())
+        .addColumn('cache_key', 'text', col => col.notNull().unique())
+        .addColumn('data', isPg ? 'jsonb' : 'text', col => col.notNull())
+        .addColumn('generated_at', 'text', col => col.notNull())
+        .addColumn('expires_at', 'text', col => col.notNull())
+        .addColumn('created_at', 'text', col => col.defaultTo(sql`CURRENT_TIMESTAMP`))
+        .execute();
+      this.logger.log('Created cached_insights table');
     });
     
     this.logger.log('Migrations complete');
@@ -1894,6 +1922,74 @@ export class KyselyAdapter implements IStorageAdapter {
 
     const result = await query.executeTakeFirst();
     return (result.numDeletedRows ?? 0n) > 0n;
+  }
+
+  // ==================== Cached Insights ====================
+
+  async getCachedInsights<T>(cacheKey: string): Promise<{
+    data: T;
+    generatedAt: string;
+    expiresAt: string;
+  } | null> {
+    const db = this.getDb();
+    const now = new Date().toISOString();
+
+    const row = await db
+      .selectFrom('cached_insights')
+      .select(['data', 'generated_at', 'expires_at'])
+      .where('cache_key', '=', cacheKey)
+      .where('expires_at', '>', now) // Only return if not expired
+      .executeTakeFirst();
+
+    if (!row) {
+      return null;
+    }
+
+    // Parse data if stored as string (SQLite) vs JSONB (PostgreSQL)
+    const data = typeof row.data === 'string' ? JSON.parse(row.data) : row.data;
+
+    return {
+      data: data as T,
+      generatedAt: row.generated_at,
+      expiresAt: row.expires_at,
+    };
+  }
+
+  async setCachedInsights<T>(cacheKey: string, data: T, ttlHours: number = 24): Promise<void> {
+    const db = this.getDb();
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + ttlHours * 60 * 60 * 1000);
+
+    const dataStr = JSON.stringify(data);
+
+    // Upsert: delete existing and insert new
+    await db
+      .deleteFrom('cached_insights')
+      .where('cache_key', '=', cacheKey)
+      .execute();
+
+    await db
+      .insertInto('cached_insights')
+      .values({
+        cache_key: cacheKey,
+        data: dataStr,
+        generated_at: now.toISOString(),
+        expires_at: expiresAt.toISOString(),
+      })
+      .execute();
+
+    this.logger.log(`Cached insights for key '${cacheKey}', expires at ${expiresAt.toISOString()}`);
+  }
+
+  async invalidateCachedInsights(cacheKey: string): Promise<void> {
+    const db = this.getDb();
+    
+    await db
+      .deleteFrom('cached_insights')
+      .where('cache_key', '=', cacheKey)
+      .execute();
+
+    this.logger.log(`Invalidated cached insights for key '${cacheKey}'`);
   }
 
   // ==================== Helper Methods ====================

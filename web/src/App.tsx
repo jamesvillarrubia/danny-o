@@ -116,7 +116,26 @@ function AppContent() {
   const [isGettingInsights, setIsGettingInsights] = useState(false);
   
   // Insights data - persisted at app level so it doesn't reload on tab switch
-  const [insightsData, setInsightsData] = useState<Awaited<ReturnType<typeof getComprehensiveInsights>> | null>(null);
+  // Also uses localStorage for persistence across page refreshes
+  const INSIGHTS_CACHE_KEY = 'danny-insights-cache';
+  const [insightsData, setInsightsData] = useState<Awaited<ReturnType<typeof getComprehensiveInsights>> | null>(() => {
+    // Initialize from localStorage if available
+    try {
+      const cached = localStorage.getItem(INSIGHTS_CACHE_KEY);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        // Check if cache is less than 24 hours old
+        const generatedAt = new Date(parsed.generatedAt).getTime();
+        const isStale = Date.now() - generatedAt > 24 * 60 * 60 * 1000;
+        if (!isStale) {
+          return parsed;
+        }
+      }
+    } catch (e) {
+      // Ignore parse errors
+    }
+    return null;
+  });
   const [insightsLoading, setInsightsLoading] = useState(false);
   const [insightsError, setInsightsError] = useState<string | null>(null);
   
@@ -338,8 +357,15 @@ function AppContent() {
     setInsightsLoading(true);
     setInsightsError(null);
     try {
-      const data = await getComprehensiveInsights();
+      // Pass forceRefresh to API to bypass server-side cache
+      const data = await getComprehensiveInsights(forceRefresh);
       setInsightsData(data);
+      // Save to localStorage for persistence across page refreshes
+      try {
+        localStorage.setItem(INSIGHTS_CACHE_KEY, JSON.stringify(data));
+      } catch (e) {
+        // Ignore storage errors (quota exceeded, etc.)
+      }
     } catch (err) {
       console.error('Failed to load insights:', err);
       setInsightsError(err instanceof Error ? err.message : 'Failed to load insights');

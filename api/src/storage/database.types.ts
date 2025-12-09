@@ -136,6 +136,16 @@ export interface ViewTable {
   updated_at: ColumnType<string, string | undefined, string>;
 }
 
+// Cached insights table - stores expensive AI-generated insights
+export interface CachedInsightsTable {
+  id: Generated<number>;
+  cache_key: string; // e.g., 'comprehensive-insights'
+  data: string; // JSON blob of the full insights response
+  generated_at: string; // ISO timestamp when insights were generated
+  expires_at: string; // ISO timestamp when cache should be considered stale
+  created_at: ColumnType<string, string | undefined, string>;
+}
+
 // Complete database interface
 export interface Database {
   tasks: TaskTable;
@@ -147,5 +157,6 @@ export interface Database {
   ai_interactions: AIInteractionTable;
   migrations: MigrationTable;
   views: ViewTable;
+  cached_insights: CachedInsightsTable;
 }
 

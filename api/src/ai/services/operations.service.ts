@@ -497,10 +497,33 @@ export class AIOperationsService {
   }
 
   /**
+   * Cache key for comprehensive insights
+   */
+  private static readonly INSIGHTS_CACHE_KEY = 'comprehensive-insights';
+  
+  /**
+   * Default cache TTL in hours (24 hours)
+   */
+  private static readonly INSIGHTS_CACHE_TTL_HOURS = 24;
+
+  /**
    * Generate comprehensive insights with full stats and AI analysis
    * This is the enhanced version that returns everything for the Insights view
+   * 
+   * @param forceRefresh If true, bypasses cache and regenerates insights
    */
-  async generateComprehensiveInsights(): Promise<ComprehensiveInsightsDto> {
+  async generateComprehensiveInsights(forceRefresh: boolean = false): Promise<ComprehensiveInsightsDto> {
+    const cacheKey = AIOperationsService.INSIGHTS_CACHE_KEY;
+
+    // Check cache first (unless force refresh)
+    if (!forceRefresh) {
+      const cached = await this.storage.getCachedInsights<ComprehensiveInsightsDto>(cacheKey);
+      if (cached) {
+        this.logger.log(`Returning cached insights (generated ${cached.generatedAt}, expires ${cached.expiresAt})`);
+        return cached.data;
+      }
+    }
+
     this.logger.log('Generating comprehensive insights...');
 
     // Get pre-computed statistics from the database
@@ -523,7 +546,7 @@ export class AIOperationsService {
 
     this.logger.log('Comprehensive insights generated');
 
-    return {
+    const result: ComprehensiveInsightsDto = {
       stats: {
         totalActive: stats.totalActive,
         totalCompletedLast30Days: stats.totalCompletedLast30Days,
@@ -556,6 +579,15 @@ export class AIOperationsService {
       generatedAt: new Date().toISOString(),
       periodDays: 30,
     };
+
+    // Cache the result
+    await this.storage.setCachedInsights(
+      cacheKey, 
+      result, 
+      AIOperationsService.INSIGHTS_CACHE_TTL_HOURS
+    );
+
+    return result;
   }
 
   // ==================== Helper Methods ====================

@@ -1194,14 +1194,21 @@ export class KyselyAdapter implements IStorageAdapter {
     }));
 
     // 12. Completions by day of week (from task_history)
+    // PostgreSQL: EXTRACT(DOW FROM ...) returns 0=Sunday
+    // SQLite: strftime('%w', ...) returns 0=Sunday
+    const isPg = this.options.dialect === 'postgres';
+    const dayOfWeekExpr = isPg 
+      ? sql<string>`EXTRACT(DOW FROM completed_at::timestamp)`
+      : sql<string>`strftime('%w', completed_at)`;
+    
     const dayOfWeekRows = await db
       .selectFrom('task_history')
       .select([
-        sql<string>`strftime('%w', completed_at)`.as('dayOfWeek'),
+        dayOfWeekExpr.as('dayOfWeek'),
         sql<number>`COUNT(*)`.as('count'),
       ])
       .where('completed_at', '>=', thirtyDaysAgo.toISOString())
-      .groupBy(sql`strftime('%w', completed_at)`)
+      .groupBy(dayOfWeekExpr)
       .execute();
 
     const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -1210,27 +1217,39 @@ export class KyselyAdapter implements IStorageAdapter {
       completionsByDayOfWeek[day] = 0;
     }
     for (const row of dayOfWeekRows) {
-      const dayIndex = parseInt(row.dayOfWeek || '0', 10);
+      const dayIndex = parseInt(String(row.dayOfWeek) || '0', 10);
       if (dayIndex >= 0 && dayIndex < 7) {
         completionsByDayOfWeek[dayNames[dayIndex]] = Number(row.count);
       }
     }
 
     // 13. Daily completions for trend chart (last 30 days)
+    // PostgreSQL: completed_at::date, SQLite: date(completed_at)
+    const dateExpr = isPg 
+      ? sql<string>`completed_at::date`
+      : sql<string>`date(completed_at)`;
+    
     const dailyCompletionsRows = await db
       .selectFrom('task_history')
       .select([
-        sql<string>`date(completed_at)`.as('date'),
+        dateExpr.as('date'),
         sql<number>`COUNT(*)`.as('count'),
       ])
       .where('completed_at', '>=', thirtyDaysAgo.toISOString())
-      .groupBy(sql`date(completed_at)`)
+      .groupBy(dateExpr)
       .orderBy('date', 'asc')
       .execute();
 
     // Fill in missing dates with 0
     const dailyCompletions: Array<{ date: string; count: number }> = [];
-    const dateMap = new Map(dailyCompletionsRows.map(r => [r.date, Number(r.count)]));
+    // Normalize the date format (PostgreSQL returns Date objects, SQLite returns strings)
+    const dateMap = new Map(dailyCompletionsRows.map(r => {
+      const dateVal: unknown = r.date;
+      const dateStr = dateVal instanceof Date 
+        ? dateVal.toISOString().split('T')[0]
+        : String(dateVal).split('T')[0];
+      return [dateStr, Number(r.count)];
+    }));
     for (let i = 29; i >= 0; i--) {
       const date = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
       const dateStr = date.toISOString().split('T')[0];
@@ -1249,25 +1268,33 @@ export class KyselyAdapter implements IStorageAdapter {
     // Get completion dates in order
     const completionDatesRows = await db
       .selectFrom('task_history')
-      .select(sql<string>`date(completed_at)`.as('date'))
-      .groupBy(sql`date(completed_at)`)
+      .select(dateExpr.as('date'))
+      .groupBy(dateExpr)
       .orderBy('date', 'desc')
       .execute();
 
+    // Normalize dates (PostgreSQL returns Date objects, SQLite returns strings)
+    const normalizeDateStr = (d: unknown): string => {
+      if (d instanceof Date) return d.toISOString().split('T')[0];
+      return String(d).split('T')[0];
+    };
+
     if (completionDatesRows.length > 0) {
-      lastCompletionDate = completionDatesRows[0].date;
+      lastCompletionDate = normalizeDateStr(completionDatesRows[0].date);
       
       // Calculate current streak (consecutive days from today/yesterday)
       const today = now.toISOString().split('T')[0];
       const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+      const firstDateStr = normalizeDateStr(completionDatesRows[0].date);
       
-      let checkDate = completionDatesRows[0].date === today ? today : 
-                      completionDatesRows[0].date === yesterday ? yesterday : null;
+      let checkDate = firstDateStr === today ? today : 
+                      firstDateStr === yesterday ? yesterday : null;
       
       if (checkDate) {
         let currentCheckDate: string = checkDate;
         for (const row of completionDatesRows) {
-          if (row.date === currentCheckDate) {
+          const rowDateStr = normalizeDateStr(row.date);
+          if (rowDateStr === currentCheckDate) {
             currentStreak++;
             const prevDate = new Date(new Date(currentCheckDate).getTime() - 24 * 60 * 60 * 1000);
             currentCheckDate = prevDate.toISOString().split('T')[0];
@@ -1278,7 +1305,7 @@ export class KyselyAdapter implements IStorageAdapter {
       }
 
       // Calculate longest streak
-      const sortedDates = completionDatesRows.map(r => r.date).sort();
+      const sortedDates = completionDatesRows.map(r => normalizeDateStr(r.date)).sort();
       tempStreak = 1;
       for (let i = 1; i < sortedDates.length; i++) {
         const prevDate = new Date(sortedDates[i - 1]);
@@ -1296,13 +1323,19 @@ export class KyselyAdapter implements IStorageAdapter {
     }
 
     // 15. Category velocity (avg days to complete by category)
+    // PostgreSQL: EXTRACT(EPOCH FROM (t2 - t1)) / 86400
+    // SQLite: julianday(t2) - julianday(t1)
+    const avgDaysExpr = isPg
+      ? sql<number>`AVG(EXTRACT(EPOCH FROM (task_history.completed_at::timestamp - tasks.created_at::timestamp)) / 86400)`
+      : sql<number>`AVG(julianday(task_history.completed_at) - julianday(tasks.created_at))`;
+    
     const velocityRows = await db
       .selectFrom('task_history')
       .innerJoin('tasks', 'task_history.task_id', 'tasks.id')
       .select([
         sql<string>`COALESCE(task_history.category, 'inbox')`.as('category'),
         sql<number>`COUNT(*)`.as('completed'),
-        sql<number>`AVG(julianday(task_history.completed_at) - julianday(tasks.created_at))`.as('avgDays'),
+        avgDaysExpr.as('avgDays'),
       ])
       .where('task_history.completed_at', '>=', thirtyDaysAgo.toISOString())
       .groupBy(sql`COALESCE(task_history.category, 'inbox')`)
@@ -1317,20 +1350,25 @@ export class KyselyAdapter implements IStorageAdapter {
     }
 
     // 16. Procrastination stats (tasks with due dates)
+    // Use dialect-specific date casting for comparison
+    const completedDateExpr = isPg 
+      ? 'task_history.completed_at::date'
+      : 'date(task_history.completed_at)';
+    
     const procrastinationRows = await db
       .selectFrom('task_history')
       .innerJoin('tasks', 'task_history.task_id', 'tasks.id')
       .select([
         sql<number>`SUM(CASE 
-          WHEN tasks.due_date IS NOT NULL AND date(task_history.completed_at) < tasks.due_date THEN 1 
+          WHEN tasks.due_date IS NOT NULL AND ${sql.raw(completedDateExpr)} < tasks.due_date THEN 1 
           ELSE 0 
         END)`.as('onTime'),
         sql<number>`SUM(CASE 
-          WHEN tasks.due_date IS NOT NULL AND date(task_history.completed_at) = tasks.due_date THEN 1 
+          WHEN tasks.due_date IS NOT NULL AND ${sql.raw(completedDateExpr)} = tasks.due_date THEN 1 
           ELSE 0 
         END)`.as('lastMinute'),
         sql<number>`SUM(CASE 
-          WHEN tasks.due_date IS NOT NULL AND date(task_history.completed_at) > tasks.due_date THEN 1 
+          WHEN tasks.due_date IS NOT NULL AND ${sql.raw(completedDateExpr)} > tasks.due_date THEN 1 
           ELSE 0 
         END)`.as('late'),
       ])

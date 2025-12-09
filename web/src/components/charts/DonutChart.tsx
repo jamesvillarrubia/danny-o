@@ -1,11 +1,12 @@
 /**
  * DonutChart Component
  * 
- * A donut/pie chart component built on Recharts with proper Tailwind v4 support.
+ * A responsive donut/pie chart component built on Recharts.
  * Uses hex colors directly instead of CSS class-based fills.
+ * Automatically adjusts sizing and label display based on container width.
  */
 
-import React from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   PieChart,
   Pie,
@@ -122,6 +123,13 @@ export function DonutChart({
   label,
   customTooltip: CustomTooltip,
 }: DonutChartProps) {
+  // Track container width for responsive adjustments
+  const [containerWidth, setContainerWidth] = useState(0);
+  
+  const handleResize = useCallback((width: number) => {
+    setContainerWidth(width);
+  }, []);
+  
   // Map data to include fill colors
   const chartData = data.map((item, index) => ({
     ...item,
@@ -132,21 +140,56 @@ export function DonutChart({
   
   const total = chartData.reduce((sum, item) => sum + item.value, 0);
   
-  // Reduce radius when showing labels to make room for them
-  const innerRadius = variant === 'donut' ? (showLabel ? '40%' : '60%') : 0;
-  const outerRadius = showLabel ? '55%' : '80%';
+  // Responsive sizing based on container width
+  const isSmall = containerWidth > 0 && containerWidth < 250;
+  const isMedium = containerWidth >= 250 && containerWidth < 350;
   
-  // Custom label renderer - show name and percentage
+  // Adjust radius based on size and whether labels are shown
+  const getRadius = () => {
+    if (showLabel) {
+      // Labels need more room
+      if (isSmall) return { inner: '35%', outer: '45%' };
+      if (isMedium) return { inner: '38%', outer: '50%' };
+      return { inner: '40%', outer: '55%' };
+    }
+    // No labels - can use more space
+    if (isSmall) return { inner: '50%', outer: '75%' };
+    return { inner: '60%', outer: '80%' };
+  };
+  
+  const radius = getRadius();
+  const innerRadius = variant === 'donut' ? radius.inner : 0;
+  const outerRadius = radius.outer;
+  
+  // Responsive margins
+  const margin = isSmall 
+    ? { top: 10, right: 10, bottom: 10, left: 10 }
+    : isMedium
+    ? { top: 15, right: 15, bottom: 15, left: 15 }
+    : { top: 20, right: 30, bottom: 20, left: 30 };
+  
+  // Custom label renderer - shorter format on small screens
   const renderLabel = showLabel 
     ? ({ name, percent }: { name: string; percent: number }) => {
-        return `${name} ${(percent * 100).toFixed(0)}%`;
+        const pct = (percent * 100).toFixed(0);
+        // On small screens, just show percentage
+        if (isSmall) return `${pct}%`;
+        // On medium, truncate long names
+        if (isMedium && name.length > 10) {
+          return `${name.slice(0, 8)}… ${pct}%`;
+        }
+        return `${name} ${pct}%`;
       }
     : undefined;
   
   return (
     <div className={cx('w-full h-64 relative', className)}>
-      <ResponsiveContainer width="100%" height="100%">
-        <PieChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+      <ResponsiveContainer 
+        width="100%" 
+        height="100%"
+        onResize={(width) => handleResize(width)}
+      >
+        <PieChart margin={margin}>
           <Pie
             data={chartData}
             dataKey="value"
@@ -186,10 +229,16 @@ export function DonutChart({
       {/* Center label for donut */}
       {variant === 'donut' && label && (
         <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-          <span className="text-2xl font-bold text-zinc-900">
+          <span className={cx(
+            'font-bold text-zinc-900',
+            isSmall ? 'text-lg' : 'text-2xl'
+          )}>
             {valueFormatter ? valueFormatter(total) : total.toLocaleString()}
           </span>
-          <span className="text-sm text-zinc-500">{label}</span>
+          <span className={cx(
+            'text-zinc-500',
+            isSmall ? 'text-xs' : 'text-sm'
+          )}>{label}</span>
         </div>
       )}
     </div>

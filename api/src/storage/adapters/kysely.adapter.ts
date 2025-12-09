@@ -1066,15 +1066,26 @@ export class KyselyAdapter implements IStorageAdapter {
       .executeTakeFirst();
     const totalCompletedLast30Days = Number(completedCountResult?.count || 0);
 
-    // 3. Active tasks by category
-    const activeByCategoryRows = await db
+    // 3. Active tasks by category (excluding backlog projects)
+    let activeByCategoryQuery = db
       .selectFrom('tasks')
       .leftJoin('task_metadata', 'tasks.id', 'task_metadata.task_id')
       .select([
         sql<string>`COALESCE(task_metadata.category, 'inbox')`.as('category'),
         sql<number>`COUNT(*)`.as('count'),
       ])
-      .where('tasks.is_completed', '=', 0)
+      .where('tasks.is_completed', '=', 0);
+    
+    if (hasBacklogExclusions) {
+      activeByCategoryQuery = activeByCategoryQuery.where(eb => 
+        eb.or([
+          eb('tasks.project_id', 'is', null),
+          eb('tasks.project_id', 'not in', backlogProjectIds),
+        ])
+      );
+    }
+    
+    const activeByCategoryRows = await activeByCategoryQuery
       .groupBy(sql`COALESCE(task_metadata.category, 'inbox')`)
       .execute();
     

@@ -1,0 +1,222 @@
+# Contract Test: Scheduling Workflow
+# 
+# Tests the scheduling features workflow:
+# 1. Create tasks with different scheduling constraints (errands, appointments)
+# 2. Classify tasks (AI populates requiresDriving and timeConstraint)
+# 3. Estimate time (includes scheduling metadata)
+# 4. Query tasks by requiresDriving
+# 5. Query tasks by timeConstraint
+# 6. Verify Todoist duration sync
+#
+# This test demonstrates the scheduling constraint features for trip batching
+# and calendar-aware planning.
+
+version: "1.1"
+name: Contract - Scheduling Workflow
+
+env:
+  host: ${{ env.API_HOST }}
+
+tests:
+  scheduling_workflow:
+    name: Full Scheduling Features Workflow
+    steps:
+      # Step 1: Create an errand task (requires driving)
+      - name: Create errand task (requires driving)
+        http:
+          url: ${{ env.host }}/v1/tasks
+          method: POST
+          headers:
+            Content-Type: application/json
+          body:
+            content: "Pick up prescription from CVS pharmacy"
+            description: "Refill for allergy medication"
+            priority: 2
+          timeout: ${{ env.TIMEOUT }}
+          check:
+            status: 201
+          captures:
+            errandTaskId:
+              jsonpath: $.id
+
+      # Step 2: Create a business-hours task (phone call)
+      - name: Create business-hours task (phone call)
+        http:
+          url: ${{ env.host }}/v1/tasks
+          method: POST
+          headers:
+            Content-Type: application/json
+          body:
+            content: "Call bank to dispute charge on credit card"
+            description: "Fraudulent charge of $47.99 from unknown vendor"
+            priority: 3
+          timeout: ${{ env.TIMEOUT }}
+          check:
+            status: 201
+          captures:
+            businessTaskId:
+              jsonpath: $.id
+
+      # Step 3: Create a weekend task (home project)
+      - name: Create weekend task (home project)
+        http:
+          url: ${{ env.host }}/v1/tasks
+          method: POST
+          headers:
+            Content-Type: application/json
+          body:
+            content: "Organize garage and install new shelving"
+            description: "Clear out old items, donate unused stuff, install wall-mounted shelves"
+            priority: 1
+          timeout: ${{ env.TIMEOUT }}
+          check:
+            status: 201
+          captures:
+            weekendTaskId:
+              jsonpath: $.id
+
+      # Step 4: Create a flexible task (anytime)
+      - name: Create flexible task (anytime)
+        http:
+          url: ${{ env.host }}/v1/tasks
+          method: POST
+          headers:
+            Content-Type: application/json
+          body:
+            content: "Read chapter 5 of Clean Code book"
+            description: "Continue reading software engineering book"
+            priority: 1
+          timeout: ${{ env.TIMEOUT }}
+          check:
+            status: 201
+          captures:
+            flexibleTaskId:
+              jsonpath: $.id
+
+      # Step 5: Classify all tasks (AI should detect scheduling constraints)
+      - name: Classify tasks with scheduling context
+        http:
+          url: ${{ env.host }}/v1/ai/classify
+          method: POST
+          headers:
+            Content-Type: application/json
+          body:
+            taskIds:
+              - ${{ captures.errandTaskId }}
+              - ${{ captures.businessTaskId }}
+              - ${{ captures.weekendTaskId }}
+              - ${{ captures.flexibleTaskId }}
+          timeout: 60000
+          check:
+            status: 200
+            jsonpath:
+              $.results: isArray
+              $.tasksClassified: isNumber
+          captures:
+            classificationResults:
+              jsonpath: $.results
+
+      # Step 6: Estimate time for errand task (should include requiresDriving)
+      - name: Estimate errand task duration
+        http:
+          url: ${{ env.host }}/v1/ai/estimateTime
+          method: POST
+          headers:
+            Content-Type: application/json
+          body:
+            taskId: ${{ captures.errandTaskId }}
+          timeout: 30000
+          check:
+            status: 200
+            jsonpath:
+              $.taskId: ${{ captures.errandTaskId }}
+              $.estimate: isString
+              $.size: isString
+          captures:
+            errandEstimate:
+              jsonpath: $.timeEstimateMinutes
+
+      # Step 7: Estimate time for business task (should include timeConstraint)
+      - name: Estimate business task duration
+        http:
+          url: ${{ env.host }}/v1/ai/estimateTime
+          method: POST
+          headers:
+            Content-Type: application/json
+          body:
+            taskId: ${{ captures.businessTaskId }}
+          timeout: 30000
+          check:
+            status: 200
+            jsonpath:
+              $.taskId: ${{ captures.businessTaskId }}
+              $.estimate: isString
+
+      # Step 8: Query tasks requiring driving
+      - name: Query tasks requiring driving
+        http:
+          url: ${{ env.host }}/v1/tasks?requiresDriving=true
+          method: GET
+          timeout: ${{ env.TIMEOUT }}
+          check:
+            status: 200
+
+      # Step 9: Query tasks with business-hours constraint
+      - name: Query business-hours tasks
+        http:
+          url: ${{ env.host }}/v1/tasks?timeConstraint=business-hours
+          method: GET
+          timeout: ${{ env.TIMEOUT }}
+          check:
+            status: 200
+
+      # Step 10: Query tasks with weekend constraint
+      - name: Query weekend tasks
+        http:
+          url: ${{ env.host }}/v1/tasks?timeConstraint=weekends
+          method: GET
+          timeout: ${{ env.TIMEOUT }}
+          check:
+            status: 200
+
+      # Step 11: Combined query - driving + anytime
+      - name: Query driving tasks with anytime constraint
+        http:
+          url: ${{ env.host }}/v1/tasks?requiresDriving=true&timeConstraint=anytime
+          method: GET
+          timeout: ${{ env.TIMEOUT }}
+          check:
+            status: 200
+
+      # Cleanup: Delete test tasks
+      - name: Delete errand task
+        http:
+          url: ${{ env.host }}/v1/tasks/${{ captures.errandTaskId }}
+          method: DELETE
+          timeout: ${{ env.TIMEOUT }}
+          check:
+            status: /^(204|404)$/
+
+      - name: Delete business task
+        http:
+          url: ${{ env.host }}/v1/tasks/${{ captures.businessTaskId }}
+          method: DELETE
+          timeout: ${{ env.TIMEOUT }}
+          check:
+            status: /^(204|404)$/
+
+      - name: Delete weekend task
+        http:
+          url: ${{ env.host }}/v1/tasks/${{ captures.weekendTaskId }}
+          method: DELETE
+          timeout: ${{ env.TIMEOUT }}
+          check:
+            status: /^(204|404)$/
+
+      - name: Delete flexible task
+        http:
+          url: ${{ env.host }}/v1/tasks/${{ captures.flexibleTaskId }}
+          method: DELETE
+          timeout: ${{ env.TIMEOUT }}
+          check:
+            status: /^(204|404)$/

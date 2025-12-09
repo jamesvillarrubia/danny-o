@@ -63,6 +63,15 @@ export interface ChatAction {
   filterConfig?: ViewFilterConfig;
 }
 
+/**
+ * Message format for conversation history sent to/from the API.
+ * Simple structure for serialization.
+ */
+export interface ConversationMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
 /** Raw message format from Anthropic API */
 export interface DebugMessage {
   role: 'user' | 'assistant';
@@ -95,6 +104,11 @@ export interface ChatResponse {
   actions?: ChatAction[];
   filterConfig?: ViewFilterConfig;
   debugMessages?: DebugPayload;
+  /** 
+   * If the conversation history was summarized (too long), 
+   * this contains the new compressed history to use going forward.
+   */
+  summarizedHistory?: ConversationMessage[];
 }
 
 // Project types
@@ -135,9 +149,15 @@ export interface ListProjectsResponse {
   projects: Project[];
 }
 
+// Environment
+export type ApiEnvironment = 'local' | 'production';
+
 // Settings
 export interface Settings {
   apiKey: string;
   theme?: 'light' | 'dark' | 'system';
+  environment: ApiEnvironment;
+  /** Production API URL - only used when environment is 'production' */
+  productionUrl?: string;
 }
 

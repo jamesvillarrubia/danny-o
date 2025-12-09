@@ -86,7 +86,7 @@ export function FilterDisplay({
         {isTemporary && onSave && (
           <button
             onClick={onSave}
-            className="px-3 py-1 text-sm font-medium text-danny-700 hover:text-danny-900 hover:bg-danny-100 rounded-lg transition-colors flex items-center gap-1.5"
+            className="px-3 py-1 text-sm font-medium text-danny-700 hover:text-danny-900 hover:bg-danny-100 rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer"
             aria-label="Save view"
           >
             <Save className="w-3.5 h-3.5" />
@@ -95,7 +95,7 @@ export function FilterDisplay({
         )}
         <button
           onClick={onClear}
-          className="p-1 text-danny-600 hover:text-danny-900 hover:bg-danny-100 rounded-lg transition-colors"
+          className="p-1 text-danny-600 hover:text-danny-900 hover:bg-danny-100 rounded-lg transition-colors cursor-pointer"
           aria-label="Clear filter"
         >
           <X className="w-4 h-4" />

@@ -371,6 +371,38 @@ export class SyncService implements OnModuleDestroy {
   }
 
   /**
+   * Reopen a completed task both locally and in Todoist.
+   * This is used to undo a task completion.
+   */
+  async reopenTask(taskId: string): Promise<boolean> {
+    try {
+      this.logger.log(`Reopening task ${taskId}`);
+
+      // Get task details
+      const task = await this.storage.getTask(taskId);
+
+      if (!task) {
+        throw new Error(`Task ${taskId} not found in storage`);
+      }
+
+      // Reopen in Todoist
+      await this.taskProvider.reopenTask(taskId);
+
+      // Update in storage
+      await this.storage.updateTask(taskId, {
+        isCompleted: false,
+        completedAt: null,
+      });
+
+      this.logger.log(`Task ${taskId} reopened successfully`);
+      return true;
+    } catch (error: any) {
+      this.logger.error(`Failed to reopen task ${taskId}: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
    * Create a new task in Todoist and sync to storage
    */
   async createTask(taskData: CreateTaskInputDto): Promise<Task> {

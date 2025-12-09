@@ -134,7 +134,10 @@ export class ClaudeService implements OnModuleInit {
         throw new Error('AI response did not contain valid JSON');
       }
 
-      const parsed = JSON.parse(jsonMatch[0]);
+      // Sanitize JSON - fix control characters in string literals
+      // Claude sometimes returns newlines/tabs inside strings which is invalid JSON
+      const sanitizedJson = this.sanitizeJsonString(jsonMatch[0]);
+      const parsed = JSON.parse(sanitizedJson);
       
       // Log successful interaction
       await this.logInteraction({
@@ -339,6 +342,58 @@ export class ClaudeService implements OnModuleInit {
       maxTokens: this.maxTokens,
       temperature: this.temperature,
     };
+  }
+
+  /**
+   * Sanitize JSON string to fix control characters in string literals.
+   * Claude sometimes returns actual newlines/tabs inside JSON strings which is invalid.
+   */
+  private sanitizeJsonString(json: string): string {
+    // Replace control characters inside string values with their escaped equivalents
+    // This regex finds strings and replaces unescaped control chars within them
+    let result = '';
+    let inString = false;
+    let escaped = false;
+    
+    for (let i = 0; i < json.length; i++) {
+      const char = json[i];
+      const code = char.charCodeAt(0);
+      
+      if (escaped) {
+        result += char;
+        escaped = false;
+        continue;
+      }
+      
+      if (char === '\\') {
+        result += char;
+        escaped = true;
+        continue;
+      }
+      
+      if (char === '"') {
+        inString = !inString;
+        result += char;
+        continue;
+      }
+      
+      // If we're in a string and hit a control character, escape it
+      if (inString && code < 32) {
+        if (code === 10) {
+          result += '\\n';  // newline
+        } else if (code === 13) {
+          result += '\\r';  // carriage return
+        } else if (code === 9) {
+          result += '\\t';  // tab
+        } else {
+          result += `\\u${code.toString(16).padStart(4, '0')}`;
+        }
+      } else {
+        result += char;
+      }
+    }
+    
+    return result;
   }
 
   /**

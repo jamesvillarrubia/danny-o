@@ -203,5 +203,120 @@ describe('EnrichmentService', () => {
       expect(supplyTasks[0].id).toBe('task_1');
     });
   });
+
+  describe('getTasksRequiringDriving', () => {
+    it('should get tasks that require driving', async () => {
+      const tasks = [
+        createMockTask({ id: 'task_1', metadata: { requiresDriving: true } }),
+        createMockTask({ id: 'task_2', metadata: { requiresDriving: false } }),
+        createMockTask({ id: 'task_3', metadata: { requiresDriving: true } }),
+      ];
+
+      storage.seedTasks(tasks);
+
+      const drivingTasks = await service.getTasksRequiringDriving();
+      expect(drivingTasks).toHaveLength(2);
+      expect(drivingTasks.map(t => t.id).sort()).toEqual(['task_1', 'task_3']);
+    });
+
+    it('should return empty array when no tasks require driving', async () => {
+      const tasks = [
+        createMockTask({ id: 'task_1', metadata: { requiresDriving: false } }),
+        createMockTask({ id: 'task_2' }),
+      ];
+
+      storage.seedTasks(tasks);
+
+      const drivingTasks = await service.getTasksRequiringDriving();
+      expect(drivingTasks).toHaveLength(0);
+    });
+  });
+
+  describe('getTasksByTimeConstraint', () => {
+    it('should get tasks with business-hours constraint', async () => {
+      const tasks = [
+        createMockTask({ id: 'task_1', metadata: { timeConstraint: 'business-hours' } }),
+        createMockTask({ id: 'task_2', metadata: { timeConstraint: 'anytime' } }),
+        createMockTask({ id: 'task_3', metadata: { timeConstraint: 'business-hours' } }),
+      ];
+
+      storage.seedTasks(tasks);
+
+      const businessTasks = await service.getTasksByTimeConstraint('business-hours');
+      expect(businessTasks).toHaveLength(2);
+      expect(businessTasks.map(t => t.id).sort()).toEqual(['task_1', 'task_3']);
+    });
+
+    it('should get tasks with weekend constraint', async () => {
+      const tasks = [
+        createMockTask({ id: 'task_1', metadata: { timeConstraint: 'weekends' } }),
+        createMockTask({ id: 'task_2', metadata: { timeConstraint: 'anytime' } }),
+      ];
+
+      storage.seedTasks(tasks);
+
+      const weekendTasks = await service.getTasksByTimeConstraint('weekends');
+      expect(weekendTasks).toHaveLength(1);
+      expect(weekendTasks[0].id).toBe('task_1');
+    });
+
+    it('should throw error for invalid time constraint', async () => {
+      await expect(service.getTasksByTimeConstraint('invalid' as any)).rejects.toThrow(
+        'Invalid time constraint'
+      );
+    });
+  });
+
+  describe('enrichTask with scheduling fields', () => {
+    it('should enrich a task with requiresDriving and timeConstraint', async () => {
+      const task = createMockTask({ id: 'task_errand', content: 'Pick up package from UPS store' });
+      storage.seedTasks([task]);
+
+      const metadata = createMockMetadata({
+        category: 'personal-family',
+        timeEstimateMinutes: 30,
+        requiresDriving: true,
+        timeConstraint: 'business-hours',
+      });
+
+      await service.enrichTask('task_errand', metadata);
+
+      const savedMetadata = await storage.getTaskMetadata('task_errand');
+      expect(savedMetadata).toBeDefined();
+      expect(savedMetadata?.requiresDriving).toBe(true);
+      expect(savedMetadata?.timeConstraint).toBe('business-hours');
+    });
+
+    it('should sync duration to Todoist when timeEstimateMinutes is provided', async () => {
+      const task = createMockTask({ id: 'task_with_duration', content: 'Meeting prep' });
+      storage.seedTasks([task]);
+      taskProvider.seedTasks([task]);
+
+      const updateDurationSpy = vi.spyOn(taskProvider, 'updateTaskDuration');
+
+      const metadata = createMockMetadata({
+        category: 'work',
+        timeEstimateMinutes: 45,
+      });
+
+      await service.enrichTask('task_with_duration', metadata);
+
+      expect(updateDurationSpy).toHaveBeenCalledWith('task_with_duration', 45);
+    });
+
+    it('should validate timeConstraint values', async () => {
+      const task = createMockTask({ id: 'task_invalid', content: 'Test' });
+      storage.seedTasks([task]);
+
+      const metadata = createMockMetadata({
+        category: 'work',
+        timeConstraint: 'invalid-constraint' as any,
+      });
+
+      await expect(service.enrichTask('task_invalid', metadata)).rejects.toThrow(
+        'Invalid time constraint'
+      );
+    });
+  });
 });
 

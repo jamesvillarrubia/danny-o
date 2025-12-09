@@ -333,10 +333,10 @@ export class ViewsController {
       limit: limit || config.limit || 1000,
     };
 
-    // Priority filter
-    if (config.priority && config.priority.length > 0) {
-      // For now, use lowest priority (highest urgency)
-      filters.priority = Math.min(...config.priority);
+    // Priority filter - only use DB filter for single priority
+    // Multi-priority filtering is handled in-memory below since DB uses exact match
+    if (config.priority && config.priority.length === 1) {
+      filters.priority = config.priority[0];
     }
 
     // Category filter (if single category)

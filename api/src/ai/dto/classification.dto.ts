@@ -2,7 +2,8 @@
  * Classification DTOs
  */
 
-import { IsArray, IsNumber, IsOptional, IsString, Max, Min } from 'class-validator';
+import { IsArray, IsBoolean, IsIn, IsNumber, IsOptional, IsString, Max, Min } from 'class-validator';
+import { TimeConstraint } from '../../common/interfaces';
 
 export class ClassificationResultDto {
   @IsString()
@@ -24,6 +25,15 @@ export class ClassificationResultDto {
     reasoning: string;
   }>;
 
+  @IsOptional()
+  @IsBoolean()
+  requiresDriving?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @IsIn(['business-hours', 'weekdays-only', 'evenings', 'weekends', 'anytime'])
+  timeConstraint?: TimeConstraint;
+
   @IsNumber()
   @Min(0)
   @Max(1)
@@ -42,10 +52,23 @@ export class TimeEstimateDto {
 
   @IsOptional()
   @IsNumber()
-  timeEstimateMinutes?: number;
+  timeEstimateMinutes?: number | null;
+
+  @IsOptional()
+  @IsBoolean()
+  needsBreakdown?: boolean;
 
   @IsString()
   size: 'XS' | 'S' | 'M' | 'L' | 'XL';
+
+  @IsOptional()
+  @IsBoolean()
+  requiresDriving?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @IsIn(['business-hours', 'weekdays-only', 'evenings', 'weekends', 'anytime'])
+  timeConstraint?: TimeConstraint;
 
   @IsNumber()
   @Min(0)

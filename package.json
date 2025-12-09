@@ -1,0 +1,34 @@
+{
+  "name": "danny-tasks",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Danny - AI-powered task management system with web UI, API, and browser extension",
+  "scripts": {
+    "dev": "concurrently -n \"API,WEB\" -c \"blue,green\" \"pnpm --filter danny-tasks-api start:http\" \"pnpm --filter danny-web dev\"",
+    "dev:api": "pnpm --filter danny-tasks-api start:http",
+    "dev:web": "pnpm --filter danny-web dev",
+    "build": "pnpm --filter danny-tasks-api build && pnpm --filter danny-web build",
+    "build:api": "pnpm --filter danny-tasks-api build",
+    "build:web": "pnpm --filter danny-web build",
+    "test": "pnpm --filter danny-tasks-api test && pnpm --filter danny-web test",
+    "test:api": "pnpm --filter danny-tasks-api test",
+    "test:web": "pnpm --filter danny-web test",
+    "lint": "pnpm --filter danny-tasks-api lint && pnpm --filter danny-web lint",
+    "cli": "pnpm --filter danny-tasks-api cli",
+    "mcp": "pnpm --filter danny-tasks-api mcp"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.0"
+  },
+  "engines": {
+    "node": ">=22.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "packageManager": "pnpm@9.15.3",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "better-sqlite3"
+    ]
+  }
+}

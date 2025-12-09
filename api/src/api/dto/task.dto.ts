@@ -248,6 +248,14 @@ export interface CompleteTaskResponseDto {
 }
 
 /**
+ * Reopen task response (undo completion)
+ */
+export interface ReopenTaskResponseDto {
+  taskId: string;
+  reopenedAt: string;
+}
+
+/**
  * Batch update response
  */
 export interface BatchUpdateResponseDto {

@@ -11,11 +11,12 @@
  * - DELETE /v1/tasks/:taskId   - Delete a task
  * 
  * Custom Methods (RPC-style with :verb suffix):
- * - POST   /v1/tasks:sync           - Sync with Todoist
- * - POST   /v1/tasks/:taskId:complete - Complete a task
- * - POST   /v1/tasks:search         - Search tasks
- * - POST   /v1/tasks:batchUpdate    - Batch update tasks
- * - POST   /v1/tasks:resetTestState - Reset test state (for step-ci)
+ * - POST   /v1/tasks:sync             - Sync with Todoist
+ * - POST   /v1/tasks/:taskId/complete - Complete a task
+ * - POST   /v1/tasks/:taskId/reopen   - Reopen a completed task (undo)
+ * - POST   /v1/tasks:search           - Search tasks
+ * - POST   /v1/tasks:batchUpdate      - Batch update tasks
+ * - POST   /v1/tasks:resetTestState   - Reset test state (for step-ci)
  * 
  * URL Enrichment Methods:
  * - GET    /v1/tasks/:taskId/analyze-url - Analyze task for URL enrichment (dry run)
@@ -56,6 +57,7 @@ import {
   SyncResponseDto,
   SearchTasksResponseDto,
   CompleteTaskResponseDto,
+  ReopenTaskResponseDto,
   BatchUpdateResponseDto,
 } from '../../dto';
 
@@ -327,6 +329,36 @@ export class TasksController {
       taskId,
       completedAt: new Date().toISOString(),
       actualMinutes: body.actualMinutes,
+    };
+  }
+
+  /**
+   * Reopen a completed task (undo completion)
+   * POST /v1/tasks/:taskId/reopen
+   */
+  @Post(':taskId/reopen')
+  @HttpCode(HttpStatus.OK)
+  async reopenTask(
+    @Param('taskId') taskId: string,
+  ): Promise<ReopenTaskResponseDto> {
+    this.logger.log(`Reopening task: ${taskId}`);
+
+    const existingTask = await this.storage.getTask(taskId);
+    if (!existingTask) {
+      throw new NotFoundException({
+        error: {
+          code: 404,
+          message: `Task ${taskId} not found`,
+          status: 'NOT_FOUND',
+        },
+      });
+    }
+
+    await this.syncService.reopenTask(taskId);
+
+    return {
+      taskId,
+      reopenedAt: new Date().toISOString(),
     };
   }
 

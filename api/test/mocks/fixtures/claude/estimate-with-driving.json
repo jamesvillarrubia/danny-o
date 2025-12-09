@@ -1,0 +1,9 @@
+{
+  "estimate": "45-60min",
+  "timeEstimateMinutes": 52,
+  "size": "M",
+  "requiresDriving": true,
+  "timeConstraint": "anytime",
+  "confidence": 0.92,
+  "reasoning": "This task requires driving to the store. Factoring in 15-20 minutes of driving each way plus 20-25 minutes of shopping time. The store is likely open all day, so there are no specific time constraints."
+}

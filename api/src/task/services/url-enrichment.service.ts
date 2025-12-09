@@ -468,11 +468,13 @@ Respond in JSON format:
 
   /**
    * Determine a new title for the task if the current one is URL-heavy
+   * or is a markdown link that could be cleaner.
    * 
    * Priority:
    * 1. AI-suggested title (if available and not null)
-   * 2. Page title from fetch (cleaned up)
-   * 3. Fallback: "Review: [domain]" or "Unclear link: [domain]"
+   * 2. Markdown link text (cleaned up with action prefix)
+   * 3. Page title from fetch (cleaned up)
+   * 4. Fallback: "Review: [domain]" or "Unclear link: [domain]"
    */
   private determineNewTitle(
     task: Task,
@@ -480,24 +482,37 @@ Respond in JSON format:
     fetchResults: UrlFetchResult[],
     context?: UrlContext,
   ): string | undefined {
-    // Only update title if it's URL-heavy (mostly just a URL)
-    if (urlAnalysis.urlRatio < 0.5 || urlAnalysis.textWithoutUrls.length > 30) {
-      // Task already has meaningful text, don't override
+    const isMarkdownLink = urlAnalysis.markdownLink?.isMarkdownLink;
+    const isUrlHeavy = urlAnalysis.urlRatio >= 0.5 && urlAnalysis.textWithoutUrls.length <= 30;
+
+    // Only update title if it's URL-heavy or a markdown link
+    if (!isUrlHeavy && !isMarkdownLink) {
+      // Task already has meaningful non-URL, non-markdown-link text
       return undefined;
     }
 
-    // Priority 1: AI-suggested title
+    // Priority 1: AI-suggested title (if we fetched content and got a suggestion)
     if (context?.suggestedTitle) {
       return this.cleanTitle(context.suggestedTitle);
     }
 
-    // Priority 2: Page title from successful fetch
+    // Priority 2: For markdown links, extract and clean up the link text
+    if (isMarkdownLink && urlAnalysis.markdownLink?.linkText) {
+      const linkText = urlAnalysis.markdownLink.linkText;
+      // Add action prefix if the text doesn't already suggest an action
+      if (this.needsActionPrefix(linkText)) {
+        return this.cleanTitle(`Read: ${linkText}`);
+      }
+      return this.cleanTitle(linkText);
+    }
+
+    // Priority 3: Page title from successful fetch
     const successfulFetch = fetchResults.find(r => r.success && r.title);
     if (successfulFetch?.title) {
       return this.cleanTitle(successfulFetch.title);
     }
 
-    // Priority 3: Generate fallback from URL
+    // Priority 4: Generate fallback from URL
     const firstUrl = urlAnalysis.urls[0];
     if (firstUrl) {
       const domain = this.extractDomain(firstUrl);
@@ -513,6 +528,20 @@ Respond in JSON format:
     }
 
     return undefined;
+  }
+
+  /**
+   * Check if a title text needs an action prefix like "Read:"
+   * Returns false if the text already starts with an action verb
+   */
+  private needsActionPrefix(text: string): boolean {
+    const actionPrefixes = [
+      'read', 'review', 'check', 'watch', 'listen', 'buy', 'consider',
+      'try', 'look', 'explore', 'investigate', 'research', 'learn',
+      'sign up', 'subscribe', 'download', 'install', 'setup', 'configure',
+    ];
+    const lowerText = text.toLowerCase().trim();
+    return !actionPrefixes.some(prefix => lowerText.startsWith(prefix));
   }
 
   /**

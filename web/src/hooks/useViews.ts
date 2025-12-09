@@ -12,7 +12,7 @@ import { getViews } from '../api/client';
 const defaultViews: View[] = [
   { id: 0, name: 'Today', slug: 'today', filterConfig: { dueWithin: 'today' }, isDefault: true, orderIndex: 0 },
   { id: 0, name: 'This Week', slug: 'this-week', filterConfig: { dueWithin: '7d' }, isDefault: true, orderIndex: 1 },
-  { id: 0, name: 'High Priority', slug: 'high-priority', filterConfig: { priority: [1, 2] }, isDefault: true, orderIndex: 2 },
+  { id: 0, name: 'High Priority', slug: 'high-priority', filterConfig: { priority: [3, 4] }, isDefault: true, orderIndex: 2 }, // P2 (high) and P1 (urgent)
   { id: 0, name: 'All Tasks', slug: 'all', filterConfig: { completed: false }, isDefault: true, orderIndex: 3 },
 ];
 

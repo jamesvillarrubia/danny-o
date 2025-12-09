@@ -10,9 +10,10 @@
  * - Smart search with query expansion
  */
 
-import { Module, forwardRef } from '@nestjs/common';
+import { Module } from '@nestjs/common';
 import { ConfigurationModule } from '../config/config.module';
 import { StorageModule } from '../storage/storage.module';
+import { TaskProviderModule } from '../task-provider/task-provider.module';
 import { ClaudeService } from './services/claude.service';
 import { AIOperationsService } from './services/operations.service';
 import { LearningService } from './services/learning.service';
@@ -25,7 +26,9 @@ import { TaskProcessorAgent } from './task-processor/task-processor.agent';
   imports: [
     ConfigurationModule,
     StorageModule,
-    forwardRef(() => import('../task/task.module').then((m) => m.TaskModule)), // Import TaskModule for SyncService
+    TaskProviderModule, // Import TaskProviderModule for ITaskProvider
+    // Note: TaskModule is imported by parent modules (ApiModule, CLIModule) 
+    // Do not import it here to avoid circular dependencies
   ],
   providers: [
     PromptsService,

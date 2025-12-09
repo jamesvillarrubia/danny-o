@@ -30,6 +30,13 @@ export interface ITaskProvider {
   updateTask(taskId: string, updates: UpdateTaskDto): Promise<Task>;
 
   /**
+   * Update task duration (for time blocking)
+   * @param taskId The task ID
+   * @param durationMinutes Duration in minutes
+   */
+  updateTaskDuration(taskId: string, durationMinutes: number): Promise<Task>;
+
+  /**
    * Move task to a different project
    */
   moveTask(taskId: string, projectId: string): Promise<Task>;

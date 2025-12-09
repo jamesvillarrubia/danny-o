@@ -51,6 +51,9 @@ export interface TaskMetadataTable {
   last_synced_state: string | null; // JSON
   last_synced_at: string | null;
   recommendation_applied: number | null; // 0 or 1
+  // Scheduling fields
+  requires_driving: number | null; // 0 or 1
+  time_constraint: string | null; // 'business-hours' | 'weekdays-only' | 'evenings' | 'weekends' | 'anytime'
   created_at: ColumnType<string, string | undefined, string>;
   updated_at: ColumnType<string, string | undefined, string>;
 }

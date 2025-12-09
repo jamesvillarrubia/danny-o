@@ -5,22 +5,25 @@
  */
 
 import { useState, useRef, useEffect } from 'react';
-import { Send, Loader2, Sparkles, X, ChevronUp, ChevronDown } from 'lucide-react';
+import { Send, Loader2, Sparkles, X, ChevronUp, ChevronDown, Globe, Plus } from 'lucide-react';
 import clsx from 'clsx';
 import { useChat } from '../hooks/useChat';
+import { usePageContext } from '../hooks/usePageContext';
 import type { ChatResponse } from '../types';
 
 interface ChatInputProps {
   onResponse?: (response?: ChatResponse) => void;
+  onAddTask?: () => void;
 }
 
-export function ChatInput({ onResponse }: ChatInputProps) {
+export function ChatInput({ onResponse, onAddTask }: ChatInputProps) {
   const [input, setInput] = useState('');
   const [isExpanded, setIsExpanded] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
 
   const { messages, isLoading, sendMessage, clearMessages } = useChat();
+  const { pageContext, isExtension } = usePageContext();
 
   // Auto-resize textarea
   useEffect(() => {
@@ -45,7 +48,17 @@ export function ChatInput({ onResponse }: ChatInputProps) {
     setInput('');
     setIsExpanded(true);
 
-    const response = await sendMessage(message);
+    // Include page context if available from extension
+    // Send HTML for server-side Readability extraction, with text as fallback
+    const context = pageContext ? {
+      url: pageContext.url,
+      title: pageContext.title,
+      html: pageContext.html?.slice(0, 100000), // HTML for Readability parsing
+      text: pageContext.text?.slice(0, 5000), // Fallback plain text
+      selection: pageContext.selection,
+    } : undefined;
+
+    const response = await sendMessage(message, context);
     if (response?.success && onResponse) {
       onResponse(response);
     }
@@ -71,14 +84,14 @@ export function ChatInput({ onResponse }: ChatInputProps) {
             <div className="flex items-center gap-1">
               <button
                 onClick={clearMessages}
-                className="p-1 text-zinc-400 hover:text-zinc-600 transition-colors"
+                className="p-1 text-zinc-400 hover:text-zinc-600 transition-colors cursor-pointer"
                 aria-label="Clear chat"
               >
                 <X className="w-4 h-4" />
               </button>
               <button
                 onClick={() => setIsExpanded(false)}
-                className="p-1 text-zinc-400 hover:text-zinc-600 transition-colors"
+                className="p-1 text-zinc-400 hover:text-zinc-600 transition-colors cursor-pointer"
                 aria-label="Collapse chat"
               >
                 <ChevronDown className="w-4 h-4" />
@@ -107,6 +120,12 @@ export function ChatInput({ onResponse }: ChatInputProps) {
                       : 'bg-zinc-100 text-zinc-900'
                   )}
                 >
+                  {msg.role === 'user' && msg.hasPageContext && (
+                    <div className="flex items-center gap-1 mb-1 text-xs opacity-75">
+                      <Globe className="w-3 h-3" />
+                      <span>with page context</span>
+                    </div>
+                  )}
                   <p className="whitespace-pre-wrap">{msg.content}</p>
                   {msg.actions && msg.actions.length > 0 && (
                     <div className="mt-2 pt-2 border-t border-zinc-200/20 space-y-1">
@@ -134,56 +153,87 @@ export function ChatInput({ onResponse }: ChatInputProps) {
       {/* Input Area */}
       <form onSubmit={handleSubmit} className="p-3">
         <div className="relative">
+          {/* Page context indicator */}
+          {isExtension && pageContext && (
+            <div className="mb-2 px-2 py-1.5 bg-blue-50 border border-blue-200 rounded-lg flex items-center gap-2 text-xs text-blue-700">
+              <Globe className="w-3.5 h-3.5 flex-shrink-0" />
+              <span className="truncate">
+                Context: {pageContext.title || pageContext.url || 'Current page'}
+              </span>
+              {pageContext.selection && (
+                <span className="flex-shrink-0 px-1.5 py-0.5 bg-blue-100 rounded text-blue-600">
+                  Selected text
+                </span>
+              )}
+            </div>
+          )}
+
           {/* Collapsed indicator */}
           {!isExpanded && messages.length > 0 && (
             <button
               type="button"
               onClick={() => setIsExpanded(true)}
-              className="absolute -top-6 left-1/2 -translate-x-1/2 px-2 py-0.5 bg-danny-100 text-danny-600 rounded-t-lg text-xs font-medium flex items-center gap-1 hover:bg-danny-200 transition-colors"
+              className="absolute -top-6 left-1/2 -translate-x-1/2 px-2 py-0.5 bg-danny-100 text-danny-600 rounded-t-lg text-xs font-medium flex items-center gap-1 hover:bg-danny-200 transition-colors cursor-pointer"
             >
               <ChevronUp className="w-3 h-3" />
               {messages.length} messages
             </button>
           )}
 
-          <div className="flex items-end gap-2 bg-zinc-50 rounded-xl border border-zinc-200 focus-within:border-danny-300 focus-within:ring-2 focus-within:ring-danny-100 transition-all">
-            {/* Danny Icon */}
-            <div className="flex-shrink-0 p-2.5">
-              <div className="w-6 h-6 rounded-full bg-gradient-to-br from-danny-400 to-danny-600 flex items-center justify-center">
-                <Sparkles className="w-3.5 h-3.5 text-white" />
+          <div className="flex items-stretch gap-2">
+            {/* Add Task Button */}
+            {onAddTask && (
+              <button
+                type="button"
+                onClick={onAddTask}
+                className="flex-shrink-0 px-3 rounded-xl bg-danny-500 hover:bg-danny-600 text-white transition-colors cursor-pointer flex items-center justify-center"
+                aria-label="Add task"
+                title="Add new task"
+              >
+                <Plus className="w-5 h-5" />
+              </button>
+            )}
+
+            {/* Chat Input Container */}
+            <div className="flex-1 flex items-end gap-2 bg-zinc-50 rounded-xl border border-zinc-200 focus-within:border-danny-300 focus-within:ring-2 focus-within:ring-danny-100 transition-all">
+              {/* Danny Icon */}
+              <div className="flex-shrink-0 p-2.5">
+                <div className="w-6 h-6 rounded-full bg-gradient-to-br from-danny-400 to-danny-600 flex items-center justify-center">
+                  <Sparkles className="w-3.5 h-3.5 text-white" />
+                </div>
               </div>
+
+              {/* Textarea */}
+              <textarea
+                ref={textareaRef}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Ask Danny anything... (Shift+Enter for new line)"
+                rows={1}
+                className="chat-input flex-1 py-2.5 pr-2 bg-transparent resize-none focus:outline-none text-sm text-zinc-900 placeholder:text-zinc-400"
+                disabled={isLoading}
+              />
+
+              {/* Send Button */}
+              <button
+                type="submit"
+                disabled={!input.trim() || isLoading}
+                className={clsx(
+                  'flex-shrink-0 p-2.5 rounded-lg transition-colors',
+                  input.trim() && !isLoading
+                    ? 'text-danny-500 hover:bg-danny-50 cursor-pointer'
+                    : 'text-zinc-300 cursor-not-allowed'
+                )}
+                aria-label="Send message"
+              >
+                {isLoading ? (
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                ) : (
+                  <Send className="w-5 h-5" />
+                )}
+              </button>
             </div>
-
-            {/* Textarea */}
-            <textarea
-              ref={textareaRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="Ask Danny anything... (Shift+Enter for new line)"
-              rows={1}
-              className="chat-input flex-1 py-2.5 pr-2 bg-transparent resize-none focus:outline-none text-sm text-zinc-900 placeholder:text-zinc-400"
-              disabled={isLoading}
-            />
-
-            {/* Send Button */}
-            <button
-              type="submit"
-              disabled={!input.trim() || isLoading}
-              className={clsx(
-                'flex-shrink-0 p-2.5 rounded-lg transition-colors',
-                input.trim() && !isLoading
-                  ? 'text-danny-500 hover:bg-danny-50'
-                  : 'text-zinc-300'
-              )}
-              aria-label="Send message"
-            >
-              {isLoading ? (
-                <Loader2 className="w-5 h-5 animate-spin" />
-              ) : (
-                <Send className="w-5 h-5" />
-              )}
-            </button>
           </div>
         </div>
       </form>

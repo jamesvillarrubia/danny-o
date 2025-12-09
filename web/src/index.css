@@ -15,9 +15,9 @@
   --color-danny-900: #833224;
   --color-danny-950: #47160e;
 
-  /* Priority colors */
-  --color-priority-1: #dc2626;
-  --color-priority-2: #f97316;
+  /* Priority colors - distinct for accessibility */
+  --color-priority-1: oklch(0.53 0.23 27.69); /* P1 Urgent - deep red */
+  --color-priority-2: oklch(0.79 0.15 53.83); /* P2 High - orange */
   --color-priority-3: #3b82f6;
   --color-priority-4: #6b7280;
 
@@ -37,11 +37,31 @@ html {
   font-family: 'Outfit', system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  cursor: default;
 }
 
 body {
   background: linear-gradient(135deg, #fafafa 0%, #f4f4f5 100%);
   min-height: 100vh;
+  cursor: default;
+}
+
+/* Ensure cursor resets properly - fixes iframe boundary issues */
+*, *::before, *::after {
+  cursor: inherit;
+}
+
+/* Re-apply pointer cursor to interactive elements */
+button, a, [role="button"], input[type="submit"], input[type="button"], select {
+  cursor: pointer;
+}
+
+input[type="text"], input[type="email"], input[type="password"], input[type="search"], input[type="number"], textarea {
+  cursor: text;
+}
+
+input:disabled, button:disabled, select:disabled, textarea:disabled {
+  cursor: not-allowed;
 }
 
 /* Scrollbar styling */
@@ -91,23 +111,6 @@ body {
 .chat-input:focus {
   box-shadow: 0 0 0 3px rgba(248, 106, 82, 0.15);
 }
-
-/* Staggered animation for task list */
-.task-item {
-  animation: slideUp 0.2s ease-out;
-  animation-fill-mode: both;
-}
-
-.task-item:nth-child(1) { animation-delay: 0ms; }
-.task-item:nth-child(2) { animation-delay: 30ms; }
-.task-item:nth-child(3) { animation-delay: 60ms; }
-.task-item:nth-child(4) { animation-delay: 90ms; }
-.task-item:nth-child(5) { animation-delay: 120ms; }
-.task-item:nth-child(6) { animation-delay: 150ms; }
-.task-item:nth-child(7) { animation-delay: 180ms; }
-.task-item:nth-child(8) { animation-delay: 210ms; }
-.task-item:nth-child(9) { animation-delay: 240ms; }
-.task-item:nth-child(10) { animation-delay: 270ms; }
 
 @keyframes slideUp {
   from {

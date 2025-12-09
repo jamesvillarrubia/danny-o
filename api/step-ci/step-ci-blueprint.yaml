@@ -21,4 +21,5 @@ components:
   - path: workflows/blueprint/ai.yaml
   - path: workflows/blueprint/stats.yaml
   - path: workflows/blueprint/errors.yaml
+  - path: workflows/blueprint/scheduling.yaml
 

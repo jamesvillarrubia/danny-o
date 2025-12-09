@@ -1,0 +1,9 @@
+{
+  "estimate": "25-35min",
+  "timeEstimateMinutes": 30,
+  "size": "M",
+  "requiresDriving": false,
+  "timeConstraint": "business-hours",
+  "confidence": 0.88,
+  "reasoning": "This is a phone call to a business that operates during normal business hours (Mon-Fri 9am-5pm). Accounting for potential hold times and the user's social anxiety, this will take about 25-35 minutes. No driving required as it's a phone call."
+}

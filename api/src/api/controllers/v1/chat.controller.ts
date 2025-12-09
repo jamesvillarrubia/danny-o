@@ -21,9 +21,61 @@ import {
 import { IStorageAdapter, ITaskProvider } from '../../../common/interfaces';
 import { SyncService } from '../../../task/services/sync.service';
 import { ClaudeService } from '../../../ai/services/claude.service';
+import { extractReadableContent } from '../../../common/utils/content-extractor';
 import Anthropic from '@anthropic-ai/sdk';
 
 // ==================== System Prompt ====================
+
+// ==================== Conversation Management Constants ====================
+
+/**
+ * Approximate character limit before triggering summarization.
+ * Claude's context is ~200k tokens, but we want to stay well under for performance.
+ * ~4 chars per token, targeting ~8k tokens for history = ~32k chars
+ */
+const MAX_HISTORY_CHARS = 32000;
+
+/**
+ * When summarizing, keep the last N messages intact for immediate context.
+ * These are the most recent exchanges that shouldn't be compressed.
+ */
+const KEEP_RECENT_MESSAGES = 4;
+
+/**
+ * Prompt for summarizing conversation history.
+ * This is critical - we need to preserve task IDs, decisions, and context.
+ */
+const CONVERSATION_SUMMARY_PROMPT = `You are summarizing a conversation between a user and Danny (a task management assistant).
+
+Your goal is to create a concise summary that preserves ALL information needed to continue the conversation seamlessly. The user should never notice that summarization occurred.
+
+## What to Preserve (CRITICAL)
+1. **Task IDs**: Any task IDs mentioned (format: alphanumeric strings) - these are essential for follow-up actions
+2. **Task Names**: The exact names/content of tasks discussed
+3. **User Decisions**: What the user decided, approved, or rejected
+4. **Pending Questions**: Any unanswered questions or incomplete discussions
+5. **Project Context**: Which projects or categories were discussed
+6. **User Preferences**: Any preferences the user expressed (priorities, timing, etc.)
+7. **Actions Taken**: What actions were completed (tasks created, updated, completed)
+
+## What to Condense
+- Pleasantries and acknowledgments
+- Detailed explanations that have been acknowledged
+- Redundant information
+- Tool call details (keep results, not the process)
+
+## Format
+Write the summary as a narrative that a new assistant could read to understand the full context. Use this structure:
+
+CONVERSATION SUMMARY:
+[Concise narrative of what was discussed and decided]
+
+KEY CONTEXT:
+- Tasks mentioned: [list with IDs if known]
+- Actions completed: [list]
+- Pending items: [any unresolved topics]
+
+Remember: The user will continue this conversation. Your summary must provide enough context that the assistant can respond naturally without asking the user to repeat themselves.`;
 
 const DANNY_CHAT_SYSTEM_PROMPT = `You are Danny, a helpful and friendly task management assistant.
 You help the user manage their tasks in Todoist via natural conversation.
@@ -100,13 +152,24 @@ Use this context to understand what the user is referring to. For example:
 interface PageContext {
   url?: string;
   title?: string;
+  html?: string;
   text?: string;
   selection?: string;
 }
 
+/**
+ * Message format for conversation history.
+ * Simplified version of Anthropic's MessageParam for transport.
+ */
+interface ConversationMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
 interface ChatRequestDto {
   message: string;
-  conversationId?: string; // For future multi-turn support
+  /** Previous conversation messages for context continuity */
+  history?: ConversationMessage[];
   pageContext?: PageContext;
 }
 
@@ -138,6 +201,11 @@ interface ChatResponseDto {
     messages: Anthropic.MessageParam[];
     tools: Array<{ name: string; description: string; input_schema: any }>;
   };
+  /** 
+   * If history was summarized, this contains the new compressed history.
+   * Frontend should replace its history with this to stay in sync.
+   */
+  summarizedHistory?: ConversationMessage[];
 }
 
 // ==================== Controller ====================
@@ -177,8 +245,24 @@ export class ChatController {
       // Build tools
       const tools = this.buildChatTools(actions);
 
-      // Run conversation with page context if available
-      const result = await this.runChatLoop(body.message, tools, 5, body.pageContext);
+      // Process conversation history - summarize if too long
+      let processedHistory = body.history || [];
+      const historyLength = this.estimateHistoryLength(processedHistory);
+      
+      if (historyLength > MAX_HISTORY_CHARS && processedHistory.length > KEEP_RECENT_MESSAGES) {
+        this.logger.log(`History too long (${historyLength} chars), summarizing...`);
+        processedHistory = await this.summarizeHistory(processedHistory);
+        this.logger.log(`Summarized history to ${this.estimateHistoryLength(processedHistory)} chars`);
+      }
+
+      // Run conversation with history and page context
+      const result = await this.runChatLoop(
+        body.message, 
+        tools, 
+        5, 
+        body.pageContext,
+        processedHistory,
+      );
 
       this.logger.log(`Chat completed in ${Date.now() - startTime}ms, ${result.turns} turns`);
 
@@ -193,6 +277,8 @@ export class ChatController {
         actions: actions.length > 0 ? actions : undefined,
         filterConfig: filterConfig,
         debugMessages: result.debugMessages,
+        // Return processed history so frontend can update its state
+        summarizedHistory: historyLength > MAX_HISTORY_CHARS ? processedHistory : undefined,
       };
     } catch (error: any) {
       this.logger.error(`Chat error: ${error.message}`);
@@ -200,6 +286,80 @@ export class ChatController {
         response: `Sorry, I ran into an issue: ${error.message}. Can you try again?`,
         success: false,
       };
+    }
+  }
+
+  /**
+   * Estimate the character length of conversation history
+   */
+  private estimateHistoryLength(history: ConversationMessage[]): number {
+    return history.reduce((total, msg) => total + msg.content.length, 0);
+  }
+
+  /**
+   * Summarize conversation history when it gets too long.
+   * Keeps the last KEEP_RECENT_MESSAGES intact and summarizes the rest.
+   */
+  private async summarizeHistory(
+    history: ConversationMessage[],
+  ): Promise<ConversationMessage[]> {
+    if (!this.claudeService || history.length <= KEEP_RECENT_MESSAGES) {
+      return history;
+    }
+
+    // Split history: older messages to summarize, recent messages to keep
+    const splitIndex = history.length - KEEP_RECENT_MESSAGES;
+    const toSummarize = history.slice(0, splitIndex);
+    const toKeep = history.slice(splitIndex);
+
+    // Format the conversation for summarization
+    const conversationText = toSummarize
+      .map((msg) => `${msg.role.toUpperCase()}: ${msg.content}`)
+      .join('\n\n');
+
+    try {
+      const response = await this.claudeService.getClient().messages.create({
+        model: this.claudeService.getModel(),
+        max_tokens: 1024,
+        system: CONVERSATION_SUMMARY_PROMPT,
+        messages: [
+          {
+            role: 'user',
+            content: `Please summarize this conversation:\n\n${conversationText}`,
+          },
+        ],
+      });
+
+      // Extract text response
+      let summary = '';
+      for (const block of response.content) {
+        if (block.type === 'text') {
+          summary = block.text;
+          break;
+        }
+      }
+
+      if (!summary) {
+        this.logger.warn('Summarization returned empty response, keeping original');
+        return history;
+      }
+
+      // Return summary as a system-style context message followed by recent messages
+      return [
+        {
+          role: 'user' as const,
+          content: `[Previous conversation summary]\n${summary}\n[End of summary - conversation continues below]`,
+        },
+        {
+          role: 'assistant' as const,
+          content: 'Understood, I have the context from our previous conversation. Let me continue helping you.',
+        },
+        ...toKeep,
+      ];
+    } catch (error: any) {
+      this.logger.error(`Failed to summarize history: ${error.message}`);
+      // On failure, just truncate to recent messages
+      return toKeep;
     }
   }
 
@@ -407,6 +567,7 @@ export class ChatController {
     tools: any[],
     maxTurns = 5,
     pageContext?: PageContext,
+    history?: ConversationMessage[],
   ): Promise<{ 
     success: boolean; 
     message: string; 
@@ -423,7 +584,7 @@ export class ChatController {
 
     // Build the user message with page context if available
     let fullUserMessage = userMessage;
-    if (pageContext && (pageContext.url || pageContext.title || pageContext.text || pageContext.selection)) {
+    if (pageContext && (pageContext.url || pageContext.title || pageContext.html || pageContext.text || pageContext.selection)) {
       const contextParts: string[] = ['<page_context>'];
       
       if (pageContext.url) {
@@ -435,10 +596,21 @@ export class ChatController {
       if (pageContext.selection) {
         contextParts.push(`Selected text: "${pageContext.selection}"`);
       }
-      if (pageContext.text) {
-        // Limit page text to avoid token bloat
-        const truncatedText = pageContext.text.slice(0, 3000);
-        contextParts.push(`Page content:\n${truncatedText}${pageContext.text.length > 3000 ? '...' : ''}`);
+      
+      // Extract clean content using Readability if HTML is available
+      if (pageContext.html || pageContext.text) {
+        const extracted = extractReadableContent(pageContext.html, pageContext.text, {
+          url: pageContext.url,
+          maxContentLength: 4000,
+          minContentLength: 50,
+        });
+        
+        if (extracted.content) {
+          const sourceNote = extracted.usedReadability ? '(article content)' : '(page text)';
+          contextParts.push(`Page content ${sourceNote}:\n${extracted.content}`);
+        }
+        
+        this.logger.debug(`Content extraction: usedReadability=${extracted.usedReadability}, length=${extracted.content.length}`);
       }
       
       contextParts.push('</page_context>');
@@ -449,12 +621,25 @@ export class ChatController {
       this.logger.debug(`Chat includes page context from: ${pageContext.url || pageContext.title}`);
     }
 
-    const messages: Anthropic.MessageParam[] = [
-      {
-        role: 'user',
-        content: fullUserMessage,
-      },
-    ];
+    // Build messages array: start with history, then add current message
+    const messages: Anthropic.MessageParam[] = [];
+    
+    // Add conversation history if provided
+    if (history && history.length > 0) {
+      this.logger.debug(`Including ${history.length} messages from conversation history`);
+      for (const msg of history) {
+        messages.push({
+          role: msg.role,
+          content: msg.content,
+        });
+      }
+    }
+
+    // Add the current user message
+    messages.push({
+      role: 'user',
+      content: fullUserMessage,
+    });
 
     let turnCount = 0;
     let finalResponse = '';

@@ -17,4 +17,5 @@ components:
   - path: workflows/contracts/sync-classify-complete.yaml
   - path: workflows/contracts/ai-workflow.yaml
   - path: workflows/contracts/task-lifecycle.yaml
+  - path: workflows/contracts/scheduling-workflow.yaml
 

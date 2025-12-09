@@ -2,9 +2,10 @@
  * View Selector Component
  * 
  * Dropdown/tabs to switch between saved task views.
+ * Includes special "Filler" tab for time-based suggestions.
  */
 
-import { Calendar, Star, ListTodo, Clock, ChevronDown } from 'lucide-react';
+import { Calendar, Star, ListTodo, Clock, ChevronDown, Hourglass } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import clsx from 'clsx';
 import type { View } from '../types';
@@ -14,14 +15,20 @@ interface ViewSelectorProps {
   currentView: string;
   onViewChange: (viewSlug: string) => void;
   isLoading?: boolean;
+  /** Whether to show the special Filler tab */
+  showFillerTab?: boolean;
+  /** Called when Filler tab is selected */
+  onFillerClick?: () => void;
+  /** Whether Filler tab is currently active */
+  isFillerActive?: boolean;
 }
 
-// Icon mapping for default views
+// Icon mapping for default views (using smaller icons for compact design)
 const viewIcons: Record<string, React.ReactNode> = {
-  today: <Calendar className="w-4 h-4" />,
-  'this-week': <Clock className="w-4 h-4" />,
-  'high-priority': <Star className="w-4 h-4" />,
-  all: <ListTodo className="w-4 h-4" />,
+  today: <Calendar className="w-3.5 h-3.5" />,
+  'this-week': <Clock className="w-3.5 h-3.5" />,
+  'high-priority': <Star className="w-3.5 h-3.5" />,
+  all: <ListTodo className="w-3.5 h-3.5" />,
 };
 
 export function ViewSelector({
@@ -29,6 +36,9 @@ export function ViewSelector({
   currentView,
   onViewChange,
   isLoading,
+  showFillerTab = true,
+  onFillerClick,
+  isFillerActive = false,
 }: ViewSelectorProps) {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -50,47 +60,75 @@ export function ViewSelector({
   // Show tabs on desktop, dropdown on mobile
   return (
     <div className="flex-shrink-0 bg-white border-b border-zinc-200">
-      {/* Desktop: Tab-style view */}
-      <div className="hidden sm:flex items-center gap-1 px-4 py-2">
+      {/* Desktop: Compact tab-style view */}
+      <div className="hidden sm:flex items-center gap-0.5 px-3 py-1">
         {views.map((view) => (
           <button
             key={view.slug}
-            onClick={() => onViewChange(view.slug)}
+            onClick={() => {
+              onViewChange(view.slug);
+            }}
             className={clsx(
-              'flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all',
-              currentView === view.slug
-                ? 'bg-danny-50 text-danny-700 shadow-sm'
-                : 'text-zinc-600 hover:text-zinc-900 hover:bg-zinc-50'
+              'flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium transition-all cursor-pointer',
+              currentView === view.slug && !isFillerActive
+                ? 'bg-danny-50 text-danny-700'
+                : 'text-zinc-500 hover:text-zinc-800 hover:bg-zinc-50'
             )}
           >
             <span className={clsx(
-              currentView === view.slug ? 'text-danny-500' : 'text-zinc-400'
+              currentView === view.slug && !isFillerActive ? 'text-danny-500' : 'text-zinc-400'
             )}>
-              {viewIcons[view.slug] || <ListTodo className="w-4 h-4" />}
+              {viewIcons[view.slug] || <ListTodo className="w-3.5 h-3.5" />}
             </span>
             {view.name}
           </button>
         ))}
+        
+        {/* Filler Tab - Special tab for time-based suggestions */}
+        {showFillerTab && (
+          <>
+            <div className="w-px h-4 bg-zinc-200 mx-1" />
+            <button
+              onClick={onFillerClick}
+              className={clsx(
+                'flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium transition-all cursor-pointer',
+                isFillerActive
+                  ? 'bg-gradient-to-r from-danny-50 to-orange-50 text-danny-700 ring-1 ring-danny-200'
+                  : 'text-zinc-500 hover:text-zinc-800 hover:bg-gradient-to-r hover:from-zinc-50 hover:to-orange-50'
+              )}
+            >
+              <span className={clsx(
+                isFillerActive ? 'text-danny-500' : 'text-zinc-400'
+              )}>
+                <Hourglass className="w-3.5 h-3.5" />
+              </span>
+              Filler
+            </button>
+          </>
+        )}
       </div>
 
-      {/* Mobile: Dropdown */}
+      {/* Mobile: Compact dropdown */}
       <div className="sm:hidden relative" ref={dropdownRef}>
         <button
           onClick={() => setIsOpen(!isOpen)}
-          className="w-full flex items-center justify-between px-4 py-3 text-left"
+          className="w-full flex items-center justify-between px-3 py-2 text-left cursor-pointer hover:bg-zinc-50 transition-colors disabled:cursor-not-allowed"
           disabled={isLoading}
         >
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
             <span className="text-danny-500">
-              {viewIcons[activeView?.slug] || <ListTodo className="w-4 h-4" />}
+              {isFillerActive 
+                ? <Hourglass className="w-3.5 h-3.5" />
+                : viewIcons[activeView?.slug] || <ListTodo className="w-3.5 h-3.5" />
+              }
             </span>
-            <span className="font-medium text-zinc-900">
-              {activeView?.name || 'Select View'}
+            <span className="font-medium text-zinc-900 text-sm">
+              {isFillerActive ? 'Filler' : (activeView?.name || 'Select View')}
             </span>
           </div>
           <ChevronDown
             className={clsx(
-              'w-5 h-5 text-zinc-400 transition-transform',
+              'w-4 h-4 text-zinc-400 transition-transform',
               isOpen && 'rotate-180'
             )}
           />
@@ -106,20 +144,46 @@ export function ViewSelector({
                   setIsOpen(false);
                 }}
                 className={clsx(
-                  'w-full flex items-center gap-2 px-4 py-3 text-left transition-colors',
-                  currentView === view.slug
+                  'w-full flex items-center gap-1.5 px-3 py-2 text-left text-sm transition-colors cursor-pointer',
+                  currentView === view.slug && !isFillerActive
                     ? 'bg-danny-50 text-danny-700'
                     : 'text-zinc-700 hover:bg-zinc-50'
                 )}
               >
                 <span className={clsx(
-                  currentView === view.slug ? 'text-danny-500' : 'text-zinc-400'
+                  currentView === view.slug && !isFillerActive ? 'text-danny-500' : 'text-zinc-400'
                 )}>
-                  {viewIcons[view.slug] || <ListTodo className="w-4 h-4" />}
+                  {viewIcons[view.slug] || <ListTodo className="w-3.5 h-3.5" />}
                 </span>
                 {view.name}
               </button>
             ))}
+            
+            {/* Filler Tab in Mobile */}
+            {showFillerTab && (
+              <>
+                <div className="h-px bg-zinc-200" />
+                <button
+                  onClick={() => {
+                    onFillerClick?.();
+                    setIsOpen(false);
+                  }}
+                  className={clsx(
+                    'w-full flex items-center gap-1.5 px-3 py-2 text-left text-sm transition-colors cursor-pointer',
+                    isFillerActive
+                      ? 'bg-gradient-to-r from-danny-50 to-orange-50 text-danny-700'
+                      : 'text-zinc-700 hover:bg-zinc-50'
+                  )}
+                >
+                  <span className={clsx(
+                    isFillerActive ? 'text-danny-500' : 'text-zinc-400'
+                  )}>
+                    <Hourglass className="w-3.5 h-3.5" />
+                  </span>
+                  Filler
+                </button>
+              </>
+            )}
           </div>
         )}
       </div>

@@ -13,7 +13,7 @@
  *   - /api/v1/stats - Statistics endpoints
  */
 
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 // Legacy controllers
 import { SyncController } from './controllers/sync.controller';
 import { RespondController } from './controllers/respond.controller';
@@ -35,7 +35,7 @@ import { AIModule } from '../ai/ai.module';
 import { ConfigurationModule } from '../config/config.module';
 
 @Module({
-  imports: [ConfigurationModule, TaskModule, AIModule],
+  imports: [ConfigurationModule, forwardRef(() => TaskModule), forwardRef(() => AIModule)],
   controllers: [
     // Legacy endpoints
     SyncController,
@@ -53,5 +53,7 @@ import { ConfigurationModule } from '../config/config.module';
     ViewsController,
     ChatController,
   ],
+  providers: [],
+  exports: [],
 })
 export class ApiModule {}

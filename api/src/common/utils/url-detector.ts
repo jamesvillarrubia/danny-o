@@ -8,8 +8,27 @@
 /**
  * Regex to match URLs in text
  * Matches http/https URLs with optional path, query, fragment
+ * Excludes ) to avoid capturing markdown link syntax
  */
-const URL_REGEX = /https?:\/\/[^\s<>"{}|\\^`\[\]]+/gi;
+const URL_REGEX = /https?:\/\/[^\s<>"{}|\\^`\[\]()]+/gi;
+
+/**
+ * Regex to match markdown links: [text](url)
+ * Captures: [1] = link text, [2] = url
+ */
+const MARKDOWN_LINK_REGEX = /^\[([^\]]+)\]\((https?:\/\/[^)]+)\)$/;
+
+/**
+ * Parsed markdown link info
+ */
+export interface MarkdownLinkInfo {
+  /** Whether the content is a markdown link */
+  isMarkdownLink: boolean;
+  /** The display text from the link */
+  linkText?: string;
+  /** The URL from the link */
+  linkUrl?: string;
+}
 
 /**
  * Result of URL detection analysis
@@ -27,6 +46,8 @@ export interface UrlDetectionResult {
   hasLightDescription: boolean;
   /** Overall score indicating how much this task needs enrichment (0-1) */
   enrichmentScore: number;
+  /** Markdown link info if the content is a markdown link */
+  markdownLink?: MarkdownLinkInfo;
 }
 
 /**
@@ -84,6 +105,24 @@ export function isValidUrl(str: string): boolean {
 }
 
 /**
+ * Parse a markdown link [text](url) and extract components
+ */
+export function parseMarkdownLink(content: string): MarkdownLinkInfo {
+  const trimmed = content.trim();
+  const match = trimmed.match(MARKDOWN_LINK_REGEX);
+  
+  if (match) {
+    return {
+      isMarkdownLink: true,
+      linkText: match[1].trim(),
+      linkUrl: match[2].trim(),
+    };
+  }
+  
+  return { isMarkdownLink: false };
+}
+
+/**
  * Analyze task content and description to determine if it's URL-heavy
  * and would benefit from content enrichment.
  * 
@@ -104,6 +143,9 @@ export function analyzeTaskForUrls(
 ): UrlDetectionResult {
   const opts = { ...DEFAULT_OPTIONS, ...options };
 
+  // Check if content is a markdown link [text](url)
+  const markdownLink = parseMarkdownLink(content);
+
   // Extract URLs and calculate metrics
   const contentUrls = extractUrls(content);
   const descriptionUrls = extractUrls(description || '');
@@ -120,7 +162,7 @@ export function analyzeTaskForUrls(
   const hasLightDescription = !description || 
     descriptionWithoutUrls.length <= opts.maxLightDescriptionLength;
 
-  // Determine if URL-heavy
+  // Determine if URL-heavy (raw URL, not markdown link with descriptive text)
   const isUrlHeavy = urlRatio >= opts.urlRatioThreshold && 
     textWithoutUrls.length < opts.minTextLength;
 
@@ -141,6 +183,11 @@ export function analyzeTaskForUrls(
     if (hasLightDescription) {
       enrichmentScore += 0.3;
     }
+
+    // Markdown links with light description still benefit from enrichment
+    if (markdownLink.isMarkdownLink && hasLightDescription) {
+      enrichmentScore = Math.max(enrichmentScore, 0.5);
+    }
   }
 
   return {
@@ -150,6 +197,7 @@ export function analyzeTaskForUrls(
     textWithoutUrls,
     hasLightDescription,
     enrichmentScore: Math.min(1, enrichmentScore),
+    markdownLink: markdownLink.isMarkdownLink ? markdownLink : undefined,
   };
 }
 

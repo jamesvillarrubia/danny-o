@@ -16,8 +16,7 @@ import { Injectable, Logger, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ClaudeService } from '../services/claude.service';
 import { SearchService } from '../services/search.service';
-import { SyncService } from '../../task/services/sync.service';
-import { IStorageAdapter } from '../../common/interfaces/storage-adapter.interface';
+import { IStorageAdapter, ITaskProvider } from '../../common/interfaces';
 import axios from 'axios';
 // Exa search is optional - will be null if not installed
 let Exa: any = null;
@@ -164,8 +163,8 @@ export class TaskProcessorAgent {
 
   constructor(
     @Inject(ClaudeService) private readonly claude: ClaudeService,
-    @Inject(SyncService) private readonly sync: SyncService,
     @Inject('IStorageAdapter') private readonly storage: IStorageAdapter,
+    @Inject('ITaskProvider') private readonly taskProvider: ITaskProvider,
     private readonly searchService: SearchService,
   ) {
     // Use configured model (defaults to Haiku for speed, can override with TASK_PROCESSOR_MODEL env var)
@@ -305,7 +304,7 @@ You're being orchestrated by Claude in a chat. Format responses conversationally
           required: ['content'],
         },
         handler: async (args: any) => {
-          const task = await this.sync.createTask({
+          const task = await this.taskProvider.createTask({
             content: args.content,
             description: args.description,
             priority: args.priority || 1,
@@ -325,7 +324,7 @@ You're being orchestrated by Claude in a chat. Format responses conversationally
           required: ['taskId'],
         },
         handler: async (args: any) => {
-          await this.sync.completeTask(args.taskId);
+          await this.taskProvider.completeTask(args.taskId);
           return { success: true, taskId: args.taskId };
         },
       },
@@ -340,7 +339,7 @@ You're being orchestrated by Claude in a chat. Format responses conversationally
           required: ['taskId'],
         },
         handler: async (args: any) => {
-          await this.sync.completeTask(args.taskId);
+          await this.taskProvider.completeTask(args.taskId);
           return { success: true, taskId: args.taskId, archived: true };
         },
       },
@@ -420,7 +419,7 @@ You're being orchestrated by Claude in a chat. Format responses conversationally
         },
         handler: async (args: any) => {
           try {
-            await this.sync.addCommentToTask(args.taskId, args.content);
+            await this.taskProvider.addCommentToTask(args.taskId, args.content);
             return {
               success: true,
               taskId: args.taskId,

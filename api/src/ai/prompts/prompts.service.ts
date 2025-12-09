@@ -373,6 +373,24 @@ Priority to Todoist mapping:
 
 Analyze the following PRE-COMPUTED task management statistics. These numbers are exact counts from the database - do not estimate or recalculate them. Your job is to interpret patterns, identify habits (good and bad), and provide actionable recommendations.
 
+=== IMPORTANT CONTEXT ABOUT TASK LIST STRUCTURE ===
+Not all projects have the same time horizon. When analyzing task age and "stale" tasks, consider:
+
+1. LONG-TERM BACKLOG PROJECTS (do NOT flag these as stale or problematic):
+   - "Big Ideas" - A backlog of ambitious future projects. These are intentionally long-term (years).
+   - "Inspiration" - A collection of ideas for future reference. Not meant to be completed soon.
+   These projects serve as idea storage. Old tasks here are NORMAL and HEALTHY.
+
+2. MEDIUM-TERM PROJECTS (3-6 month horizons):
+   - "Home Renovation" / home-related projects - Major home improvements planned over months.
+   Tasks here being 60-90+ days old is expected and fine.
+
+3. SHORT-TERM (everything else):
+   - Most other categories (errands, admin, work, etc.) should be completed within days to weeks.
+   - Tasks in these categories over 30 days old may indicate procrastination.
+
+When identifying "stale" tasks or archival candidates, EXCLUDE Big Ideas and Inspiration projects from concern. Focus recommendations on actionable short-term tasks being neglected.
+
 === OVERVIEW ===
 Total active tasks: ${stats.totalActive}
 Completed in last 30 days: ${stats.totalCompletedLast30Days}

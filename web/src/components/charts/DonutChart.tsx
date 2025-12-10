@@ -168,14 +168,13 @@ export function DonutChart({
     : { top: 2, right: 2, bottom: 2, left: 2 };
   
   // Custom label renderer - shorter format on small screens
-  // Hides labels for zero values and very small percentages to prevent overlap
+  // Hides labels only for zero values to prevent overlapping labels at the same position
   const renderLabel = showLabel 
     ? ({ name, percent, value }: { name?: string; percent?: number; value?: number }) => {
-        // Hide label if value is zero/missing or percentage is below threshold (5%)
-        // This prevents overlapping labels when segments are too small to display
-        if (!value || value === 0 || !percent || percent < 0.05) return null;
+        // Hide label only if value is zero or missing - these would overlap
+        if (!value || value === 0) return null;
         
-        const pct = (percent * 100).toFixed(0);
+        const pct = percent ? (percent * 100).toFixed(0) : '0';
         const displayName = name ?? '';
         // On small screens, just show percentage
         if (isSmall) return `${pct}%`;

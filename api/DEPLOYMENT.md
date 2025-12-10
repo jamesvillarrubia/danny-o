@@ -333,6 +333,204 @@ curl https://danny-tasks-api.fly.dev/api/ai-logs/summary
 
 ---
 
+## Database Management
+
+Danny Tasks includes CLI tools for managing database backups, migrations, and syncing data between environments.
+
+### Quick Reference
+
+```bash
+# Export current database to JSON
+pnpm db:export [--output backup.json]
+
+# Import JSON backup into current database
+pnpm db:import --input backup.json [--mode merge|replace] [--force]
+
+# Push local SQLite data to production PostgreSQL
+pnpm db:push [--target prod|dev] [--yes]
+
+# Pull production PostgreSQL data to local SQLite
+pnpm db:pull [--source prod|dev] [--yes]
+```
+
+### Environment Setup
+
+Set these environment variables for database operations:
+
+```bash
+# Local development (automatic)
+SQLITE_PATH="~/.danny/data/tasks.db"  # Default location
+
+# Production/staging (required for push/pull)
+PROD_DATABASE_URL="postgresql://user:pass@host:5432/dbname"
+DEV_DATABASE_URL="postgresql://user:pass@host:5432/dbname-dev"
+
+# Or use DATABASE_URL for current environment
+DATABASE_URL="postgresql://..."  # Used by export/import commands
+```
+
+### Common Workflows
+
+#### 1. Push Local Data to Production
+
+When you want to migrate your local SQLite data to production PostgreSQL:
+
+```bash
+cd api
+
+# Ensure PROD_DATABASE_URL is set
+export PROD_DATABASE_URL="your-postgres-url"
+
+# Push with confirmation prompt
+pnpm db:push --target prod
+
+# Or skip confirmation
+pnpm db:push --target prod --yes
+```
+
+**⚠️ Warning**: This replaces all data in production. The command will:
+- Export your local SQLite database
+- Verify schema compatibility (checks migrations)
+- Replace all data in production PostgreSQL
+- Preserve sync tokens and AI interactions
+
+#### 2. Pull Production Data Locally
+
+When you want to test with production data locally:
+
+```bash
+cd api
+
+# Ensure PROD_DATABASE_URL is set
+export PROD_DATABASE_URL="your-postgres-url"
+
+# Pull with confirmation prompt
+pnpm db:pull --source prod
+
+# Or skip confirmation
+pnpm db:pull --source prod --yes
+```
+
+This replaces your local SQLite database with production data, useful for:
+- Debugging production issues locally
+- Testing new features with real data
+- Refreshing local development environment
+
+#### 3. Create Manual Backups
+
+Create timestamped JSON backups:
+
+```bash
+# Backup local SQLite
+cd api
+pnpm db:export --output ./backups/backup-$(date +%Y%m%d).json
+
+# Backup production PostgreSQL
+DATABASE_URL="$PROD_DATABASE_URL" pnpm db:export --output ./backups/prod-backup.json
+```
+
+Backups include:
+- All tasks, metadata, history
+- Projects and labels
+- Dashboard views
+- Sync state and AI interactions
+- Cached insights
+- Migration compatibility info
+
+#### 4. Restore from Backup
+
+Restore a JSON backup into any database:
+
+```bash
+cd api
+
+# Restore to local SQLite (merge mode - keeps existing data)
+pnpm db:import --input ./backups/backup-20240101.json --mode merge
+
+# Restore to production (replace mode - clears first)
+DATABASE_URL="$PROD_DATABASE_URL" pnpm db:import --input backup.json --mode replace
+
+# Force import even if migrations differ
+pnpm db:import --input backup.json --mode replace --force
+```
+
+**Import Modes:**
+- `merge` (default): Upserts records, keeps existing data
+- `replace`: Clears all tables first, then imports
+
+### Automated Backups
+
+Production database is automatically backed up daily via GitHub Actions:
+
+- **Schedule**: Daily at 2 AM UTC
+- **Retention**: 30 days
+- **Location**: GitHub Actions artifacts
+- **Manual trigger**: Run from Actions tab
+
+To download a backup:
+1. Go to GitHub Actions → "Backup Production Database"
+2. Select a workflow run
+3. Download the artifact
+4. Extract and use `pnpm db:import`
+
+### Schema Migration Safety
+
+The tools check migration compatibility before importing:
+
+```bash
+# If schemas differ, you'll see:
+⚠️  Migration mismatch detected:
+  Source has migrations not in target: add_scheduling_fields
+  Target has migrations not in source: add_insights_cache
+
+# Options:
+1. Run migrations on both databases first
+2. Use --force to override (risky!)
+```
+
+**Best Practice**: Always ensure both databases have the same migrations applied before syncing data.
+
+The schema migrations run automatically when the app starts (`KyselyAdapter.runMigrations()`). For future enhancement, consider:
+- Adopting Kysely's native migration system
+- Using Neon's database branching for schema changes
+
+### Syncing Between Environments
+
+For dev → prod workflow:
+
+```bash
+# 1. Test locally with SQLite
+pnpm start:dev
+
+# 2. When ready, push to dev environment
+export DEV_DATABASE_URL="..."
+pnpm db:push --target dev
+
+# 3. Test in dev, then promote to prod
+export PROD_DATABASE_URL="..."
+pnpm db:pull --source dev  # Get dev data locally first (optional)
+pnpm db:push --target prod
+```
+
+### Troubleshooting Database Operations
+
+**"Schema mismatch" error**:
+- Run migrations on both databases: restart the app in both environments
+- Check `fly logs` for migration errors
+- Use `--force` only if you understand the risk
+
+**"Connection timeout"**:
+- Verify `DATABASE_URL` is correct
+- Check database is not paused (Neon auto-pauses)
+- Test with: `fly ssh console` then try connecting
+
+**Large backup files**:
+- AI interactions table can be large
+- Consider excluding it: modify `DATA_TABLES` in `scripts/db-tools.ts`
+- Compress backups: `gzip backup.json`
+
+---
+
 ## Troubleshooting
 
 ### Database Connection Issues

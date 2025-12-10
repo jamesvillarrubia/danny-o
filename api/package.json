@@ -28,7 +28,11 @@
     "test:step-ci:mock": "pnpm build && RUN_MODE=http USE_MOCKS=true DATABASE_URL= SQLITE_PATH=:memory: node dist/main.js & sleep 5 && npx stepci run step-ci/workflows/blueprint/health.yaml && npx stepci run step-ci/workflows/blueprint/tasks.yaml; pkill -f 'node dist/main.js' || true",
     "test:step-ci:real": "pnpm build && RUN_MODE=http node dist/main.js & sleep 5 && npx stepci run step-ci/step-ci.yaml --env step-ci/environments/real.yaml; pkill -f 'node dist/main.js' || true",
     "test:step-ci:record": "tsx scripts/record-fixtures.ts",
-    "migrate": "tsx src/storage/migrate.ts"
+    "migrate": "tsx src/storage/migrate.ts",
+    "db:export": "tsx scripts/db-tools.ts export",
+    "db:import": "tsx scripts/db-tools.ts import",
+    "db:push": "tsx scripts/db-tools.ts push",
+    "db:pull": "tsx scripts/db-tools.ts pull"
   },
   "keywords": [
     "todoist",

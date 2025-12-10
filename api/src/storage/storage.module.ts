@@ -19,24 +19,38 @@ const logger = new Logger('StorageModule');
     {
       provide: 'IStorageAdapter',
       useFactory: async (configService: ConfigService): Promise<IStorageAdapter> => {
-        const databaseUrl = configService.get<string>('DATABASE_URL');
-        
-        // Determine dialect from DATABASE_URL or DATABASE_TYPE
+        // Determine which database to use based on DATABASE_ENV
+        // Values: 'prod', 'dev', or unset (defaults to SQLite)
+        const databaseEnv = configService.get<string>('DATABASE_ENV');
+        let databaseUrl: string | undefined;
+
+        if (databaseEnv === 'prod') {
+          databaseUrl = configService.get<string>('PROD_DATABASE_URL');
+          logger.log('Using PRODUCTION database (PROD_DATABASE_URL)');
+        } else if (databaseEnv === 'dev') {
+          databaseUrl = configService.get<string>('DEV_DATABASE_URL');
+          logger.log('Using DEVELOPMENT database (DEV_DATABASE_URL)');
+        } else if (databaseEnv) {
+          logger.warn(`Unknown DATABASE_ENV="${databaseEnv}", falling back to SQLite`);
+        }
+
+        // Determine dialect
         let dialect: DatabaseDialect;
         
         if (databaseUrl && (databaseUrl.startsWith('postgres://') || databaseUrl.startsWith('postgresql://'))) {
           dialect = 'postgres';
-          logger.log('Using PostgreSQL database (Neon)');
         } else {
           dialect = 'sqlite';
-          logger.log('Using SQLite database (local)');
+          if (!databaseEnv) {
+            logger.log('Using SQLite database (local)');
+          }
         }
 
         let adapter: KyselyAdapter;
 
         if (dialect === 'postgres') {
           if (!databaseUrl) {
-            throw new Error('DATABASE_URL is required for PostgreSQL');
+            throw new Error(`DATABASE_URL is required for PostgreSQL (DATABASE_ENV="${databaseEnv}")`);
           }
           adapter = new KyselyAdapter({
             dialect: 'postgres',

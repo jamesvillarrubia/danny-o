@@ -57,7 +57,8 @@ Set secrets in Fly.io:
 
 ```bash
 # Required
-fly secrets set DATABASE_URL="postgresql://user:pass@host:5432/dbname"
+fly secrets set DATABASE_ENV="prod"  # Tell app to use PROD_DATABASE_URL
+fly secrets set PROD_DATABASE_URL="postgresql://user:pass@host:5432/dbname"
 fly secrets set TODOIST_API_KEY="your_todoist_key"
 fly secrets set CLAUDE_API_KEY="your_claude_key"
 
@@ -68,7 +69,11 @@ fly secrets set CRON_SECRET="$(openssl rand -hex 32)"
 fly secrets set TODOIST_WEBHOOK_SECRET="your_webhook_secret"
 ```
 
-**Note**: If you created a Fly Postgres database, `DATABASE_URL` is automatically set. You can verify with:
+**Note**: If you created a Fly Postgres database during `fly launch`, the connection string is automatically set as `DATABASE_URL`. You'll need to:
+1. Copy it to `PROD_DATABASE_URL`: `fly secrets set PROD_DATABASE_URL="$(fly secrets list | grep DATABASE_URL | cut -d= -f2-)"`
+2. Set `DATABASE_ENV=prod` to tell the app to use it
+
+Verify with:
 ```bash
 fly secrets list
 ```
@@ -86,6 +91,9 @@ To create manually:
 ```bash
 fly postgres create --name danny-tasks-db
 fly postgres attach danny-tasks-db --app danny-tasks-api
+
+# Then set DATABASE_ENV to tell app to use production database
+fly secrets set DATABASE_ENV="prod"
 ```
 
 #### Option B: External Database (Neon/Supabase)
@@ -261,12 +269,33 @@ To receive real-time updates from Todoist:
 
 ## Local Development
 
-### API
+### Choosing Your Database
 
-For local development, the app uses SQLite by default:
+By default, the API uses local SQLite. You can switch databases using `DATABASE_ENV`:
 
 ```bash
-# Run API locally (uses SQLite)
+cd api
+
+# Use local SQLite (default - no DATABASE_ENV needed)
+pnpm start:dev
+
+# Use production PostgreSQL (requires PROD_DATABASE_URL in .env)
+DATABASE_ENV=prod pnpm start:dev
+
+# Use development PostgreSQL (requires DEV_DATABASE_URL in .env)
+DATABASE_ENV=dev pnpm start:dev
+```
+
+This is useful for:
+- Testing locally against production data
+- Debugging production issues with actual data
+- Running migrations against specific environments
+
+### API
+
+Run the API locally with SQLite (default):
+
+```bash
 cd api
 pnpm install
 pnpm start:http

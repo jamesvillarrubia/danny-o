@@ -271,19 +271,38 @@ To receive real-time updates from Todoist:
 
 ### Choosing Your Database
 
-By default, the API uses local SQLite. You can switch databases using `DATABASE_ENV`:
+By default, the API uses local SQLite. Use these convenience scripts to switch databases:
 
 ```bash
 cd api
 
-# Use local SQLite (default - no DATABASE_ENV needed)
+# Use local SQLite (default)
 pnpm start:dev
 
 # Use production PostgreSQL (requires PROD_DATABASE_URL in .env)
-DATABASE_ENV=prod pnpm start:dev
+pnpm start:dev:prod
 
 # Use development PostgreSQL (requires DEV_DATABASE_URL in .env)
-DATABASE_ENV=dev pnpm start:dev
+pnpm start:dev:dev
+```
+
+Other modes also support database selection:
+
+```bash
+# HTTP mode with different databases
+pnpm start:http        # SQLite
+pnpm start:http:prod   # Production PostgreSQL
+pnpm start:http:dev    # Development PostgreSQL
+
+# CLI mode with different databases
+pnpm cli               # SQLite
+pnpm cli:prod          # Production PostgreSQL
+pnpm cli:dev           # Development PostgreSQL
+
+# MCP mode with different databases
+pnpm mcp               # SQLite
+pnpm mcp:prod          # Production PostgreSQL
+pnpm mcp:dev           # Development PostgreSQL
 ```
 
 This is useful for:

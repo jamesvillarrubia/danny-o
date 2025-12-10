@@ -17,25 +17,28 @@ export function useTasks(viewSlug: string) {
   // Track the current fetch to handle race conditions
   const fetchIdRef = useRef(0);
 
-  const fetchTasks = useCallback(async () => {
+  const fetchTasks = useCallback(async (): Promise<Task[]> => {
     const fetchId = ++fetchIdRef.current;
     setIsLoading(true);
     setError(null);
 
     try {
-      const data = await getViewTasks(viewSlug, { limit: 50 });
+      const data = await getViewTasks(viewSlug, {});
       
       // Only update if this is still the current fetch
       if (fetchId === fetchIdRef.current) {
         setTasks(data.tasks);
         setView(data.view);
+        return data.tasks;
       }
+      return [];
     } catch (err) {
       console.error('Failed to fetch tasks:', err);
       if (fetchId === fetchIdRef.current) {
         setError(err instanceof Error ? err.message : 'Failed to load tasks');
         setTasks([]);
       }
+      return [];
     } finally {
       if (fetchId === fetchIdRef.current) {
         setIsLoading(false);

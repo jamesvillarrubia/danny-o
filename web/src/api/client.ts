@@ -2,16 +2,67 @@
  * API Client for Danny Backend
  * 
  * Handles all HTTP communication with the NestJS API.
+ * Supports dynamic environment switching between local dev and production.
  */
 
-import type { Task, View, ChatResponse, ListTasksResponse, ListViewsResponse } from '../types';
+import type { Task, View, ChatResponse, ListTasksResponse, ListViewsResponse, ApiEnvironment } from '../types';
+
+/** Default local development URL */
+const LOCAL_API_URL = 'http://localhost:3001';
+
+/** Fallback to environment variable if set */
+const ENV_API_URL = import.meta.env.VITE_API_URL || '';
 
 /**
- * API base URL - uses environment variable in production, proxy in development
- * Set VITE_API_URL in your .env file or Vercel environment variables
+ * Runtime state for environment configuration.
+ * These values are updated when the user changes settings.
  */
-const API_BASE_URL = import.meta.env.VITE_API_URL || '';
-const API_BASE = `${API_BASE_URL}/api/v1`;
+let currentEnvironment: ApiEnvironment = 'local';
+let currentProductionUrl = '';
+
+/**
+ * Get the current API base URL based on environment setting.
+ * 
+ * Priority:
+ * 1. If environment is 'production', use productionUrl from settings
+ * 2. If environment is 'local', use localhost:3001
+ * 3. Fallback to VITE_API_URL environment variable
+ */
+function getApiBaseUrl(): string {
+  if (currentEnvironment === 'production' && currentProductionUrl) {
+    return currentProductionUrl;
+  }
+  if (currentEnvironment === 'local') {
+    return LOCAL_API_URL;
+  }
+  // Fallback to env variable or empty (proxy mode)
+  return ENV_API_URL;
+}
+
+/**
+ * Get the full API base path
+ */
+function getApiBase(): string {
+  const baseUrl = getApiBaseUrl();
+  return `${baseUrl}/api/v1`;
+}
+
+/**
+ * Check if the backend is healthy and ready to accept requests.
+ * Returns true if healthy, false otherwise.
+ */
+export async function checkBackendHealth(): Promise<boolean> {
+  try {
+    const baseUrl = getApiBaseUrl();
+    const response = await fetch(`${baseUrl}/health/ready`, {
+      method: 'GET',
+      signal: AbortSignal.timeout(5000), // 5 second timeout
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Get the API key from localStorage
@@ -28,8 +79,9 @@ async function fetchApi<T>(
   options: RequestInit = {}
 ): Promise<T> {
   const apiKey = getApiKey();
+  const apiBase = getApiBase();
 
-  const response = await fetch(`${API_BASE}${endpoint}`, {
+  const response = await fetch(`${apiBase}${endpoint}`, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
@@ -77,6 +129,17 @@ export async function getViewTasks(
   return fetchApi<ListTasksResponse>(endpoint);
 }
 
+export async function createView(data: {
+  name: string;
+  slug?: string;
+  filterConfig: View['filterConfig'];
+}): Promise<View> {
+  return fetchApi<View>('/views', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
 // ==================== Tasks API ====================
 
 export async function getTask(taskId: string): Promise<Task> {
@@ -96,15 +159,28 @@ export async function completeTask(
   );
 }
 
+/**
+ * Reopen a completed task (undo completion).
+ * Calls the backend to mark the task as incomplete again.
+ */
+export async function reopenTask(taskId: string): Promise<{ taskId: string; reopenedAt: string }> {
+  return fetchApi<{ taskId: string; reopenedAt: string }>(
+    `/tasks/${taskId}/reopen`,
+    { method: 'POST' }
+  );
+}
+
 export async function updateTask(
   taskId: string,
   updates: {
     content?: string;
     description?: string;
     priority?: number;
+    projectId?: string;
     dueString?: string;
     labels?: string[];
     category?: string;
+    timeEstimate?: string;
   }
 ): Promise<Task> {
   return fetchApi<Task>(`/tasks/${taskId}`, {
@@ -117,12 +193,29 @@ export async function createTask(data: {
   content: string;
   description?: string;
   priority?: number;
+  projectId?: string;
   dueString?: string;
   labels?: string[];
 }): Promise<Task> {
   return fetchApi<Task>('/tasks', {
     method: 'POST',
     body: JSON.stringify(data),
+  });
+}
+
+/**
+ * Duplicate an existing task by creating a new task with the same properties.
+ * Copies: content, description, priority, projectId, dueString, labels
+ * Does NOT copy: id, completion status, AI-generated metadata
+ */
+export async function duplicateTask(task: Task): Promise<Task> {
+  return createTask({
+    content: task.content,
+    description: task.description,
+    priority: task.priority,
+    projectId: task.projectId,
+    dueString: task.due?.date,
+    labels: task.labels,
   });
 }
 
@@ -137,31 +230,320 @@ export async function syncTasks(): Promise<{
   );
 }
 
+/**
+ * Full resync all tasks with Todoist.
+ * This clears the local cache and re-fetches everything from Todoist.
+ * Use sparingly - it's more thorough but slower than incremental sync.
+ */
+export async function fullResyncTasks(): Promise<{
+  synced: number;
+  tasks: number;
+  projects: number;
+  labels: number;
+  newTasks: number;
+  duration: number;
+}> {
+  return fetchApi<{
+    synced: number;
+    tasks: number;
+    projects: number;
+    labels: number;
+    newTasks: number;
+    duration: number;
+  }>('/tasks/sync', {
+    method: 'POST',
+    body: JSON.stringify({ fullSync: true }),
+  });
+}
+
 // ==================== Chat API ====================
 
-export async function sendChatMessage(message: string): Promise<ChatResponse> {
+export interface ChatMessageOptions {
+  message: string;
+  pageContext?: {
+    url?: string;
+    title?: string;
+    html?: string;
+    text?: string;
+    selection?: string;
+  };
+  /** Previous conversation messages for context continuity */
+  history?: Array<{
+    role: 'user' | 'assistant';
+    content: string;
+  }>;
+}
+
+export async function sendChatMessage(
+  message: string,
+  pageContext?: ChatMessageOptions['pageContext'],
+  history?: ChatMessageOptions['history']
+): Promise<ChatResponse> {
   return fetchApi<ChatResponse>('/chat', {
     method: 'POST',
-    body: JSON.stringify({ message }),
+    body: JSON.stringify({ message, pageContext, history }),
+  });
+}
+
+// ==================== AI Operations ====================
+
+export interface ClassifyResponse {
+  results: Array<{
+    taskId: string;
+    taskContent: string;
+    category: string;
+    confidence: number;
+    reasoning?: string;
+  }>;
+  tasksProcessed: number;
+  tasksClassified: number;
+  duration: number;
+}
+
+/**
+ * Classify tasks into categories.
+ * 
+ * @param taskIds - Optional specific task IDs to process. If not provided, processes unclassified tasks.
+ * @param force - If true, re-classifies already classified tasks.
+ * @param batchSize - Maximum tasks to process (default 10).
+ */
+export async function classifyTasks(options?: {
+  taskIds?: string[];
+  force?: boolean;
+  batchSize?: number;
+}): Promise<ClassifyResponse> {
+  return fetchApi<ClassifyResponse>('/ai/classify', {
+    method: 'POST',
+    body: JSON.stringify({
+      taskIds: options?.taskIds,
+      force: options?.force ?? false,
+      batchSize: options?.batchSize ?? 10,
+    }),
+  });
+}
+
+// Alias for backwards compatibility
+export const classifyAndEstimateTasks = classifyTasks;
+
+interface EstimateBatchResponse {
+  results: Array<{
+    taskId: string;
+    taskContent: string;
+    estimate: string;
+    timeEstimateMinutes: number;
+    size: string;
+    confidence: number;
+    reasoning: string;
+    error?: string;
+  }>;
+  tasksProcessed: number;
+  tasksEstimated: number;
+  duration: number;
+}
+
+/**
+ * Generate time estimates for multiple tasks in batch.
+ * 
+ * @param taskIds - Optional specific task IDs to estimate. If not provided, estimates tasks without estimates.
+ * @param batchSize - Maximum tasks to process (default 10).
+ */
+export async function estimateTasksBatch(options?: {
+  taskIds?: string[];
+  batchSize?: number;
+}): Promise<EstimateBatchResponse> {
+  return fetchApi<EstimateBatchResponse>('/ai/estimateBatch', {
+    method: 'POST',
+    body: JSON.stringify({
+      taskIds: options?.taskIds,
+      batchSize: options?.batchSize ?? 10,
+    }),
+  });
+}
+
+/**
+ * Generate time estimate for a single task.
+ */
+export async function estimateTaskTime(taskId: string): Promise<{
+  taskId: string;
+  taskContent: string;
+  estimate: string;
+  timeEstimateMinutes: number;
+  size: 'XS' | 'S' | 'M' | 'L' | 'XL';
+  confidence: number;
+  reasoning: string;
+}> {
+  return fetchApi(`/ai/estimateTime`, {
+    method: 'POST',
+    body: JSON.stringify({ taskId }),
+  });
+}
+
+/**
+ * Enrich URL-heavy tasks with context from their linked pages.
+ * Fetches URL content, generates AI summary, and updates task descriptions.
+ * 
+ * @param limit - Maximum tasks to process (default 10)
+ */
+export async function enrichUrlTasks(options?: {
+  limit?: number;
+}): Promise<{
+  found: number;
+  enriched: number;
+  failed: number;
+  results: Array<{
+    taskId: string;
+    enriched: boolean;
+    newTitle?: string;
+    error?: string;
+  }>;
+}> {
+  return fetchApi('/tasks/enrich-urls', {
+    method: 'POST',
+    body: JSON.stringify({
+      limit: options?.limit ?? 10,
+      applyChanges: true,
+      includeQuestions: true,
+    }),
+  });
+}
+
+/**
+ * Get productivity insights from completed tasks.
+ * 
+ * @param days - Number of days to analyze (default 7)
+ */
+export async function getProductivityInsights(options?: {
+  days?: number;
+}): Promise<{
+  insights: Array<{
+    type: string;
+    title: string;
+    description: string;
+    data?: Record<string, unknown>;
+  }>;
+  recommendations: string[];
+  period: string;
+  stats: {
+    tasksCompleted: number;
+    averageCompletionTime?: number;
+    mostProductiveCategory?: string;
+  };
+}> {
+  return fetchApi('/ai/insights', {
+    method: 'POST',
+    body: JSON.stringify({
+      days: options?.days ?? 7,
+    }),
+  });
+}
+
+/**
+ * Comprehensive insights response type
+ */
+export interface ComprehensiveInsightsResponse {
+  stats: {
+    totalActive: number;
+    totalCompletedLast30Days: number;
+    activeByCategory: Record<string, number>;
+    completedByCategory: Record<string, number>;
+    taskAgeBuckets: {
+      recent: number;
+      week: number;
+      month: number;
+      stale: number;
+    };
+    completionRateLast7Days: number;
+    completionRateLast30Days: number;
+    tasksWithEstimates: number;
+    tasksWithoutEstimates: number;
+    overdueTasks: number;
+    dueSoon: number;
+    topLabels: Array<{ label: string; count: number }>;
+    stalestTasks: Array<{ id: string; content: string; ageInDays: number; category: string }>;
+    completionsByDayOfWeek: Record<string, number>;
+    dailyCompletions: Array<{ date: string; count: number }>;
+    currentStreak: number;
+    longestStreak: number;
+    lastCompletionDate: string | null;
+    productivityScore: number;
+    categoryVelocity: Record<string, { completed: number; avgDaysToComplete: number | null }>;
+    procrastinationStats: {
+      completedOnTime: number;
+      completedLastMinute: number;
+      completedLate: number;
+    };
+  };
+  aiAnalysis: {
+    summary: string;
+    keyFindings: Array<{
+      title: string;
+      description: string;
+      type: 'positive' | 'warning' | 'neutral';
+      significance: 'high' | 'medium' | 'low';
+    }>;
+    habits: {
+      good: string[];
+      needsWork: string[];
+    };
+    recommendations: Array<{
+      action: string;
+      reasoning: string;
+      priority: 'now' | 'soon' | 'later';
+    }>;
+  };
+  generatedAt: string;
+  periodDays: number;
+}
+
+/**
+ * Get comprehensive productivity insights with full stats and AI analysis.
+ * @param forceRefresh If true, bypasses server cache and regenerates insights
+ */
+export async function getComprehensiveInsights(forceRefresh: boolean = false): Promise<ComprehensiveInsightsResponse> {
+  const url = forceRefresh ? '/ai/insights/comprehensive?refresh=true' : '/ai/insights/comprehensive';
+  return fetchApi(url, {
+    method: 'GET',
   });
 }
 
 // ==================== Settings ====================
 
+/**
+ * Set the API key in localStorage
+ */
 export function setApiKey(key: string): void {
   localStorage.setItem('danny_api_key', key);
 }
 
+/**
+ * Clear the API key from localStorage
+ */
 export function clearApiKey(): void {
   localStorage.removeItem('danny_api_key');
 }
 
 /**
- * Test if the API key is valid by fetching views
+ * Set the environment configuration.
+ * Called by useSettings when environment changes.
+ * 
+ * @param environment - 'local' or 'production'
+ * @param productionUrl - Production API URL (optional, only used when environment is 'production')
+ */
+export function setEnvironment(environment: ApiEnvironment, productionUrl?: string): void {
+  currentEnvironment = environment;
+  if (productionUrl) {
+    currentProductionUrl = productionUrl;
+  }
+}
+
+/**
+ * Test if the API key is valid by fetching views.
+ * Uses the current environment configuration.
  */
 export async function testApiKey(key: string): Promise<boolean> {
   try {
-    const response = await fetch(`${API_BASE}/views`, {
+    const apiBase = getApiBase();
+    const response = await fetch(`${apiBase}/views`, {
       headers: {
         'Content-Type': 'application/json',
         'x-api-key': key,
@@ -174,9 +556,19 @@ export async function testApiKey(key: string): Promise<boolean> {
 }
 
 /**
- * Get the current API base URL (for debugging)
+ * Get the current API base URL (for debugging/display)
  */
-export function getApiBaseUrl(): string {
-  return API_BASE_URL || '(using proxy)';
+export function getCurrentApiBaseUrl(): string {
+  const baseUrl = getApiBaseUrl();
+  if (!baseUrl) {
+    return '(using proxy)';
+  }
+  return baseUrl;
 }
 
+/**
+ * Get the current environment
+ */
+export function getCurrentEnvironment(): ApiEnvironment {
+  return currentEnvironment;
+}

@@ -60,6 +60,41 @@ export interface ChatAction {
   type: string;
   description: string;
   taskId?: string;
+  filterConfig?: ViewFilterConfig;
+}
+
+/**
+ * Message format for conversation history sent to/from the API.
+ * Simple structure for serialization.
+ */
+export interface ConversationMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+/** Raw message format from Anthropic API */
+export interface DebugMessage {
+  role: 'user' | 'assistant';
+  content: string | Array<{
+    type: string;
+    text?: string;
+    tool_use_id?: string;
+    name?: string;
+    input?: unknown;
+    content?: string;
+    is_error?: boolean;
+  }>;
+}
+
+/** Debug payload for inspecting AI conversations (The Net π) */
+export interface DebugPayload {
+  systemPrompt: string;
+  messages: DebugMessage[];
+  tools: Array<{
+    name: string;
+    description: string;
+    input_schema: unknown;
+  }>;
 }
 
 export interface ChatResponse {
@@ -67,6 +102,27 @@ export interface ChatResponse {
   success: boolean;
   turns?: number;
   actions?: ChatAction[];
+  filterConfig?: ViewFilterConfig;
+  debugMessages?: DebugPayload;
+  /** 
+   * If the conversation history was summarized (too long), 
+   * this contains the new compressed history to use going forward.
+   */
+  summarizedHistory?: ConversationMessage[];
+}
+
+// Project types
+export interface Project {
+  id: string;
+  name: string;
+  color?: string;
+  parentId?: string | null;
+  order?: number;
+  commentCount?: number;
+  isFavorite?: boolean;
+  isShared?: boolean;
+  isInboxProject?: boolean;
+  viewStyle?: string;
 }
 
 // API response types
@@ -89,9 +145,19 @@ export interface ListViewsResponse {
   views: View[];
 }
 
+export interface ListProjectsResponse {
+  projects: Project[];
+}
+
+// Environment
+export type ApiEnvironment = 'local' | 'production';
+
 // Settings
 export interface Settings {
   apiKey: string;
   theme?: 'light' | 'dark' | 'system';
+  environment: ApiEnvironment;
+  /** Production API URL - only used when environment is 'production' */
+  productionUrl?: string;
 }
 

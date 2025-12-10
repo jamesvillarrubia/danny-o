@@ -57,7 +57,8 @@ Set secrets in Fly.io:
 
 ```bash
 # Required
-fly secrets set DATABASE_URL="postgresql://user:pass@host:5432/dbname"
+fly secrets set DATABASE_ENV="prod"  # Tell app to use PROD_DATABASE_URL
+fly secrets set PROD_DATABASE_URL="postgresql://user:pass@host:5432/dbname"
 fly secrets set TODOIST_API_KEY="your_todoist_key"
 fly secrets set CLAUDE_API_KEY="your_claude_key"
 
@@ -68,7 +69,11 @@ fly secrets set CRON_SECRET="$(openssl rand -hex 32)"
 fly secrets set TODOIST_WEBHOOK_SECRET="your_webhook_secret"
 ```
 
-**Note**: If you created a Fly Postgres database, `DATABASE_URL` is automatically set. You can verify with:
+**Note**: If you created a Fly Postgres database during `fly launch`, the connection string is automatically set as `DATABASE_URL`. You'll need to:
+1. Copy it to `PROD_DATABASE_URL`: `fly secrets set PROD_DATABASE_URL="$(fly secrets list | grep DATABASE_URL | cut -d= -f2-)"`
+2. Set `DATABASE_ENV=prod` to tell the app to use it
+
+Verify with:
 ```bash
 fly secrets list
 ```
@@ -86,6 +91,9 @@ To create manually:
 ```bash
 fly postgres create --name danny-tasks-db
 fly postgres attach danny-tasks-db --app danny-tasks-api
+
+# Then set DATABASE_ENV to tell app to use production database
+fly secrets set DATABASE_ENV="prod"
 ```
 
 #### Option B: External Database (Neon/Supabase)
@@ -261,12 +269,52 @@ To receive real-time updates from Todoist:
 
 ## Local Development
 
-### API
+### Choosing Your Database
 
-For local development, the app uses SQLite by default:
+By default, the API uses local SQLite. Use these convenience scripts to switch databases:
 
 ```bash
-# Run API locally (uses SQLite)
+cd api
+
+# Use local SQLite (default)
+pnpm start:dev
+
+# Use production PostgreSQL (requires PROD_DATABASE_URL in .env)
+pnpm start:dev:prod
+
+# Use development PostgreSQL (requires DEV_DATABASE_URL in .env)
+pnpm start:dev:dev
+```
+
+Other modes also support database selection:
+
+```bash
+# HTTP mode with different databases
+pnpm start:http        # SQLite
+pnpm start:http:prod   # Production PostgreSQL
+pnpm start:http:dev    # Development PostgreSQL
+
+# CLI mode with different databases
+pnpm cli               # SQLite
+pnpm cli:prod          # Production PostgreSQL
+pnpm cli:dev           # Development PostgreSQL
+
+# MCP mode with different databases
+pnpm mcp               # SQLite
+pnpm mcp:prod          # Production PostgreSQL
+pnpm mcp:dev           # Development PostgreSQL
+```
+
+This is useful for:
+- Testing locally against production data
+- Debugging production issues with actual data
+- Running migrations against specific environments
+
+### API
+
+Run the API locally with SQLite (default):
+
+```bash
 cd api
 pnpm install
 pnpm start:http
@@ -330,6 +378,219 @@ curl https://danny-tasks-api.fly.dev/api/ai-logs?limit=50
 # Get summary
 curl https://danny-tasks-api.fly.dev/api/ai-logs/summary
 ```
+
+---
+
+## Database Management
+
+Danny Tasks includes CLI tools for managing database backups, migrations, and syncing data between environments.
+
+### Quick Reference
+
+```bash
+# Export current database to JSON
+pnpm db:export [--output backup.json]
+
+# Import JSON backup into current database
+pnpm db:import --input backup.json [--mode merge|replace] [--force]
+
+# Push local SQLite data to production PostgreSQL
+pnpm db:push [--target prod|dev] [--yes]
+
+# Pull production PostgreSQL data to local SQLite
+pnpm db:pull [--source prod|dev] [--yes]
+```
+
+### Configuration Setup
+
+Configure database URLs once in `api/.env.local` (gitignored, not committed):
+
+```bash
+# Create or edit api/.env.local
+cd api
+
+# Add your database URLs:
+cat >> .env.local << 'EOF'
+# Production database (required for db:push/db:pull)
+PROD_DATABASE_URL="postgresql://user:password@your-neon-host/database"
+
+# Development database (optional)
+DEV_DATABASE_URL="postgresql://user:password@dev-host/database-dev"
+EOF
+```
+
+**Why `.env.local`?**
+- Automatically loaded by the scripts (via dotenv)
+- Already gitignored (safe for credentials)
+- Configure once, use forever
+- See `api/.env.example` for the full template
+
+The default local SQLite path (`~/.danny/data/tasks.db`) works automatically - no configuration needed.
+
+### Common Workflows
+
+#### 1. Push Local Data to Production
+
+When you want to migrate your local SQLite data to production PostgreSQL:
+
+```bash
+cd api
+
+# First time: configure .env.local (one-time setup)
+# echo 'PROD_DATABASE_URL="postgresql://..."' >> .env.local
+
+# Push with confirmation prompt
+pnpm db:push --target prod
+
+# Or skip confirmation
+pnpm db:push --target prod --yes
+```
+
+**⚠️ Warning**: This replaces all data in production. The command will:
+- Export your local SQLite database
+- Verify schema compatibility (checks migrations)
+- Replace all data in production PostgreSQL
+- Preserve sync tokens and AI interactions
+
+#### 2. Pull Production Data Locally
+
+When you want to test with production data locally:
+
+```bash
+cd api
+
+# Pull with confirmation prompt (uses PROD_DATABASE_URL from .env.local)
+pnpm db:pull --source prod
+
+# Or skip confirmation
+pnpm db:pull --source prod --yes
+```
+
+This replaces your local SQLite database with production data, useful for:
+- Debugging production issues locally
+- Testing new features with real data
+- Refreshing local development environment
+
+#### 3. Create Manual Backups
+
+Create timestamped JSON backups:
+
+```bash
+cd api
+
+# Backup local SQLite (automatic)
+pnpm db:export --output ./backups/backup-$(date +%Y%m%d).json
+
+# Backup production PostgreSQL
+# Set DATABASE_URL temporarily to target production
+DATABASE_URL="$PROD_DATABASE_URL" pnpm db:export --output ./backups/prod-backup.json
+
+# Or read PROD_DATABASE_URL from .env.local and use it
+pnpm db:export --output ./backups/prod-backup.json
+# (Note: export reads current DATABASE_URL or falls back to SQLite)
+```
+
+Backups include:
+- All tasks, metadata, history
+- Projects and labels
+- Dashboard views
+- Sync state and AI interactions
+- Cached insights
+- Migration compatibility info
+
+#### 4. Restore from Backup
+
+Restore a JSON backup into any database:
+
+```bash
+cd api
+
+# Restore to local SQLite (merge mode - keeps existing data)
+pnpm db:import --input ./backups/backup-20240101.json --mode merge
+
+# Restore to production (replace mode - clears first)
+# Temporarily override DATABASE_URL to target production
+DATABASE_URL="$(grep PROD_DATABASE_URL .env.local | cut -d= -f2-)" \
+  pnpm db:import --input backup.json --mode replace
+
+# Force import even if migrations differ
+pnpm db:import --input backup.json --mode replace --force
+```
+
+**Import Modes:**
+- `merge` (default): Upserts records, keeps existing data
+- `replace`: Clears all tables first, then imports
+
+### Automated Backups
+
+Production database is automatically backed up daily via GitHub Actions:
+
+- **Schedule**: Daily at 2 AM UTC
+- **Retention**: 30 days
+- **Location**: GitHub Actions artifacts
+- **Manual trigger**: Run from Actions tab
+
+To download a backup:
+1. Go to GitHub Actions → "Backup Production Database"
+2. Select a workflow run
+3. Download the artifact
+4. Extract and use `pnpm db:import`
+
+### Schema Migration Safety
+
+The tools check migration compatibility before importing:
+
+```bash
+# If schemas differ, you'll see:
+⚠️  Migration mismatch detected:
+  Source has migrations not in target: add_scheduling_fields
+  Target has migrations not in source: add_insights_cache
+
+# Options:
+1. Run migrations on both databases first
+2. Use --force to override (risky!)
+```
+
+**Best Practice**: Always ensure both databases have the same migrations applied before syncing data.
+
+The schema migrations run automatically when the app starts (`KyselyAdapter.runMigrations()`). For future enhancement, consider:
+- Adopting Kysely's native migration system
+- Using Neon's database branching for schema changes
+
+### Syncing Between Environments
+
+For dev → prod workflow (ensure `.env.local` has both DEV_DATABASE_URL and PROD_DATABASE_URL):
+
+```bash
+cd api
+
+# 1. Test locally with SQLite
+pnpm start:dev
+
+# 2. When ready, push to dev environment
+pnpm db:push --target dev --yes
+
+# 3. Test in dev, then promote to prod
+pnpm db:pull --source dev  # Get dev data locally first (optional)
+pnpm db:push --target prod
+```
+
+### Troubleshooting Database Operations
+
+**"Schema mismatch" error**:
+- Run migrations on both databases: restart the app in both environments
+- Check `fly logs` for migration errors
+- Use `--force` only if you understand the risk
+
+**"Connection timeout"**:
+- Verify `DATABASE_URL` is correct
+- Check database is not paused (Neon auto-pauses)
+- Test with: `fly ssh console` then try connecting
+
+**Large backup files**:
+- AI interactions table can be large
+- Consider excluding it: modify `DATA_TABLES` in `scripts/db-tools.ts`
+- Compress backups: `gzip backup.json`
 
 ---
 

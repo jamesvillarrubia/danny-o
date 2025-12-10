@@ -51,6 +51,9 @@ export interface TaskMetadataTable {
   last_synced_state: string | null; // JSON
   last_synced_at: string | null;
   recommendation_applied: number | null; // 0 or 1
+  // Scheduling fields
+  requires_driving: number | null; // 0 or 1
+  time_constraint: string | null; // 'business-hours' | 'weekdays-only' | 'evenings' | 'weekends' | 'anytime'
   created_at: ColumnType<string, string | undefined, string>;
   updated_at: ColumnType<string, string | undefined, string>;
 }
@@ -133,6 +136,16 @@ export interface ViewTable {
   updated_at: ColumnType<string, string | undefined, string>;
 }
 
+// Cached insights table - stores expensive AI-generated insights
+export interface CachedInsightsTable {
+  id: Generated<number>;
+  cache_key: string; // e.g., 'comprehensive-insights'
+  data: string; // JSON blob of the full insights response
+  generated_at: string; // ISO timestamp when insights were generated
+  expires_at: string; // ISO timestamp when cache should be considered stale
+  created_at: ColumnType<string, string | undefined, string>;
+}
+
 // Complete database interface
 export interface Database {
   tasks: TaskTable;
@@ -144,5 +157,6 @@ export interface Database {
   ai_interactions: AIInteractionTable;
   migrations: MigrationTable;
   views: ViewTable;
+  cached_insights: CachedInsightsTable;
 }
 

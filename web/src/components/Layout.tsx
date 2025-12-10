@@ -27,7 +27,7 @@ export function Layout({ children, onSettingsClick }: LayoutProps) {
         {onSettingsClick && (
           <button
             onClick={onSettingsClick}
-            className="p-2 rounded-lg hover:bg-zinc-100 transition-colors text-zinc-500 hover:text-zinc-700"
+            className="p-2 rounded-lg hover:bg-zinc-100 transition-colors text-zinc-500 hover:text-zinc-700 cursor-pointer"
             aria-label="Settings"
           >
             <Settings className="w-5 h-5" />

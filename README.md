@@ -48,40 +48,66 @@ tasks/
 ### Prerequisites
 
 - Node.js 22+
-- pnpm
+- pnpm 9+
 - [Todoist API key](https://todoist.com/prefs/integrations)
 - [Claude API key](https://console.anthropic.com/)
 
 ### Development
 
-```bash
-# API (backend)
-cd api
-pnpm install
-cp .env.example .env  # Edit with your API keys
-pnpm start:http
+**Option 1: Run everything together (recommended)**
 
-# Web (frontend) - in another terminal
-cd web
-pnpm install
-pnpm dev
+```bash
+# From root directory
+pnpm install                          # Install all workspace dependencies
+cp api/.env.example api/.env         # Edit with your API keys
+pnpm dev                             # Start API (port 3000) + Web (port 3001)
+```
+
+**Option 2: Run services separately**
+
+```bash
+# Terminal 1 - API (backend)
+pnpm dev:api                         # Starts HTTP server on port 3000
+
+# Terminal 2 - Web (frontend)
+pnpm dev:web                         # Starts Vite dev server on port 3001
 ```
 
 ### CLI Commands
 
 ```bash
-cd api
+# From root directory
 pnpm cli sync          # Sync tasks from Todoist
 pnpm cli list          # List tasks
 pnpm cli classify      # AI classification
 pnpm cli plan today    # Generate daily plan
+
+# Or from api directory
+cd api && pnpm cli <command>
 ```
 
 ### MCP Server (for AI agents)
 
 ```bash
-cd api
+# From root directory
 pnpm mcp
+
+# Or from api directory
+cd api && pnpm mcp
+```
+
+### Build & Test
+
+```bash
+# Build both API and Web
+pnpm build
+
+# Run all tests
+pnpm test
+
+# Or individually
+pnpm build:api / pnpm build:web
+pnpm test:api / pnpm test:web
 ```
 
 ## CI/CD
@@ -173,6 +199,7 @@ See [api/DEPLOYMENT.md](./api/DEPLOYMENT.md) for full deployment guide.
 
 | Document | Description |
 |----------|-------------|
+| [DEVELOPMENT.md](./DEVELOPMENT.md) | **Development guide & troubleshooting** |
 | [api/README.md](./api/README.md) | API documentation |
 | [api/DEPLOYMENT.md](./api/DEPLOYMENT.md) | Deployment guide |
 | [api/ARCHITECTURE.md](./api/ARCHITECTURE.md) | Architecture details |

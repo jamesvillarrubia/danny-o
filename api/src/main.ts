@@ -48,7 +48,17 @@ async function bootstrap() {
     console.error('[Bootstrap] Starting HTTP Server...');
     const app = await NestFactory.create(AppModule, {
       logger: ['error', 'warn', 'log'],
+      bodyParser: true,
+      rawBody: false,
     });
+
+    // Configure body parser limits (default is 100kb which is too small)
+    // - Chat messages with page context can include large HTML payloads
+    // - Task descriptions might be lengthy
+    app.use(
+      require('express').json({ limit: '10mb' }),
+      require('express').urlencoded({ limit: '10mb', extended: true })
+    );
 
     // Enable CORS for API access
     app.enableCors({
@@ -65,6 +75,9 @@ async function bootstrap() {
     app.useGlobalPipes(
       new ValidationPipe({
         transform: true,
+        transformOptions: {
+          enableImplicitConversion: true,
+        },
         whitelist: true,
         forbidNonWhitelisted: false,
       }),

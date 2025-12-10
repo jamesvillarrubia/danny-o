@@ -16,13 +16,16 @@
 import {
   Controller,
   Post,
+  Get,
   Body,
+  Query,
   HttpCode,
   HttpStatus,
   NotFoundException,
   BadRequestException,
   Inject,
   Logger,
+  forwardRef,
 } from '@nestjs/common';
 import { AIOperationsService } from '../../../ai/services/operations.service';
 import { EnrichmentService } from '../../../task/services/enrichment.service';
@@ -48,9 +51,91 @@ export class AIController {
 
   constructor(
     @Inject('IStorageAdapter') private readonly storage: IStorageAdapter,
-    private readonly aiOps: AIOperationsService,
-    private readonly enrichmentService: EnrichmentService,
+    @Inject(forwardRef(() => AIOperationsService)) private readonly aiOps: AIOperationsService,
+    @Inject(forwardRef(() => EnrichmentService)) private readonly enrichmentService: EnrichmentService,
   ) {}
+
+  /**
+   * Get AI suggestions for a new task (project, priority, due date)
+   * POST /v1/ai/suggest-task
+   */
+  @Post('suggest-task')
+  @HttpCode(HttpStatus.OK)
+  async suggestTask(@Body() body: { content: string; description?: string }): Promise<{
+    priority?: number;
+    projectId?: string;
+    dueDate?: string;
+    category?: string;
+    timeEstimate?: string;
+  }> {
+    this.logger.log(`Getting AI suggestions for task: ${body.content}`);
+
+    if (!body.content || !body.content.trim()) {
+      throw new BadRequestException({
+        error: {
+          code: 400,
+          message: 'Task content is required',
+          status: 'INVALID_ARGUMENT',
+        },
+      });
+    }
+
+    // Create a temporary task object for AI analysis
+    const tempTask: Task = {
+      id: 'temp',
+      content: body.content.trim(),
+      description: body.description?.trim(),
+      priority: 1,
+      isCompleted: false,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    try {
+      // Get classification (category/project)
+      const classifications = await this.aiOps.classifyTasks([tempTask]);
+      const classification = classifications[0];
+
+      // Get time estimate
+      const timeEstimate = await this.aiOps.estimateTaskDuration(tempTask);
+
+      // Determine priority based on keywords in content
+      let priority = 1; // Default to P4 (low)
+      const contentLower = body.content.toLowerCase();
+      const urgentKeywords = ['urgent', 'asap', 'critical', 'emergency', 'immediately', 'deadline'];
+      const highKeywords = ['important', 'soon', 'priority', 'today', 'tomorrow'];
+      
+      if (urgentKeywords.some(keyword => contentLower.includes(keyword))) {
+        priority = 4; // P1 (urgent)
+      } else if (highKeywords.some(keyword => contentLower.includes(keyword))) {
+        priority = 3; // P2 (high)
+      } else if (timeEstimate.timeEstimateMinutes && timeEstimate.timeEstimateMinutes < 30) {
+        priority = 2; // P3 (medium) for quick tasks
+      }
+
+      // Find project ID by category
+      const projects = await this.storage.getProjects();
+      const project = projects.find((p) => 
+        p.name.toLowerCase().includes(classification.category.toLowerCase()) ||
+        classification.category.toLowerCase().includes(p.name.toLowerCase())
+      );
+
+      return {
+        priority,
+        projectId: project?.id,
+        category: classification.category,
+        timeEstimate: timeEstimate.timeEstimate,
+        // We could add due date suggestion based on priority and time estimate
+        // For now, leaving it empty to let user decide
+      };
+    } catch (error: any) {
+      this.logger.error(`Failed to get AI suggestions: ${error.message}`);
+      // Return empty suggestions rather than failing completely
+      return {
+        priority: 1,
+      };
+    }
+  }
 
   /**
    * Classify tasks into life area categories
@@ -213,6 +298,127 @@ export class AIController {
       size: result.size || 'M',
       confidence: result.confidence || 0,
       reasoning: result.reasoning || '',
+    };
+  }
+
+  /**
+   * Batch estimate time for multiple tasks
+   * POST /v1/ai/estimateBatch
+   */
+  @Post('estimateBatch')
+  @HttpCode(HttpStatus.OK)
+  async estimateBatch(@Body() body: { taskIds?: string[]; batchSize?: number }): Promise<{
+    results: Array<{
+      taskId: string;
+      taskContent: string;
+      estimate: string;
+      timeEstimateMinutes: number;
+      size: string;
+      confidence: number;
+      reasoning: string;
+      error?: string;
+    }>;
+    tasksProcessed: number;
+    tasksEstimated: number;
+    duration: number;
+  }> {
+    const startTime = Date.now();
+    this.logger.log(`Batch estimating tasks (taskIds: ${body.taskIds?.length || 'all without estimates'})`);
+
+    let tasks: Task[];
+
+    if (body.taskIds && body.taskIds.length > 0) {
+      // Estimate specific tasks
+      const taskResults = await Promise.all(
+        body.taskIds.map((id) => this.storage.getTask(id)),
+      );
+      tasks = taskResults.filter((t): t is Task => t !== null);
+
+      if (tasks.length === 0) {
+        throw new NotFoundException({
+          error: {
+            code: 404,
+            message: 'No valid tasks found for the provided IDs',
+            status: 'NOT_FOUND',
+          },
+        });
+      }
+    } else {
+      // Get tasks without estimates
+      const allTasks = await this.storage.getTasks({ completed: false, limit: 500 });
+      tasks = allTasks.filter(t => !t.metadata?.timeEstimateMinutes || t.metadata.timeEstimateMinutes === 0);
+    }
+
+    if (tasks.length === 0) {
+      return {
+        results: [],
+        tasksProcessed: 0,
+        tasksEstimated: 0,
+        duration: Date.now() - startTime,
+      };
+    }
+
+    // Limit batch size
+    const batchSize = body.batchSize ?? 10;
+    const tasksToProcess = tasks.slice(0, batchSize);
+
+    // Estimate with AI (uses batch method internally)
+    const estimateResults = await this.aiOps.estimateTasksBatch(tasksToProcess);
+
+    // Save estimates and build response
+    const results: Array<{
+      taskId: string;
+      taskContent: string;
+      estimate: string;
+      timeEstimateMinutes: number;
+      size: string;
+      confidence: number;
+      reasoning: string;
+      error?: string;
+    }> = [];
+    
+    let estimated = 0;
+    for (const result of estimateResults) {
+      if ('error' in result) {
+        results.push({
+          taskId: result.taskId,
+          taskContent: tasksToProcess.find(t => t.id === result.taskId)?.content || '',
+          estimate: 'Error',
+          timeEstimateMinutes: 0,
+          size: 'M',
+          confidence: 0,
+          reasoning: '',
+          error: result.error,
+        });
+        continue;
+      }
+
+      // Save the estimate
+      await this.enrichmentService.enrichTask(result.taskId, {
+        timeEstimate: result.timeEstimate,
+        timeEstimateMinutes: result.timeEstimateMinutes,
+        size: result.size,
+        aiConfidence: result.confidence,
+        aiReasoning: result.reasoning,
+      });
+
+      results.push({
+        taskId: result.taskId,
+        taskContent: tasksToProcess.find(t => t.id === result.taskId)?.content || '',
+        estimate: result.timeEstimate || 'Unknown',
+        timeEstimateMinutes: result.timeEstimateMinutes || 0,
+        size: result.size || 'M',
+        confidence: result.confidence || 0,
+        reasoning: result.reasoning || '',
+      });
+      estimated++;
+    }
+
+    return {
+      results,
+      tasksProcessed: tasksToProcess.length,
+      tasksEstimated: estimated,
+      duration: Date.now() - startTime,
     };
   }
 
@@ -398,6 +604,19 @@ export class AIController {
         mostProductiveCategory,
       },
     };
+  }
+
+  /**
+   * Get comprehensive productivity insights with full stats and AI analysis
+   * GET /v1/ai/insights/comprehensive
+   * 
+   * @param refresh If 'true', bypasses cache and regenerates insights
+   */
+  @Get('insights/comprehensive')
+  async getComprehensiveInsights(@Query('refresh') refresh?: string) {
+    const forceRefresh = refresh === 'true';
+    this.logger.log(`Getting comprehensive insights (forceRefresh: ${forceRefresh})`);
+    return this.aiOps.generateComprehensiveInsights(forceRefresh);
   }
 }
 

@@ -4,7 +4,7 @@
  * HTTP endpoint for triggering Todoist sync.
  */
 
-import { Controller, Post, Get, Body, HttpCode, HttpStatus, Logger } from '@nestjs/common';
+import { Controller, Post, Get, Body, HttpCode, HttpStatus, Logger, Inject } from '@nestjs/common';
 import { SyncService } from '../../task/services/sync.service';
 
 interface SyncRequestDto {
@@ -15,7 +15,7 @@ interface SyncRequestDto {
 export class SyncController {
   private readonly logger = new Logger(SyncController.name);
 
-  constructor(private readonly syncService: SyncService) {}
+  constructor(@Inject(SyncService) private readonly syncService: SyncService) {}
 
   @Post()
   @HttpCode(HttpStatus.OK)

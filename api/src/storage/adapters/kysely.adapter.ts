@@ -14,7 +14,7 @@ import { mkdirSync, existsSync, readdirSync, readFileSync } from 'fs';
 import { createHash } from 'crypto';
 
 import { IStorageAdapter } from '../../common/interfaces/storage-adapter.interface';
-import { Task, Project, Label, TaskFilters, TaskMetadata } from '../../common/interfaces/task.interface';
+import { Task, Project, Label, TaskFilters, TaskMetadata, TimeConstraint, TaskInsightStats } from '../../common/interfaces/task.interface';
 import { Database } from '../database.types';
 
 export type DatabaseDialect = 'sqlite' | 'postgres';
@@ -169,6 +169,8 @@ export class KyselyAdapter implements IStorageAdapter {
       .addColumn('last_synced_state', 'text')
       .addColumn('last_synced_at', 'text')
       .addColumn('recommendation_applied', 'integer', col => col.defaultTo(0))
+      .addColumn('requires_driving', 'integer', col => col.defaultTo(0))
+      .addColumn('time_constraint', 'text')
       .addColumn('created_at', 'text', col => col.defaultTo(sql`CURRENT_TIMESTAMP`))
       .addColumn('updated_at', 'text', col => col.defaultTo(sql`CURRENT_TIMESTAMP`))
       .execute();
@@ -265,6 +267,18 @@ export class KyselyAdapter implements IStorageAdapter {
       .addColumn('updated_at', 'text', col => col.defaultTo(sql`CURRENT_TIMESTAMP`))
       .execute();
 
+    // Cached insights table - stores expensive AI-generated insights
+    await db.schema
+      .createTable('cached_insights')
+      .ifNotExists()
+      .addColumn('id', isPg ? 'serial' : 'integer', col => isPg ? col.primaryKey() : col.primaryKey().autoIncrement())
+      .addColumn('cache_key', 'text', col => col.notNull().unique())
+      .addColumn('data', isPg ? 'jsonb' : 'text', col => col.notNull())
+      .addColumn('generated_at', 'text', col => col.notNull())
+      .addColumn('expires_at', 'text', col => col.notNull())
+      .addColumn('created_at', 'text', col => col.defaultTo(sql`CURRENT_TIMESTAMP`))
+      .execute();
+
     // Create indices
     await sql`CREATE INDEX IF NOT EXISTS idx_tasks_project_id ON tasks(project_id)`.execute(db);
     await sql`CREATE INDEX IF NOT EXISTS idx_tasks_is_completed ON tasks(is_completed)`.execute(db);
@@ -319,7 +333,7 @@ export class KyselyAdapter implements IStorageAdapter {
         name: 'High Priority',
         slug: 'high-priority',
         filter_config: JSON.stringify({
-          priority: [1, 2],
+          priority: [3, 4], // P2 (high) and P1 (urgent) - higher number = higher priority
           completed: false,
         }),
         is_default: 1,
@@ -347,9 +361,89 @@ export class KyselyAdapter implements IStorageAdapter {
   }
 
   private async runMigrations(): Promise<void> {
-    // Migrations are handled by schema creation for now
-    // Can add Kysely migrator later if needed
+    const db = this.getDb();
+    
+    // Migration: Add scheduling fields (requires_driving, time_constraint)
+    await this.runMigration('add_scheduling_fields', async () => {
+      // Check if columns exist by trying to select them
+      try {
+        await sql`SELECT requires_driving FROM task_metadata LIMIT 1`.execute(db);
+      } catch (error) {
+        // Column doesn't exist, add it
+        await sql`ALTER TABLE task_metadata ADD COLUMN requires_driving INTEGER DEFAULT 0`.execute(db);
+        this.logger.log('Added requires_driving column to task_metadata');
+      }
+      
+      try {
+        await sql`SELECT time_constraint FROM task_metadata LIMIT 1`.execute(db);
+      } catch (error) {
+        // Column doesn't exist, add it
+        await sql`ALTER TABLE task_metadata ADD COLUMN time_constraint TEXT`.execute(db);
+        this.logger.log('Added time_constraint column to task_metadata');
+      }
+    });
+
+    // Migration: Fix high-priority view filter (was [1,2] which is P4/P3, should be [3,4] for P2/P1)
+    await this.runMigration('fix_high_priority_view', async () => {
+      const wrongConfig = JSON.stringify({ priority: [1, 2], completed: false });
+      const correctConfig = JSON.stringify({ priority: [3, 4], completed: false });
+      
+      await db
+        .updateTable('views')
+        .set({ filter_config: correctConfig })
+        .where('slug', '=', 'high-priority')
+        .where('filter_config', '=', wrongConfig)
+        .execute();
+      
+      this.logger.log('Fixed high-priority view filter: [1,2] -> [3,4]');
+    });
+
+    // Migration: Add cached_insights table for caching expensive AI-generated insights
+    await this.runMigration('add_cached_insights_table', async () => {
+      const isPg = this.options.dialect === 'postgres';
+      await db.schema
+        .createTable('cached_insights')
+        .ifNotExists()
+        .addColumn('id', isPg ? 'serial' : 'integer', col => isPg ? col.primaryKey() : col.primaryKey().autoIncrement())
+        .addColumn('cache_key', 'text', col => col.notNull().unique())
+        .addColumn('data', isPg ? 'jsonb' : 'text', col => col.notNull())
+        .addColumn('generated_at', 'text', col => col.notNull())
+        .addColumn('expires_at', 'text', col => col.notNull())
+        .addColumn('created_at', 'text', col => col.defaultTo(sql`CURRENT_TIMESTAMP`))
+        .execute();
+      this.logger.log('Created cached_insights table');
+    });
+    
     this.logger.log('Migrations complete');
+  }
+
+  private async runMigration(migrationId: string, migrationFn: () => Promise<void>): Promise<void> {
+    const db = this.getDb();
+    
+    // Check if migration already applied
+    const applied = await db
+      .selectFrom('migrations')
+      .select('id')
+      .where('id', '=', migrationId)
+      .executeTakeFirst();
+    
+    if (applied) {
+      return; // Migration already applied
+    }
+    
+    // Run migration
+    await migrationFn();
+    
+    // Record migration
+    await db
+      .insertInto('migrations')
+      .values({
+        id: migrationId,
+        applied_at: new Date().toISOString(),
+      })
+      .execute();
+    
+    this.logger.log(`Migration ${migrationId} applied`);
   }
 
   // ==================== Task Operations ====================
@@ -426,6 +520,8 @@ export class KyselyAdapter implements IStorageAdapter {
         'm.classification_source',
         'm.recommended_category',
         'm.recommendation_applied',
+        'm.requires_driving',
+        'm.time_constraint',
       ]);
 
     if (filters.projectId) {
@@ -439,6 +535,12 @@ export class KyselyAdapter implements IStorageAdapter {
     }
     if (filters.completed !== undefined) {
       query = query.where('t.is_completed', '=', filters.completed ? 1 : 0);
+    }
+    if (filters.requiresDriving !== undefined) {
+      query = query.where('m.requires_driving', '=', filters.requiresDriving ? 1 : 0);
+    }
+    if (filters.timeConstraint) {
+      query = query.where('m.time_constraint', '=', filters.timeConstraint);
     }
     if (filters.limit) {
       query = query.limit(filters.limit);
@@ -468,6 +570,8 @@ export class KyselyAdapter implements IStorageAdapter {
         'm.classification_source',
         'm.recommended_category',
         'm.recommendation_applied',
+        'm.requires_driving',
+        'm.time_constraint',
       ])
       .where('t.id', '=', taskId)
       .executeTakeFirst();
@@ -484,6 +588,25 @@ export class KyselyAdapter implements IStorageAdapter {
     if (updates.projectId !== undefined) updateData.project_id = updates.projectId;
     if (updates.priority !== undefined) updateData.priority = updates.priority;
     if (updates.labels !== undefined) updateData.labels = JSON.stringify(updates.labels);
+    if (updates.isCompleted !== undefined) updateData.is_completed = updates.isCompleted ? 1 : 0;
+    if (updates.completedAt !== undefined) updateData.completed_at = updates.completedAt;
+
+    // Handle due date fields
+    if (updates.due !== undefined) {
+      if (updates.due === null) {
+        // Clear due date
+        updateData.due_string = null;
+        updateData.due_date = null;
+        updateData.due_datetime = null;
+        updateData.due_timezone = null;
+      } else {
+        // Update due date fields
+        updateData.due_string = updates.due.string || null;
+        updateData.due_date = updates.due.date || null;
+        updateData.due_datetime = updates.due.datetime || null;
+        updateData.due_timezone = updates.due.timezone || null;
+      }
+    }
 
     if (Object.keys(updateData).length === 0) {
       return false;
@@ -529,6 +652,8 @@ export class KyselyAdapter implements IStorageAdapter {
         'm.classification_source',
         'm.recommended_category',
         'm.recommendation_applied',
+        'm.requires_driving',
+        'm.time_constraint',
       ])
       .where('t.is_completed', '=', 0);
 
@@ -546,6 +671,12 @@ export class KyselyAdapter implements IStorageAdapter {
     }
     if (criteria.size) {
       query = query.where('m.size', '=', criteria.size);
+    }
+    if (criteria.requiresDriving !== undefined) {
+      query = query.where('m.requires_driving', '=', criteria.requiresDriving ? 1 : 0);
+    }
+    if (criteria.timeConstraint) {
+      query = query.where('m.time_constraint', '=', criteria.timeConstraint);
     }
 
     const rows = await query.execute();
@@ -571,6 +702,8 @@ export class KyselyAdapter implements IStorageAdapter {
         needs_supplies: metadata.needsSupplies ? 1 : 0,
         can_delegate: metadata.canDelegate ? 1 : 0,
         energy_level: metadata.energyLevel || null,
+        requires_driving: metadata.requiresDriving ? 1 : 0,
+        time_constraint: metadata.timeConstraint || null,
         created_at: now,
         updated_at: now,
       })
@@ -584,6 +717,8 @@ export class KyselyAdapter implements IStorageAdapter {
         needs_supplies: metadata.needsSupplies ? 1 : 0,
         can_delegate: metadata.canDelegate ? 1 : 0,
         energy_level: metadata.energyLevel || null,
+        requires_driving: metadata.requiresDriving ? 1 : 0,
+        time_constraint: metadata.timeConstraint || null,
         updated_at: now,
       }))
       .execute();
@@ -613,6 +748,8 @@ export class KyselyAdapter implements IStorageAdapter {
       classificationSource: (row.classification_source as 'ai' | 'manual') || undefined,
       recommendedCategory: row.recommended_category || undefined,
       recommendationApplied: row.recommendation_applied === 1,
+      requiresDriving: (row as any).requires_driving === 1,
+      timeConstraint: ((row as any).time_constraint as TimeConstraint) || undefined,
     };
   }
 
@@ -868,6 +1005,609 @@ export class KyselyAdapter implements IStorageAdapter {
       count: stats?.count || 0,
       avgDuration: stats?.avgDuration || 0,
       commonPatterns,
+    };
+  }
+
+  /**
+   * Get pre-computed statistics for task insights
+   * All aggregations done in SQL for accuracy and efficiency
+   */
+  async getTaskInsightStats(): Promise<TaskInsightStats> {
+    const db = this.getDb();
+    const now = new Date();
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+
+    // === BACKLOG PROJECT EXCLUSION ===
+    // These are long-term idea storage projects that shouldn't count in productivity metrics.
+    // Get IDs of backlog projects to exclude from productivity metrics
+    const backlogProjectRows = await db
+      .selectFrom('projects')
+      .select('id')
+      .where(eb => eb.or([
+        eb('name', '=', 'Big Ideas'),
+        eb('name', '=', 'Inspiration'),
+        eb('name', 'like', '%Home Renovation%'),
+        eb('name', 'like', '%Home Improvement%'),
+      ]))
+      .execute();
+    
+    const backlogProjectIds = backlogProjectRows.map(r => r.id);
+    
+    this.logger.log(`Excluding ${backlogProjectIds.length} backlog projects from productivity metrics`);
+
+    // Helper to check if we have backlog projects to exclude
+    const hasBacklogExclusions = backlogProjectIds.length > 0;
+
+    // 1. Get total active tasks count (excluding backlog projects)
+    let activeCountQuery = db
+      .selectFrom('tasks')
+      .select(sql<number>`COUNT(*)`.as('count'))
+      .where('is_completed', '=', 0);
+    
+    if (hasBacklogExclusions) {
+      activeCountQuery = activeCountQuery.where(eb => 
+        eb.or([
+          eb('project_id', 'is', null),
+          eb('project_id', 'not in', backlogProjectIds),
+        ])
+      );
+    }
+    
+    const activeCountResult = await activeCountQuery.executeTakeFirst();
+    const totalActive = Number(activeCountResult?.count || 0);
+
+    // 2. Get completed tasks count (last 30 days)
+    const completedCountResult = await db
+      .selectFrom('task_history')
+      .select(sql<number>`COUNT(*)`.as('count'))
+      .where('completed_at', '>=', thirtyDaysAgo.toISOString())
+      .executeTakeFirst();
+    const totalCompletedLast30Days = Number(completedCountResult?.count || 0);
+
+    // 3. Active tasks by project (excluding backlog projects)
+    // Group by actual project name, with "Inbox" for tasks with no project
+    let activeByProjectQuery = db
+      .selectFrom('tasks')
+      .leftJoin('projects', 'tasks.project_id', 'projects.id')
+      .select([
+        sql<string>`COALESCE(projects.name, 'Inbox')`.as('project_name'),
+        sql<number>`COUNT(*)`.as('count'),
+      ])
+      .where('tasks.is_completed', '=', 0);
+    
+    if (hasBacklogExclusions) {
+      activeByProjectQuery = activeByProjectQuery.where(eb => 
+        eb.or([
+          eb('tasks.project_id', 'is', null),
+          eb('tasks.project_id', 'not in', backlogProjectIds),
+        ])
+      );
+    }
+    
+    const activeByProjectRows = await activeByProjectQuery
+      .groupBy(sql`COALESCE(projects.name, 'Inbox')`)
+      .execute();
+    
+    // Use activeByCategory name for compatibility with existing interface
+    const activeByCategory: Record<string, number> = {};
+    for (const row of activeByProjectRows) {
+      activeByCategory[row.project_name || 'Inbox'] = Number(row.count);
+    }
+
+    // 4. Completed tasks by project (last 30 days)
+    // Join task_history → tasks → projects to get actual project name
+    let completedByProjectQuery = db
+      .selectFrom('task_history')
+      .innerJoin('tasks', 'task_history.task_id', 'tasks.id')
+      .leftJoin('projects', 'tasks.project_id', 'projects.id')
+      .select([
+        sql<string>`COALESCE(projects.name, 'Inbox')`.as('project_name'),
+        sql<number>`COUNT(*)`.as('count'),
+      ])
+      .where('task_history.completed_at', '>=', thirtyDaysAgo.toISOString());
+    
+    if (hasBacklogExclusions) {
+      completedByProjectQuery = completedByProjectQuery.where(eb => 
+        eb.or([
+          eb('tasks.project_id', 'is', null),
+          eb('tasks.project_id', 'not in', backlogProjectIds),
+        ])
+      );
+    }
+    
+    const completedByProjectRows = await completedByProjectQuery
+      .groupBy(sql`COALESCE(projects.name, 'Inbox')`)
+      .execute();
+    
+    const completedByCategory: Record<string, number> = {};
+    for (const row of completedByProjectRows) {
+      completedByCategory[row.project_name || 'Inbox'] = Number(row.count);
+    }
+
+    // 5. Age distribution of active tasks (excluding backlog projects)
+    let ageBucketsQuery = db
+      .selectFrom('tasks')
+      .select([
+        sql<number>`SUM(CASE WHEN created_at >= ${sevenDaysAgo.toISOString()} THEN 1 ELSE 0 END)`.as('recent'),
+        sql<number>`SUM(CASE WHEN created_at < ${sevenDaysAgo.toISOString()} AND created_at >= ${thirtyDaysAgo.toISOString()} THEN 1 ELSE 0 END)`.as('week'),
+        sql<number>`SUM(CASE WHEN created_at < ${thirtyDaysAgo.toISOString()} AND created_at >= ${ninetyDaysAgo.toISOString()} THEN 1 ELSE 0 END)`.as('month'),
+        sql<number>`SUM(CASE WHEN created_at < ${ninetyDaysAgo.toISOString()} THEN 1 ELSE 0 END)`.as('stale'),
+      ])
+      .where('is_completed', '=', 0);
+    
+    if (hasBacklogExclusions) {
+      ageBucketsQuery = ageBucketsQuery.where(eb => 
+        eb.or([
+          eb('project_id', 'is', null),
+          eb('project_id', 'not in', backlogProjectIds),
+        ])
+      );
+    }
+    
+    const ageBucketsResult = await ageBucketsQuery.executeTakeFirst();
+
+    const taskAgeBuckets = {
+      recent: Number(ageBucketsResult?.recent || 0),
+      week: Number(ageBucketsResult?.week || 0),
+      month: Number(ageBucketsResult?.month || 0),
+      stale: Number(ageBucketsResult?.stale || 0),
+    };
+
+    // 6. Average completion time by project
+    // Join task_history → tasks → projects to get actual project name
+    let avgCompletionQuery = db
+      .selectFrom('task_history')
+      .innerJoin('tasks', 'task_history.task_id', 'tasks.id')
+      .leftJoin('projects', 'tasks.project_id', 'projects.id')
+      .select([
+        sql<string>`COALESCE(projects.name, 'Inbox')`.as('project_name'),
+        sql<number>`AVG(task_history.actual_duration)`.as('avgDuration'),
+      ])
+      .where('task_history.actual_duration', 'is not', null);
+    
+    if (hasBacklogExclusions) {
+      avgCompletionQuery = avgCompletionQuery.where(eb => 
+        eb.or([
+          eb('tasks.project_id', 'is', null),
+          eb('tasks.project_id', 'not in', backlogProjectIds),
+        ])
+      );
+    }
+    
+    const avgCompletionRows = await avgCompletionQuery
+      .groupBy(sql`COALESCE(projects.name, 'Inbox')`)
+      .execute();
+
+    const avgCompletionTimeByCategory: Record<string, number | null> = {};
+    for (const row of avgCompletionRows) {
+      avgCompletionTimeByCategory[row.project_name || 'Inbox'] = row.avgDuration ? Number(row.avgDuration) : null;
+    }
+
+    // 7. Completion rates (excluding backlog projects for created task counts)
+    let tasksCreated7Query = db
+      .selectFrom('tasks')
+      .select(sql<number>`COUNT(*)`.as('count'))
+      .where('created_at', '>=', sevenDaysAgo.toISOString());
+    
+    if (hasBacklogExclusions) {
+      tasksCreated7Query = tasksCreated7Query.where(eb => 
+        eb.or([
+          eb('project_id', 'is', null),
+          eb('project_id', 'not in', backlogProjectIds),
+        ])
+      );
+    }
+    
+    const tasksCreatedLast7Days = await tasksCreated7Query.executeTakeFirst();
+    
+    const tasksCompletedLast7Days = await db
+      .selectFrom('task_history')
+      .select(sql<number>`COUNT(*)`.as('count'))
+      .where('completed_at', '>=', sevenDaysAgo.toISOString())
+      .executeTakeFirst();
+
+    const created7 = Number(tasksCreatedLast7Days?.count || 0);
+    const completed7 = Number(tasksCompletedLast7Days?.count || 0);
+    const completionRateLast7Days = created7 > 0 ? completed7 / created7 : 0;
+
+    let tasksCreated30Query = db
+      .selectFrom('tasks')
+      .select(sql<number>`COUNT(*)`.as('count'))
+      .where('created_at', '>=', thirtyDaysAgo.toISOString());
+    
+    if (hasBacklogExclusions) {
+      tasksCreated30Query = tasksCreated30Query.where(eb => 
+        eb.or([
+          eb('project_id', 'is', null),
+          eb('project_id', 'not in', backlogProjectIds),
+        ])
+      );
+    }
+    
+    const tasksCreatedLast30Days = await tasksCreated30Query.executeTakeFirst();
+    
+    const created30 = Number(tasksCreatedLast30Days?.count || 0);
+    const completionRateLast30Days = created30 > 0 ? totalCompletedLast30Days / created30 : 0;
+
+    // 8. Estimate coverage (excluding backlog projects)
+    let estimateCoverageQuery = db
+      .selectFrom('tasks')
+      .leftJoin('task_metadata', 'tasks.id', 'task_metadata.task_id')
+      .select([
+        sql<number>`SUM(CASE WHEN task_metadata.time_estimate IS NOT NULL THEN 1 ELSE 0 END)`.as('withEstimates'),
+        sql<number>`SUM(CASE WHEN task_metadata.time_estimate IS NULL THEN 1 ELSE 0 END)`.as('withoutEstimates'),
+      ])
+      .where('tasks.is_completed', '=', 0);
+    
+    if (hasBacklogExclusions) {
+      estimateCoverageQuery = estimateCoverageQuery.where(eb => 
+        eb.or([
+          eb('tasks.project_id', 'is', null),
+          eb('tasks.project_id', 'not in', backlogProjectIds),
+        ])
+      );
+    }
+    
+    const estimateCoverageResult = await estimateCoverageQuery.executeTakeFirst();
+
+    const tasksWithEstimates = Number(estimateCoverageResult?.withEstimates || 0);
+    const tasksWithoutEstimates = Number(estimateCoverageResult?.withoutEstimates || 0);
+
+    // 9. Due date analysis (excluding backlog projects)
+    const nowStr = now.toISOString().split('T')[0]; // YYYY-MM-DD
+    const sevenDaysFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+    let overdueQuery = db
+      .selectFrom('tasks')
+      .select(sql<number>`COUNT(*)`.as('count'))
+      .where('is_completed', '=', 0)
+      .where('due_date', '<', nowStr)
+      .where('due_date', 'is not', null);
+    
+    if (hasBacklogExclusions) {
+      overdueQuery = overdueQuery.where(eb => 
+        eb.or([
+          eb('project_id', 'is', null),
+          eb('project_id', 'not in', backlogProjectIds),
+        ])
+      );
+    }
+    
+    const overdueResult = await overdueQuery.executeTakeFirst();
+    const overdueTasks = Number(overdueResult?.count || 0);
+
+    let dueSoonQuery = db
+      .selectFrom('tasks')
+      .select(sql<number>`COUNT(*)`.as('count'))
+      .where('is_completed', '=', 0)
+      .where('due_date', '>=', nowStr)
+      .where('due_date', '<=', sevenDaysFromNow);
+    
+    if (hasBacklogExclusions) {
+      dueSoonQuery = dueSoonQuery.where(eb => 
+        eb.or([
+          eb('project_id', 'is', null),
+          eb('project_id', 'not in', backlogProjectIds),
+        ])
+      );
+    }
+    
+    const dueSoonResult = await dueSoonQuery.executeTakeFirst();
+    const dueSoon = Number(dueSoonResult?.count || 0);
+
+    // 10. Top labels on active tasks
+    const labelRows = await db
+      .selectFrom('tasks')
+      .select([
+        sql<string>`labels`.as('labels'),
+      ])
+      .where('is_completed', '=', 0)
+      .where('labels', 'is not', null)
+      .execute();
+
+    const labelCounts = new Map<string, number>();
+    for (const row of labelRows) {
+      if (row.labels) {
+        try {
+          const labels = JSON.parse(row.labels as string);
+          if (Array.isArray(labels)) {
+            for (const label of labels) {
+              labelCounts.set(label, (labelCounts.get(label) || 0) + 1);
+            }
+          }
+        } catch {
+          // Ignore parse errors
+        }
+      }
+    }
+
+    const topLabels = Array.from(labelCounts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10)
+      .map(([label, count]) => ({ label, count }));
+
+    // 11. Stalest tasks (for archival suggestions, excluding backlog projects)
+    let stalestTasksQuery = db
+      .selectFrom('tasks')
+      .leftJoin('task_metadata', 'tasks.id', 'task_metadata.task_id')
+      .select([
+        'tasks.id',
+        'tasks.content',
+        'tasks.created_at',
+        sql<string>`COALESCE(task_metadata.category, 'inbox')`.as('category'),
+      ])
+      .where('tasks.is_completed', '=', 0)
+      .where('tasks.created_at', '<', ninetyDaysAgo.toISOString());
+    
+    if (hasBacklogExclusions) {
+      stalestTasksQuery = stalestTasksQuery.where(eb => 
+        eb.or([
+          eb('tasks.project_id', 'is', null),
+          eb('tasks.project_id', 'not in', backlogProjectIds),
+        ])
+      );
+    }
+    
+    const stalestTasksRows = await stalestTasksQuery
+      .orderBy('tasks.created_at', 'asc')
+      .limit(10)
+      .execute();
+
+    const stalestTasks = stalestTasksRows.map(row => ({
+      id: row.id,
+      content: row.content.substring(0, 100), // Truncate for prompt
+      ageInDays: row.created_at 
+        ? Math.floor((now.getTime() - new Date(row.created_at).getTime()) / (1000 * 60 * 60 * 24))
+        : 0,
+      category: row.category || 'inbox',
+    }));
+
+    // 12. Completions by day of week (from task_history)
+    // PostgreSQL: EXTRACT(DOW FROM ...) returns 0=Sunday
+    // SQLite: strftime('%w', ...) returns 0=Sunday
+    const isPg = this.options.dialect === 'postgres';
+    const dayOfWeekExpr = isPg 
+      ? sql<string>`EXTRACT(DOW FROM completed_at::timestamp)`
+      : sql<string>`strftime('%w', completed_at)`;
+    
+    const dayOfWeekRows = await db
+      .selectFrom('task_history')
+      .select([
+        dayOfWeekExpr.as('dayOfWeek'),
+        sql<number>`COUNT(*)`.as('count'),
+      ])
+      .where('completed_at', '>=', thirtyDaysAgo.toISOString())
+      .groupBy(dayOfWeekExpr)
+      .execute();
+
+    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const completionsByDayOfWeek: Record<string, number> = {};
+    for (const day of dayNames) {
+      completionsByDayOfWeek[day] = 0;
+    }
+    for (const row of dayOfWeekRows) {
+      const dayIndex = parseInt(String(row.dayOfWeek) || '0', 10);
+      if (dayIndex >= 0 && dayIndex < 7) {
+        completionsByDayOfWeek[dayNames[dayIndex]] = Number(row.count);
+      }
+    }
+
+    // 13. Daily completions for trend chart (last 30 days)
+    // PostgreSQL: completed_at::date, SQLite: date(completed_at)
+    const dateExpr = isPg 
+      ? sql<string>`completed_at::date`
+      : sql<string>`date(completed_at)`;
+    
+    const dailyCompletionsRows = await db
+      .selectFrom('task_history')
+      .select([
+        dateExpr.as('date'),
+        sql<number>`COUNT(*)`.as('count'),
+      ])
+      .where('completed_at', '>=', thirtyDaysAgo.toISOString())
+      .groupBy(dateExpr)
+      .orderBy('date', 'asc')
+      .execute();
+
+    // Fill in missing dates with 0
+    const dailyCompletions: Array<{ date: string; count: number }> = [];
+    // Normalize the date format (PostgreSQL returns Date objects, SQLite returns strings)
+    const dateMap = new Map(dailyCompletionsRows.map(r => {
+      const dateVal: unknown = r.date;
+      const dateStr = dateVal instanceof Date 
+        ? dateVal.toISOString().split('T')[0]
+        : String(dateVal).split('T')[0];
+      return [dateStr, Number(r.count)];
+    }));
+    for (let i = 29; i >= 0; i--) {
+      const date = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
+      const dateStr = date.toISOString().split('T')[0];
+      dailyCompletions.push({
+        date: dateStr,
+        count: dateMap.get(dateStr) || 0,
+      });
+    }
+
+    // 14. Calculate streaks
+    let currentStreak = 0;
+    let longestStreak = 0;
+    let tempStreak = 0;
+    let lastCompletionDate: string | null = null;
+
+    // Get completion dates in order
+    const completionDatesRows = await db
+      .selectFrom('task_history')
+      .select(dateExpr.as('date'))
+      .groupBy(dateExpr)
+      .orderBy('date', 'desc')
+      .execute();
+
+    // Normalize dates (PostgreSQL returns Date objects, SQLite returns strings)
+    const normalizeDateStr = (d: unknown): string => {
+      if (d instanceof Date) return d.toISOString().split('T')[0];
+      return String(d).split('T')[0];
+    };
+
+    if (completionDatesRows.length > 0) {
+      lastCompletionDate = normalizeDateStr(completionDatesRows[0].date);
+      
+      // Calculate current streak (consecutive days from today/yesterday)
+      const today = now.toISOString().split('T')[0];
+      const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+      const firstDateStr = normalizeDateStr(completionDatesRows[0].date);
+      
+      let checkDate = firstDateStr === today ? today : 
+                      firstDateStr === yesterday ? yesterday : null;
+      
+      if (checkDate) {
+        let currentCheckDate: string = checkDate;
+        for (const row of completionDatesRows) {
+          const rowDateStr = normalizeDateStr(row.date);
+          if (rowDateStr === currentCheckDate) {
+            currentStreak++;
+            const prevDate = new Date(new Date(currentCheckDate).getTime() - 24 * 60 * 60 * 1000);
+            currentCheckDate = prevDate.toISOString().split('T')[0];
+          } else {
+            break;
+          }
+        }
+      }
+
+      // Calculate longest streak
+      const sortedDates = completionDatesRows.map(r => normalizeDateStr(r.date)).sort();
+      tempStreak = 1;
+      for (let i = 1; i < sortedDates.length; i++) {
+        const prevDate = new Date(sortedDates[i - 1]);
+        const currDate = new Date(sortedDates[i]);
+        const diffDays = Math.round((currDate.getTime() - prevDate.getTime()) / (24 * 60 * 60 * 1000));
+        
+        if (diffDays === 1) {
+          tempStreak++;
+        } else {
+          longestStreak = Math.max(longestStreak, tempStreak);
+          tempStreak = 1;
+        }
+      }
+      longestStreak = Math.max(longestStreak, tempStreak, currentStreak);
+    }
+
+    // 15. Project velocity (avg days to complete by project)
+    // PostgreSQL: EXTRACT(EPOCH FROM (t2 - t1)) / 86400
+    // SQLite: julianday(t2) - julianday(t1)
+    const avgDaysExpr = isPg
+      ? sql<number>`AVG(EXTRACT(EPOCH FROM (task_history.completed_at::timestamp - tasks.created_at::timestamp)) / 86400)`
+      : sql<number>`AVG(julianday(task_history.completed_at) - julianday(tasks.created_at))`;
+    
+    let velocityQuery = db
+      .selectFrom('task_history')
+      .innerJoin('tasks', 'task_history.task_id', 'tasks.id')
+      .leftJoin('projects', 'tasks.project_id', 'projects.id')
+      .select([
+        sql<string>`COALESCE(projects.name, 'Inbox')`.as('project_name'),
+        sql<number>`COUNT(*)`.as('completed'),
+        avgDaysExpr.as('avgDays'),
+      ])
+      .where('task_history.completed_at', '>=', thirtyDaysAgo.toISOString());
+    
+    if (hasBacklogExclusions) {
+      velocityQuery = velocityQuery.where(eb => 
+        eb.or([
+          eb('tasks.project_id', 'is', null),
+          eb('tasks.project_id', 'not in', backlogProjectIds),
+        ])
+      );
+    }
+    
+    const velocityRows = await velocityQuery
+      .groupBy(sql`COALESCE(projects.name, 'Inbox')`)
+      .execute();
+
+    const categoryVelocity: Record<string, { completed: number; avgDaysToComplete: number | null }> = {};
+    for (const row of velocityRows) {
+      categoryVelocity[row.project_name || 'Inbox'] = {
+        completed: Number(row.completed),
+        avgDaysToComplete: row.avgDays ? Math.round(Number(row.avgDays) * 10) / 10 : null,
+      };
+    }
+
+    // 16. Procrastination stats (tasks with due dates)
+    // Use dialect-specific date casting for comparison
+    // PostgreSQL: need to cast both completed_at and due_date to date for comparison
+    // SQLite: date() function works on both
+    const completedDateExpr = isPg 
+      ? 'task_history.completed_at::date'
+      : 'date(task_history.completed_at)';
+    const dueDateExpr = isPg
+      ? 'tasks.due_date::date'
+      : 'tasks.due_date';
+    
+    const procrastinationRows = await db
+      .selectFrom('task_history')
+      .innerJoin('tasks', 'task_history.task_id', 'tasks.id')
+      .select([
+        sql<number>`SUM(CASE 
+          WHEN tasks.due_date IS NOT NULL AND ${sql.raw(completedDateExpr)} < ${sql.raw(dueDateExpr)} THEN 1 
+          ELSE 0 
+        END)`.as('onTime'),
+        sql<number>`SUM(CASE 
+          WHEN tasks.due_date IS NOT NULL AND ${sql.raw(completedDateExpr)} = ${sql.raw(dueDateExpr)} THEN 1 
+          ELSE 0 
+        END)`.as('lastMinute'),
+        sql<number>`SUM(CASE 
+          WHEN tasks.due_date IS NOT NULL AND ${sql.raw(completedDateExpr)} > ${sql.raw(dueDateExpr)} THEN 1 
+          ELSE 0 
+        END)`.as('late'),
+      ])
+      .where('task_history.completed_at', '>=', thirtyDaysAgo.toISOString())
+      .executeTakeFirst();
+
+    const procrastinationStats = {
+      completedOnTime: Number(procrastinationRows?.onTime || 0),
+      completedLastMinute: Number(procrastinationRows?.lastMinute || 0),
+      completedLate: Number(procrastinationRows?.late || 0),
+    };
+
+    // 17. Calculate productivity score (0-100)
+    // Factors: completion rate, streak, estimate coverage, overdue ratio, stale ratio
+    const completionScore = Math.min(completionRateLast30Days * 100, 40); // Max 40 points
+    const streakScore = Math.min(currentStreak * 5, 20); // Max 20 points
+    const estimateCoverage = totalActive > 0 ? (tasksWithEstimates / totalActive) : 0;
+    const estimateScore = estimateCoverage * 15; // Max 15 points
+    const overdueRatio = totalActive > 0 ? 1 - (overdueTasks / totalActive) : 1;
+    const overdueScore = overdueRatio * 15; // Max 15 points
+    const staleRatio = totalActive > 0 ? 1 - (taskAgeBuckets.stale / totalActive) : 1;
+    const staleScore = staleRatio * 10; // Max 10 points
+    
+    const productivityScore = Math.round(
+      completionScore + streakScore + estimateScore + overdueScore + staleScore
+    );
+
+    return {
+      totalActive,
+      totalCompletedLast30Days,
+      activeByCategory,
+      completedByCategory,
+      taskAgeBuckets,
+      avgCompletionTimeByCategory,
+      completionRateLast7Days,
+      completionRateLast30Days,
+      tasksWithEstimates,
+      tasksWithoutEstimates,
+      overdueTasks,
+      dueSoon,
+      topLabels,
+      stalestTasks,
+      // New behavioral metrics
+      completionsByDayOfWeek,
+      dailyCompletions,
+      currentStreak,
+      longestStreak,
+      lastCompletionDate,
+      productivityScore,
+      categoryVelocity,
+      procrastinationStats,
     };
   }
 
@@ -1339,6 +2079,74 @@ export class KyselyAdapter implements IStorageAdapter {
     return (result.numDeletedRows ?? 0n) > 0n;
   }
 
+  // ==================== Cached Insights ====================
+
+  async getCachedInsights<T>(cacheKey: string): Promise<{
+    data: T;
+    generatedAt: string;
+    expiresAt: string;
+  } | null> {
+    const db = this.getDb();
+    const now = new Date().toISOString();
+
+    const row = await db
+      .selectFrom('cached_insights')
+      .select(['data', 'generated_at', 'expires_at'])
+      .where('cache_key', '=', cacheKey)
+      .where('expires_at', '>', now) // Only return if not expired
+      .executeTakeFirst();
+
+    if (!row) {
+      return null;
+    }
+
+    // Parse data if stored as string (SQLite) vs JSONB (PostgreSQL)
+    const data = typeof row.data === 'string' ? JSON.parse(row.data) : row.data;
+
+    return {
+      data: data as T,
+      generatedAt: row.generated_at,
+      expiresAt: row.expires_at,
+    };
+  }
+
+  async setCachedInsights<T>(cacheKey: string, data: T, ttlHours: number = 24): Promise<void> {
+    const db = this.getDb();
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + ttlHours * 60 * 60 * 1000);
+
+    const dataStr = JSON.stringify(data);
+
+    // Upsert: delete existing and insert new
+    await db
+      .deleteFrom('cached_insights')
+      .where('cache_key', '=', cacheKey)
+      .execute();
+
+    await db
+      .insertInto('cached_insights')
+      .values({
+        cache_key: cacheKey,
+        data: dataStr,
+        generated_at: now.toISOString(),
+        expires_at: expiresAt.toISOString(),
+      })
+      .execute();
+
+    this.logger.log(`Cached insights for key '${cacheKey}', expires at ${expiresAt.toISOString()}`);
+  }
+
+  async invalidateCachedInsights(cacheKey: string): Promise<void> {
+    const db = this.getDb();
+    
+    await db
+      .deleteFrom('cached_insights')
+      .where('cache_key', '=', cacheKey)
+      .execute();
+
+    this.logger.log(`Invalidated cached insights for key '${cacheKey}'`);
+  }
+
   // ==================== Helper Methods ====================
 
   private rowToTask(row: any): Task {
@@ -1370,9 +2178,10 @@ export class KyselyAdapter implements IStorageAdapter {
       updatedAt: row.last_synced_at || undefined,
       isCompleted: row.is_completed === 1,
       completedAt: row.completed_at || undefined,
-      metadata: row.category
+      // Include metadata if ANY metadata field is present (not just category)
+      metadata: (row.category || row.time_estimate_minutes || row.time_estimate || row.size)
         ? {
-            category: row.category,
+            category: row.category || undefined,
             timeEstimate: row.time_estimate || undefined,
             timeEstimateMinutes: row.time_estimate_minutes || undefined,
             size: row.size || undefined,
@@ -1384,6 +2193,8 @@ export class KyselyAdapter implements IStorageAdapter {
             classificationSource: row.classification_source || undefined,
             recommendedCategory: row.recommended_category || undefined,
             recommendationApplied: row.recommendation_applied === 1,
+            requiresDriving: row.requires_driving === 1,
+            timeConstraint: (row.time_constraint as TimeConstraint) || undefined,
           }
         : undefined,
     };

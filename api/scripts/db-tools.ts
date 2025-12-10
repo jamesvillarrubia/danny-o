@@ -98,8 +98,13 @@ function getProductionConfig(target: 'prod' | 'dev' = 'prod'): ConnectionConfig 
     return { dialect: 'postgres', connectionString: targetUrl };
   }
 
+  const envVar = target === 'prod' ? 'PROD_DATABASE_URL' : 'DEV_DATABASE_URL';
   throw new Error(
-    `No database URL configured for ${target}. Set DATABASE_URL, PROD_DATABASE_URL, or DEV_DATABASE_URL.`
+    `❌ No database URL configured for ${target}.\n\n` +
+    `To fix this, add the following to api/.env.local:\n` +
+    `  ${envVar}="postgresql://user:password@host:5432/database"\n\n` +
+    `Note: .env.local is gitignored and won't be committed.\n` +
+    `See api/.env.example for the full configuration template.`
   );
 }
 
@@ -418,10 +423,14 @@ Usage:
       --yes    : Skip confirmation prompt
 
 Environment Variables:
-  DATABASE_URL      : Primary database connection (used for export/import)
-  PROD_DATABASE_URL : Production PostgreSQL URL (for push/pull)
-  DEV_DATABASE_URL  : Development PostgreSQL URL (for push/pull)
+  Configure these in api/.env.local (gitignored, not committed):
+
+  PROD_DATABASE_URL : Production PostgreSQL URL (required for push/pull prod)
+  DEV_DATABASE_URL  : Development PostgreSQL URL (optional, for push/pull dev)
+  DATABASE_URL      : Override database connection (for export/import)
   SQLITE_PATH       : Local SQLite path (default: ~/.danny/data/tasks.db)
+
+  See api/.env.example for the configuration template.
 `);
 }
 

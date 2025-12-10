@@ -353,21 +353,31 @@ pnpm db:push [--target prod|dev] [--yes]
 pnpm db:pull [--source prod|dev] [--yes]
 ```
 
-### Environment Setup
+### Configuration Setup
 
-Set these environment variables for database operations:
+Configure database URLs once in `api/.env.local` (gitignored, not committed):
 
 ```bash
-# Local development (automatic)
-SQLITE_PATH="~/.danny/data/tasks.db"  # Default location
+# Create or edit api/.env.local
+cd api
 
-# Production/staging (required for push/pull)
-PROD_DATABASE_URL="postgresql://user:pass@host:5432/dbname"
-DEV_DATABASE_URL="postgresql://user:pass@host:5432/dbname-dev"
+# Add your database URLs:
+cat >> .env.local << 'EOF'
+# Production database (required for db:push/db:pull)
+PROD_DATABASE_URL="postgresql://user:password@your-neon-host/database"
 
-# Or use DATABASE_URL for current environment
-DATABASE_URL="postgresql://..."  # Used by export/import commands
+# Development database (optional)
+DEV_DATABASE_URL="postgresql://user:password@dev-host/database-dev"
+EOF
 ```
+
+**Why `.env.local`?**
+- Automatically loaded by the scripts (via dotenv)
+- Already gitignored (safe for credentials)
+- Configure once, use forever
+- See `api/.env.example` for the full template
+
+The default local SQLite path (`~/.danny/data/tasks.db`) works automatically - no configuration needed.
 
 ### Common Workflows
 
@@ -378,8 +388,8 @@ When you want to migrate your local SQLite data to production PostgreSQL:
 ```bash
 cd api
 
-# Ensure PROD_DATABASE_URL is set
-export PROD_DATABASE_URL="your-postgres-url"
+# First time: configure .env.local (one-time setup)
+# echo 'PROD_DATABASE_URL="postgresql://..."' >> .env.local
 
 # Push with confirmation prompt
 pnpm db:push --target prod
@@ -401,10 +411,7 @@ When you want to test with production data locally:
 ```bash
 cd api
 
-# Ensure PROD_DATABASE_URL is set
-export PROD_DATABASE_URL="your-postgres-url"
-
-# Pull with confirmation prompt
+# Pull with confirmation prompt (uses PROD_DATABASE_URL from .env.local)
 pnpm db:pull --source prod
 
 # Or skip confirmation
@@ -421,12 +428,18 @@ This replaces your local SQLite database with production data, useful for:
 Create timestamped JSON backups:
 
 ```bash
-# Backup local SQLite
 cd api
+
+# Backup local SQLite (automatic)
 pnpm db:export --output ./backups/backup-$(date +%Y%m%d).json
 
 # Backup production PostgreSQL
+# Set DATABASE_URL temporarily to target production
 DATABASE_URL="$PROD_DATABASE_URL" pnpm db:export --output ./backups/prod-backup.json
+
+# Or read PROD_DATABASE_URL from .env.local and use it
+pnpm db:export --output ./backups/prod-backup.json
+# (Note: export reads current DATABASE_URL or falls back to SQLite)
 ```
 
 Backups include:
@@ -448,7 +461,9 @@ cd api
 pnpm db:import --input ./backups/backup-20240101.json --mode merge
 
 # Restore to production (replace mode - clears first)
-DATABASE_URL="$PROD_DATABASE_URL" pnpm db:import --input backup.json --mode replace
+# Temporarily override DATABASE_URL to target production
+DATABASE_URL="$(grep PROD_DATABASE_URL .env.local | cut -d= -f2-)" \
+  pnpm db:import --input backup.json --mode replace
 
 # Force import even if migrations differ
 pnpm db:import --input backup.json --mode replace --force
@@ -496,18 +511,18 @@ The schema migrations run automatically when the app starts (`KyselyAdapter.runM
 
 ### Syncing Between Environments
 
-For dev → prod workflow:
+For dev → prod workflow (ensure `.env.local` has both DEV_DATABASE_URL and PROD_DATABASE_URL):
 
 ```bash
+cd api
+
 # 1. Test locally with SQLite
 pnpm start:dev
 
 # 2. When ready, push to dev environment
-export DEV_DATABASE_URL="..."
-pnpm db:push --target dev
+pnpm db:push --target dev --yes
 
 # 3. Test in dev, then promote to prod
-export PROD_DATABASE_URL="..."
 pnpm db:pull --source dev  # Get dev data locally first (optional)
 pnpm db:push --target prod
 ```

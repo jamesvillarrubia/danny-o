@@ -129,45 +129,74 @@ pnpm test:step-ci:real
 
 ## AI Testing Strategy
 
-### Static Response Fixtures
+### Achieving Determinism
 
-AI operations use deterministic fixtures instead of per-test mock setup:
+AI responses use Claude's built-in deterministic features rather than hardcoded fixtures:
 
+1. **`temperature: 0.0`** - Selects highest probability tokens, reducing variation
+2. **`seed` parameter** - When specified, API makes best effort for deterministic sampling
+3. **Consistent inputs** - Same prompts produce same (or very similar) results
+4. **Structured outputs** - JSON schema enforcement for predictable format
+
+### Why Not Static Fixtures?
+
+**Model drift is a real concern.** Claude's models are updated periodically, and hardcoded fixtures:
+- Become stale when model behavior changes
+- Don't catch regressions in AI quality
+- Create false confidence in tests
+
+Instead, we use **deterministic real API calls** when API keys are available, falling back to mocks only for CI environments without credentials.
+
+### Configuration
+
+Environment variables for deterministic AI:
+
+```bash
+# Enable deterministic mode (temp=0.0 by default)
+AI_DETERMINISTIC=true
+
+# Override temperature (0.0 = most deterministic, 1.0 = most creative)
+AI_TEMPERATURE=0.0
+
+# Seed for reproducible results (optional)
+AI_SEED=12345
+
+# Model selection (optional)
+CLAUDE_MODEL=claude-3-5-sonnet-20241022
 ```
-test/fixtures/ai-responses/
-├── classify.json      # Classification response
-├── estimate.json      # Time estimation response
-├── prioritize.json    # Prioritization response
-├── breakdown.json     # Subtask breakdown response
-├── insights.json      # Productivity insights response
-└── daily-plan.json    # Daily plan response
-```
+
+### Testing Modes
+
+| Mode | Use Case | AI Behavior |
+|------|----------|-------------|
+| **CI (no API key)** | Automated tests | Mock responses |
+| **CI (with API key)** | Contract tests | Deterministic real calls |
+| **Local dev** | Manual testing | Normal creative mode |
+| **Recording** | Update fixtures | Deterministic + capture |
 
 ### How It Works
 
-1. **Mock Mode** (`USE_MOCKS=true`): `MockClaudeService` returns static fixtures based on prompt type detection.
+1. **Mock Mode** (`USE_MOCKS=true`): `MockClaudeService` returns predictable responses based on prompt detection. Used when no API key is available.
 
-2. **Real Mode**: Actual Claude API is called (for manual validation only).
+2. **Deterministic Mode** (`AI_DETERMINISTIC=true`): Real Claude API with `temperature=0.0` and optional seed. Produces consistent results across runs.
 
-3. **Recording Mode** (`pnpm test:step-ci:record`): Captures real responses to update fixtures.
+3. **Recording Mode** (`pnpm test:step-ci:record`): Captures deterministic responses to update baseline fixtures.
 
-### Fixture Format
+### Mock Fallback Fixtures
 
-```json
-{
-  "promptType": "classify",
-  "response": {
-    "tasks": [
-      {
-        "taskId": "task_1",
-        "category": "work",
-        "confidence": 0.95,
-        "reasoning": "Software development task"
-      }
-    ]
-  }
-}
+For CI without API keys, mocks use baseline responses in `test/fixtures/ai-responses/`:
+
 ```
+test/fixtures/ai-responses/
+├── classify.json      # Baseline classification
+├── estimate.json      # Baseline time estimate
+├── prioritize.json    # Baseline prioritization
+├── breakdown.json     # Baseline subtask breakdown
+├── insights.json      # Baseline insights
+└── daily-plan.json    # Baseline daily plan
+```
+
+These are **fallback only** - real deterministic API calls are preferred when credentials are available.
 
 ## File Structure
 

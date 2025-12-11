@@ -45,40 +45,75 @@ export class KyselyAdapter implements IStorageAdapter {
   }
 
   async initialize(): Promise<void> {
-    if (this.options.dialect === 'pglite') {
-      await this.initializePGlite();
-    } else {
-      await this.initializePostgres();
+    try {
+      if (this.options.dialect === 'pglite') {
+        await this.initializePGlite();
+      } else {
+        await this.initializePostgres();
+      }
+
+      // Create schema
+      this.logger.log('Creating database schema...');
+      await this.createSchema();
+
+      // Run migrations
+      this.logger.log('Running database migrations...');
+      await this.runMigrations();
+
+      this.logger.log(`Kysely adapter initialized (${this.options.dialect})`);
+    } catch (error: any) {
+      this.logger.error(`Failed to initialize Kysely adapter: ${error.message}`);
+      this.logger.error(error.stack);
+      throw error;
     }
-
-    // Create schema
-    await this.createSchema();
-
-    // Run migrations
-    await this.runMigrations();
-
-    this.logger.log(`Kysely adapter initialized (${this.options.dialect})`);
   }
 
   private async initializePGlite(): Promise<void> {
-    const dbPath = this.options.pglitePath || './data/tasks.db';
-    
-    // Ensure directory exists
-    const dir = dirname(dbPath);
-    mkdirSync(dir, { recursive: true });
+    try {
+      const dbPath = this.options.pglitePath || './data/tasks.db';
+      this.logger.log(`Initializing PGlite at ${dbPath}...`);
+      
+      // Ensure directory exists
+      const dir = dirname(dbPath);
+      mkdirSync(dir, { recursive: true });
+      this.logger.log('Data directory created');
 
-    // Dynamically import PGlite
-    const { PGlite } = await import('@electric-sql/pglite');
-    const pglite = new PGlite(dbPath);
+      // Dynamically import PGlite
+      this.logger.log('Importing PGlite...');
+      const { PGlite } = await import('@electric-sql/pglite');
+      this.logger.log('PGlite imported successfully');
+      
+      this.logger.log('Creating PGlite instance...');
+      const pglite = new PGlite(dbPath);
+      
+      // Wait for PGlite to be ready
+      this.logger.log('Waiting for PGlite to be ready...');
+      await pglite.ready;
+      this.logger.log('PGlite is ready');
 
-    // PGlite provides a pg-compatible Pool interface
-    this.db = new Kysely<Database>({
-      dialect: new PostgresDialect({
-        pool: pglite as any, // PGlite is Pool-compatible
-      }),
-    });
+      // Create a Pool-compatible wrapper for PGlite
+      const poolAdapter = {
+        connect: async () => ({
+          query: async (sql: string, params?: any[]) => pglite.query(sql, params),
+          release: () => {},
+        }),
+        end: async () => await pglite.close(),
+        query: async (sql: string, params?: any[]) => pglite.query(sql, params),
+      };
 
-    this.logger.log(`PGlite database initialized at ${dbPath}`);
+      this.logger.log('Creating Kysely instance...');
+      this.db = new Kysely<Database>({
+        dialect: new PostgresDialect({
+          pool: poolAdapter as any,
+        }),
+      });
+
+      this.logger.log(`PGlite database initialized successfully at ${dbPath}`);
+    } catch (error: any) {
+      this.logger.error(`Failed to initialize PGlite: ${error.message}`);
+      this.logger.error(error.stack);
+      throw error;
+    }
   }
 
   private async initializePostgres(): Promise<void> {
@@ -129,6 +164,7 @@ export class KyselyAdapter implements IStorageAdapter {
     // Both PGlite and Postgres use same types (Postgres-compatible)
 
     // Tasks table
+    this.logger.log('Creating tasks table...');
     await db.schema
       .createTable('tasks')
       .ifNotExists()

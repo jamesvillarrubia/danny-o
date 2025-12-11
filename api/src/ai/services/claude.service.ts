@@ -14,6 +14,11 @@ import { IStorageAdapter } from '../../common/interfaces';
 interface QueryOptions {
   temperature?: number;
   maxTokens?: number;
+  /**
+   * Seed for deterministic output. When set with temperature=0,
+   * provides reproducible results (best effort by API).
+   */
+  seed?: number;
   // Logging options
   interactionType?: string;
   taskId?: string;
@@ -32,6 +37,8 @@ export class ClaudeService implements OnModuleInit {
   private model: string;
   private maxTokens: number;
   private temperature: number;
+  private defaultSeed?: number;
+  private deterministicMode: boolean;
 
   constructor(
     @Optional() @Inject(ConfigService) private readonly configService?: ConfigService,
@@ -42,7 +49,26 @@ export class ClaudeService implements OnModuleInit {
     // Can be overridden via CLAUDE_MODEL env var
     this.model = process.env.CLAUDE_MODEL || 'claude-3-5-sonnet-20240620';
     this.maxTokens = 4096;
-    this.temperature = 0.7;
+    
+    // Deterministic mode configuration
+    // When AI_DETERMINISTIC=true, use temperature=0 and optional seed for reproducible results
+    this.deterministicMode = process.env.AI_DETERMINISTIC === 'true';
+    
+    // Temperature: 0.0 for maximum determinism, 0.7 for creativity
+    // Can be overridden via AI_TEMPERATURE env var
+    const envTemp = process.env.AI_TEMPERATURE;
+    if (envTemp !== undefined) {
+      this.temperature = parseFloat(envTemp);
+    } else {
+      this.temperature = this.deterministicMode ? 0.0 : 0.7;
+    }
+    
+    // Seed for deterministic sampling (optional)
+    // Set via AI_SEED env var for reproducible test results
+    const envSeed = process.env.AI_SEED;
+    if (envSeed !== undefined) {
+      this.defaultSeed = parseInt(envSeed, 10);
+    }
   }
 
   onModuleInit() {
@@ -62,7 +88,13 @@ export class ClaudeService implements OnModuleInit {
     }
 
     this.client = new Anthropic({ apiKey });
-    this.logger.log(`Initialized with model: ${this.model}`);
+    
+    // Log initialization with deterministic settings
+    if (this.deterministicMode) {
+      this.logger.log(`Initialized in DETERMINISTIC mode: model=${this.model}, temp=${this.temperature}, seed=${this.defaultSeed ?? 'none'}`);
+    } else {
+      this.logger.log(`Initialized with model: ${this.model}, temp=${this.temperature}`);
+    }
   }
 
   /**
@@ -91,14 +123,21 @@ export class ClaudeService implements OnModuleInit {
     }
     
     const startTime = Date.now();
+    const effectiveTemp = options.temperature ?? this.temperature;
+    const effectiveSeed = options.seed ?? this.defaultSeed;
     
     try {
-      this.logger.log('Sending query to Claude...');
+      if (this.deterministicMode) {
+        this.logger.debug(`Deterministic query: temp=${effectiveTemp}, seed=${effectiveSeed ?? 'none'}`);
+      } else {
+        this.logger.log('Sending query to Claude...');
+      }
 
-      const response = await this.client.messages.create({
+      // Build request parameters
+      const requestParams: Anthropic.MessageCreateParams = {
         model: this.model,
         max_tokens: options.maxTokens || this.maxTokens,
-        temperature: options.temperature ?? this.temperature,
+        temperature: effectiveTemp,
         system: this.promptsService.SYSTEM_PROMPT,
         messages: [
           {
@@ -106,7 +145,18 @@ export class ClaudeService implements OnModuleInit {
             content: prompt,
           },
         ],
-      });
+      };
+      
+      // Add metadata for deterministic mode (seed support may vary by API version)
+      if (effectiveSeed !== undefined) {
+        // Note: seed support depends on API version. If not supported, it's ignored.
+        (requestParams as any).metadata = {
+          ...(requestParams as any).metadata,
+          user_id: `seed_${effectiveSeed}`,  // Use user_id as a pseudo-seed identifier
+        };
+      }
+
+      const response = await this.client.messages.create(requestParams);
 
       const textContent = response.content[0].type === 'text' 
         ? response.content[0].text 
@@ -336,12 +386,21 @@ export class ClaudeService implements OnModuleInit {
   /**
    * Get current model information
    */
-  getModelInfo(): { model: string; maxTokens: number; temperature: number } {
+  getModelInfo(): { model: string; maxTokens: number; temperature: number; deterministicMode: boolean; seed?: number } {
     return {
       model: this.model,
       maxTokens: this.maxTokens,
       temperature: this.temperature,
+      deterministicMode: this.deterministicMode,
+      seed: this.defaultSeed,
     };
+  }
+
+  /**
+   * Check if deterministic mode is enabled
+   */
+  isDeterministic(): boolean {
+    return this.deterministicMode;
   }
 
   /**

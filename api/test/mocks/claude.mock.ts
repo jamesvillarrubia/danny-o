@@ -2,62 +2,146 @@
  * Mock Claude Service
  * 
  * Mock implementation of ClaudeService for testing.
- * Uses static fixtures for deterministic responses by default.
+ * 
+ * Used as a FALLBACK when no API key is available (e.g., CI without credentials).
+ * When API keys are available, prefer real deterministic calls with:
+ *   - AI_DETERMINISTIC=true
+ *   - AI_TEMPERATURE=0.0
+ *   - AI_SEED=12345 (optional)
+ * 
+ * @see test/TESTING_STRATEGY.md for full documentation
  */
 
 import { Logger } from '@nestjs/common';
 import { vi } from 'vitest';
-import { detectPromptType, getAIResponse, AIPromptType } from '../fixtures/ai-responses';
+
+// Import fixtures for fallback responses
+let aiFixtures: any = null;
+try {
+  // Dynamic import to handle cases where fixtures don't exist
+  aiFixtures = require('../fixtures/ai-responses');
+} catch {
+  // Fixtures not available - will use inline defaults
+}
 
 export class MockClaudeService {
   private readonly logger = new Logger(MockClaudeService.name);
   
   /**
-   * Override responses for specific prompt types (for backward compatibility)
-   * If set, these take precedence over static fixtures
+   * Override responses for specific prompt types
+   * Takes precedence over fixture-based responses
    */
   private overrideResponses: Map<string, any> = new Map();
 
   /**
+   * Simulated deterministic mode (mirrors real ClaudeService)
+   */
+  private deterministicMode: boolean;
+  private temperature: number;
+  private seed?: number;
+
+  constructor() {
+    this.deterministicMode = process.env.AI_DETERMINISTIC === 'true';
+    this.temperature = this.deterministicMode ? 0.0 : 0.7;
+    this.seed = process.env.AI_SEED ? parseInt(process.env.AI_SEED, 10) : undefined;
+  }
+
+  /**
    * Query the mock Claude service
-   * Returns static fixture responses based on prompt type detection
+   * Returns deterministic responses based on prompt type detection
    */
   async query(prompt: string, options: any = {}): Promise<any> {
-    this.logger.debug(`Mock query called with prompt: ${prompt.substring(0, 80)}...`);
+    this.logger.debug(`Mock query: ${prompt.substring(0, 60)}...`);
 
-    // Check for override responses first (backward compatibility)
+    // Check for override responses first
     for (const [key, value] of this.overrideResponses.entries()) {
       if (prompt.toLowerCase().includes(key.toLowerCase())) {
         return this.transformResponse(key, value);
       }
     }
 
-    // Use static fixtures based on prompt type detection
-    const promptType = detectPromptType(prompt);
-    if (promptType) {
-      return getAIResponse(promptType);
+    // Use fixture-based responses if available
+    if (aiFixtures?.detectPromptType && aiFixtures?.getAIResponse) {
+      const promptType = aiFixtures.detectPromptType(prompt);
+      if (promptType) {
+        return aiFixtures.getAIResponse(promptType);
+      }
     }
 
-    // Fallback empty response
-    this.logger.warn(`No fixture found for prompt, returning empty response`);
+    // Inline fallback responses (when fixtures not available)
+    return this.getInlineResponse(prompt);
+  }
+
+  /**
+   * Get inline fallback response based on prompt content
+   */
+  private getInlineResponse(prompt: string): any {
+    const lowerPrompt = prompt.toLowerCase();
+
+    if (lowerPrompt.includes('classify') || lowerPrompt.includes('categorize')) {
+      return [
+        { taskIndex: 0, taskId: 'task_1', category: 'work', confidence: 0.9, reasoning: 'Mock classification' },
+      ];
+    }
+    
+    if (lowerPrompt.includes('estimate') || lowerPrompt.includes('duration')) {
+      return { estimate: '30-45 minutes', timeEstimateMinutes: 37, size: 'M', confidence: 0.8, reasoning: 'Mock estimate' };
+    }
+    
+    if (lowerPrompt.includes('prioritize')) {
+      return { 
+        prioritized: [{ taskIndex: 0, taskId: 'task_1', priority: 'high', suggestedOrder: 1, reasoning: 'Mock priority' }],
+        recommendations: { startWith: 'task_1', defer: [], delegate: [] },
+      };
+    }
+    
+    if (lowerPrompt.includes('subtask') || lowerPrompt.includes('break down') || lowerPrompt.includes('breakdown')) {
+      return { 
+        subtasks: [{ content: 'Mock subtask', order: 1, timeEstimate: '30 min', needsSupplies: false, supplies: [] }],
+        totalEstimate: '30 minutes',
+        supplyList: [],
+        notes: 'Mock breakdown',
+      };
+    }
+    
+    if (lowerPrompt.includes('plan') || lowerPrompt.includes('schedule')) {
+      return { 
+        summary: 'Mock plan',
+        notes: 'Mock planning notes',
+        today: { tasks: [], totalTime: '0min' },
+        thisWeek: { tasks: [], reasoning: '' },
+        needsSupplies: { tasks: [], shoppingList: [], suggestion: '' },
+        delegateToSpouse: { tasks: [], reasoning: '' },
+      };
+    }
+    
+    if (lowerPrompt.includes('filter') || lowerPrompt.includes('search')) {
+      return { matches: [], interpretation: 'Mock search' };
+    }
+    
+    if (lowerPrompt.includes('insight') || lowerPrompt.includes('productivity')) {
+      return { 
+        insights: [{ type: 'pattern', description: 'Mock insight', data: {} }],
+        recommendations: ['Mock recommendation'],
+      };
+    }
+
+    // Default empty response
+    this.logger.warn('No matching mock response, returning empty object');
     return {};
   }
 
   /**
    * Transform override response to match service expectations
-   * Preserves backward compatibility with existing test setups
    */
   private transformResponse(key: string, value: any): any {
     // Classification response - add taskIndex
-    if (value && value.tasks) {
-      return value.tasks.map((t: any, idx: number) => ({
-        ...t,
-        taskIndex: idx,
-      }));
+    if (value?.tasks) {
+      return value.tasks.map((t: any, idx: number) => ({ ...t, taskIndex: idx }));
     }
     
     // Estimate response - transform field names
-    if (value && value.timeEstimate) {
+    if (value?.timeEstimate) {
       return {
         estimate: value.timeEstimate,
         timeEstimateMinutes: value.timeEstimateMinutes,
@@ -68,12 +152,9 @@ export class MockClaudeService {
     }
     
     // Prioritize response - add taskIndex
-    if (value && value.prioritized) {
+    if (value?.prioritized) {
       return {
-        prioritized: value.prioritized.map((p: any, idx: number) => ({
-          ...p,
-          taskIndex: idx,
-        })),
+        prioritized: value.prioritized.map((p: any, idx: number) => ({ ...p, taskIndex: idx })),
         recommendations: value.recommendations,
       };
     }
@@ -89,23 +170,18 @@ export class MockClaudeService {
   }
 
   /**
-   * Mock streaming query - yields mock chunks
+   * Mock streaming query
    */
   async *queryStream(prompt: string, options: any = {}): AsyncGenerator<string> {
     const response = await this.query(prompt, options);
-    const text = typeof response === 'string' 
-      ? response 
-      : JSON.stringify(response);
-    
-    // Simulate streaming by yielding chunks
-    const words = text.split(' ');
-    for (const word of words) {
+    const text = typeof response === 'string' ? response : JSON.stringify(response);
+    for (const word of text.split(' ')) {
       yield word + ' ';
     }
   }
 
   /**
-   * Estimate token count for text
+   * Estimate token count
    */
   estimateTokens(text: string): number {
     return Math.ceil(text.length / 4);
@@ -119,13 +195,14 @@ export class MockClaudeService {
   }
 
   /**
-   * Get the mock Anthropic client (for agentic tools)
+   * Get mock Anthropic client
    */
   getClient(): any {
+    const mockResponse = this.getInlineResponse('classify');
     return {
       messages: {
         create: vi.fn().mockResolvedValue({
-          content: [{ type: 'text', text: JSON.stringify(getAIResponse('classify')) }],
+          content: [{ type: 'text', text: JSON.stringify(mockResponse) }],
           stop_reason: 'end_turn',
         }),
       },
@@ -133,26 +210,45 @@ export class MockClaudeService {
   }
 
   /**
-   * Get the model name
+   * Get model name
    */
   getModel(): string {
     return 'claude-3-5-sonnet-20241022';
   }
 
+  /**
+   * Get model info (mirrors real service)
+   */
+  getModelInfo(): { model: string; maxTokens: number; temperature: number; deterministicMode: boolean; seed?: number } {
+    return {
+      model: this.getModel(),
+      maxTokens: 4096,
+      temperature: this.temperature,
+      deterministicMode: this.deterministicMode,
+      seed: this.seed,
+    };
+  }
+
+  /**
+   * Check if deterministic mode is enabled
+   */
+  isDeterministic(): boolean {
+    return this.deterministicMode;
+  }
+
   // ============================================================
-  // Override methods (for backward compatibility with existing tests)
+  // Override methods (for tests that need specific responses)
   // ============================================================
 
   /**
    * Set a custom response for a specific prompt key
-   * @deprecated Prefer using static fixtures in test/fixtures/ai-responses/
    */
   setMockResponse(promptKey: string, response: any): void {
     this.overrideResponses.set(promptKey, response);
   }
 
   /**
-   * Clear all override responses (reverts to static fixtures)
+   * Clear all override responses
    */
   clearMockResponses(): void {
     this.overrideResponses.clear();

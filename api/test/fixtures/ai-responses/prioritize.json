@@ -1,0 +1,34 @@
+{
+  "description": "Static prioritization response for deterministic testing",
+  "promptType": "prioritize",
+  "response": {
+    "prioritized": [
+      {
+        "taskIndex": 0,
+        "taskId": "task_1",
+        "priority": "critical",
+        "suggestedOrder": 1,
+        "reasoning": "High urgency and importance - should be addressed first"
+      },
+      {
+        "taskIndex": 1,
+        "taskId": "task_2",
+        "priority": "high",
+        "suggestedOrder": 2,
+        "reasoning": "Important but less urgent than first task"
+      },
+      {
+        "taskIndex": 2,
+        "taskId": "task_3",
+        "priority": "medium",
+        "suggestedOrder": 3,
+        "reasoning": "Can be deferred if needed"
+      }
+    ],
+    "recommendations": {
+      "startWith": "task_1",
+      "defer": ["task_3"],
+      "delegate": []
+    }
+  }
+}

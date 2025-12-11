@@ -447,7 +447,7 @@ export function InsightsView({ data, isLoading, error, onRefresh, onTaskClick }:
                 <p className="text-sm text-zinc-500">Completion timing vs due dates</p>
                 <div className="mt-4">
                   <DonutChart
-                    className="h-44"
+                    className="h-52"
                     data={procrastinationData}
                     category="name"
                     value="value"

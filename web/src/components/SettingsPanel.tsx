@@ -81,7 +81,6 @@ export function SettingsPanel({
   const [showApiKey, setShowApiKey] = useState(false);
   const [environment, setEnvironment] = useState<ApiEnvironment>(settings.environment);
   const [productionUrl, setProductionUrl] = useState(settings.productionUrl || '');
-  const [isValidating, setIsValidating] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -90,33 +89,6 @@ export function SettingsPanel({
     apiKey !== settings.apiKey || 
     environment !== settings.environment ||
     productionUrl !== (settings.productionUrl || '');
-
-  /**
-   * Validates the API key against the current environment
-   */
-  const handleValidateApiKey = useCallback(async () => {
-    if (!apiKey.trim()) {
-      setError('API key is required');
-      return;
-    }
-
-    setIsValidating(true);
-    setError(null);
-    setSuccessMessage(null);
-
-    try {
-      const isValid = await testApiKey(apiKey.trim());
-      if (isValid) {
-        setSuccessMessage('API key is valid!');
-      } else {
-        setError('Invalid API key. Please check and try again.');
-      }
-    } catch (err) {
-      setError('Could not connect to the API. Is the server running?');
-    } finally {
-      setIsValidating(false);
-    }
-  }, [apiKey]);
 
   /**
    * Saves all settings changes

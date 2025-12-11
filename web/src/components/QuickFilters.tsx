@@ -5,7 +5,7 @@
  * Designed to sit alongside or below the view tabs.
  */
 
-import { ArrowUpDown, Filter, Check, ChevronDown } from 'lucide-react';
+import { ArrowUpDown, Check, ChevronDown } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import clsx from 'clsx';
 

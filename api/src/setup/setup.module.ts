@@ -1,0 +1,16 @@
+/**
+ * Setup Module
+ *
+ * Provides setup wizard functionality for first-run configuration.
+ */
+
+import { Module } from '@nestjs/common';
+import { SetupController } from './setup.controller';
+import { SetupService } from './setup.service';
+
+@Module({
+  controllers: [SetupController],
+  providers: [SetupService],
+  exports: [SetupService],
+})
+export class SetupModule {}

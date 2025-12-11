@@ -146,6 +146,14 @@ export interface CachedInsightsTable {
   created_at: ColumnType<string, string | undefined, string>;
 }
 
+// App configuration table - stores application settings and encrypted API keys
+export interface AppConfigTable {
+  key: string; // Primary key
+  value: string;
+  encrypted: number; // 0 or 1 - whether the value is encrypted
+  updated_at: ColumnType<string, string | undefined, string>;
+}
+
 // Complete database interface
 export interface Database {
   tasks: TaskTable;
@@ -158,5 +166,6 @@ export interface Database {
   migrations: MigrationTable;
   views: ViewTable;
   cached_insights: CachedInsightsTable;
+  app_config: AppConfigTable;
 }
 

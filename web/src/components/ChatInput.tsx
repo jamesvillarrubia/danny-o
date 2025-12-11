@@ -2,14 +2,24 @@
  * Chat Input Component
  * 
  * Input for sending messages to Danny.
+ * Includes a resizable chat history panel.
  */
 
-import { useState, useRef, useEffect } from 'react';
-import { Send, Loader2, Sparkles, X, ChevronUp, ChevronDown, Globe, Plus } from 'lucide-react';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { Send, Loader2, Sparkles, X, ChevronUp, ChevronDown, Globe, Plus, GripHorizontal } from 'lucide-react';
 import clsx from 'clsx';
 import { useChat } from '../hooks/useChat';
 import { usePageContext } from '../hooks/usePageContext';
 import type { ChatResponse } from '../types';
+
+/** localStorage key for persisting chat panel height */
+const CHAT_HEIGHT_KEY = 'danny-chat-height';
+/** Default chat history height in pixels */
+const DEFAULT_CHAT_HEIGHT = 256;
+/** Minimum chat history height */
+const MIN_CHAT_HEIGHT = 100;
+/** Maximum chat history height */
+const MAX_CHAT_HEIGHT = 500;
 
 interface ChatInputProps {
   onResponse?: (response?: ChatResponse) => void;
@@ -19,11 +29,52 @@ interface ChatInputProps {
 export function ChatInput({ onResponse, onAddTask }: ChatInputProps) {
   const [input, setInput] = useState('');
   const [isExpanded, setIsExpanded] = useState(false);
+  const [chatHeight, setChatHeight] = useState(() => {
+    const saved = localStorage.getItem(CHAT_HEIGHT_KEY);
+    return saved ? parseInt(saved, 10) : DEFAULT_CHAT_HEIGHT;
+  });
+  const [isResizing, setIsResizing] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
+  const resizeStartY = useRef(0);
+  const resizeStartHeight = useRef(0);
 
   const { messages, isLoading, sendMessage, clearMessages } = useChat();
   const { pageContext, isExtension } = usePageContext();
+
+  // Handle resize drag
+  const handleResizeMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizing(true);
+    resizeStartY.current = e.clientY;
+    resizeStartHeight.current = chatHeight;
+  }, [chatHeight]);
+
+  // Handle mouse move during resize
+  useEffect(() => {
+    if (!isResizing) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      // Dragging up increases height, dragging down decreases
+      const delta = resizeStartY.current - e.clientY;
+      const newHeight = Math.min(MAX_CHAT_HEIGHT, Math.max(MIN_CHAT_HEIGHT, resizeStartHeight.current + delta));
+      setChatHeight(newHeight);
+    };
+
+    const handleMouseUp = () => {
+      setIsResizing(false);
+      // Persist height to localStorage
+      localStorage.setItem(CHAT_HEIGHT_KEY, chatHeight.toString());
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isResizing, chatHeight]);
 
   // Auto-resize textarea
   useEffect(() => {
@@ -72,7 +123,24 @@ export function ChatInput({ onResponse, onAddTask }: ChatInputProps) {
   };
 
   return (
-    <div className="flex-shrink-0 border-t border-zinc-200 bg-white">
+    <div className={clsx('flex-shrink-0 border-t border-zinc-200 bg-white', isResizing && 'select-none')}>
+      {/* Resize Handle - only visible when expanded */}
+      {isExpanded && messages.length > 0 && (
+        <div
+          onMouseDown={handleResizeMouseDown}
+          className={clsx(
+            'h-2 flex items-center justify-center cursor-ns-resize border-b border-zinc-200 bg-zinc-50 hover:bg-zinc-100 transition-colors group',
+            isResizing && 'bg-danny-50'
+          )}
+          title="Drag to resize"
+        >
+          <GripHorizontal className={clsx(
+            'w-4 h-4 text-zinc-300 group-hover:text-zinc-400 transition-colors',
+            isResizing && 'text-danny-400'
+          )} />
+        </div>
+      )}
+
       {/* Expanded Chat History */}
       {isExpanded && messages.length > 0 && (
         <div className="border-b border-zinc-200">
@@ -102,7 +170,8 @@ export function ChatInput({ onResponse, onAddTask }: ChatInputProps) {
           {/* Messages */}
           <div
             ref={chatContainerRef}
-            className="max-h-64 overflow-y-auto p-4 space-y-3"
+            className="overflow-y-auto p-4 space-y-3"
+            style={{ height: chatHeight }}
           >
             {messages.map((msg) => (
               <div
@@ -195,7 +264,7 @@ export function ChatInput({ onResponse, onAddTask }: ChatInputProps) {
             )}
 
             {/* Chat Input Container */}
-            <div className="flex-1 flex items-end gap-2 bg-zinc-50 rounded-xl border border-zinc-200 focus-within:border-danny-300 focus-within:ring-2 focus-within:ring-danny-100 transition-all">
+            <div className="flex-1 flex items-center gap-2 bg-zinc-50 rounded-xl border border-zinc-200 focus-within:border-danny-300 focus-within:ring-2 focus-within:ring-danny-100 transition-all">
               {/* Danny Icon */}
               <div className="flex-shrink-0 p-2.5">
                 <div className="w-6 h-6 rounded-full bg-gradient-to-br from-danny-400 to-danny-600 flex items-center justify-center">
@@ -209,7 +278,7 @@ export function ChatInput({ onResponse, onAddTask }: ChatInputProps) {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Ask Danny anything... (Shift+Enter for new line)"
+                placeholder="Ask Danny anything..."
                 rows={1}
                 className="chat-input flex-1 py-2.5 pr-2 bg-transparent resize-none focus:outline-none text-sm text-zinc-900 placeholder:text-zinc-400"
                 disabled={isLoading}

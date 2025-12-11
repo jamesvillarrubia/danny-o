@@ -6,7 +6,6 @@
 
 import { useEffect, useState } from 'react';
 import { Check, Undo2, X } from 'lucide-react';
-import clsx from 'clsx';
 
 interface UndoToastProps {
   taskContent: string;

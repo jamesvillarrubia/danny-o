@@ -1,0 +1,56 @@
+version: '3.8'
+
+services:
+  # API Service with embedded PGlite database
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    ports:
+      - "3000:8080"
+    volumes:
+      # Persist PGlite database and backups
+      - danny-data:/app/data
+    environment:
+      - NODE_ENV=production
+      - RUN_MODE=http
+      - PORT=8080
+      - PGLITE_PATH=/app/data/tasks.db
+      - AUTO_UPDATE=true
+      - BACKUP_BEFORE_UPDATE=true
+      - BACKUP_RETENTION_DAYS=30
+      # These should be provided via .env file or set here
+      # - CLAUDE_API_KEY=${CLAUDE_API_KEY}
+      # - TODOIST_API_KEY=${TODOIST_API_KEY}
+      # - ENCRYPTION_SECRET=${ENCRYPTION_SECRET}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # Web Frontend
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    ports:
+      - "80:80"
+    environment:
+      - VITE_API_URL=http://localhost:3000
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:80/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+
+volumes:
+  # Named volume for persistent database storage
+  danny-data:
+    driver: local

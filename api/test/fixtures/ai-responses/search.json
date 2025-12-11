@@ -1,0 +1,21 @@
+{
+  "description": "Static search/filter response for deterministic testing",
+  "promptType": "search",
+  "response": {
+    "matches": [
+      {
+        "taskIndex": 0,
+        "taskId": "task_1",
+        "relevanceScore": 0.95,
+        "reasoning": "Direct match to search query"
+      },
+      {
+        "taskIndex": 1,
+        "taskId": "task_2",
+        "relevanceScore": 0.75,
+        "reasoning": "Partial match to search intent"
+      }
+    ],
+    "interpretation": "Looking for tasks matching the search criteria"
+  }
+}

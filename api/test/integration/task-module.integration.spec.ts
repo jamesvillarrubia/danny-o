@@ -27,9 +27,8 @@ describe('TaskModule Integration', () => {
   let syncProvider: MockTodoistSyncProvider;
 
   beforeAll(async () => {
-    // Set environment variable for in-memory database
-    process.env.SQLITE_PATH = ':memory:';
-    process.env.DATABASE_TYPE = 'sqlite';
+    // Set environment variable for in-memory PGlite database
+    process.env.PGLITE_PATH = ':memory:';
 
     const module: TestingModule = await Test.createTestingModule({
       imports: [

@@ -1,51 +1,38 @@
 /**
  * Views Hook
- * 
+ *
  * Fetches and manages dashboard views.
+ * Now powered by TanStack Query for caching and deduplication.
  */
 
-import { useState, useEffect, useCallback } from 'react';
-import type { View } from '../types';
-import { getViews } from '../api/client';
+import { useCallback } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { useViewsQuery, VIEWS_QUERY_KEY, DEFAULT_VIEWS } from './queries/useViewsQuery';
 
-// Default views to show while loading
-const defaultViews: View[] = [
-  { id: 0, name: 'Today', slug: 'today', filterConfig: { dueWithin: 'today' }, isDefault: true, orderIndex: 0 },
-  { id: 0, name: 'This Week', slug: 'this-week', filterConfig: { dueWithin: '7d' }, isDefault: true, orderIndex: 1 },
-  { id: 0, name: 'High Priority', slug: 'high-priority', filterConfig: { priority: [3, 4] }, isDefault: true, orderIndex: 2 }, // P2 (high) and P1 (urgent)
-  { id: 0, name: 'All Tasks', slug: 'all', filterConfig: { completed: false }, isDefault: true, orderIndex: 3 },
-];
-
+/**
+ * Hook for accessing dashboard views.
+ *
+ * @returns Views data and state
+ *
+ * @example
+ * ```tsx
+ * const { views, isLoading, refetch } = useViews();
+ * ```
+ */
 export function useViews() {
-  const [views, setViews] = useState<View[]>(defaultViews);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+  const { data, isLoading, error, isFetching } = useViewsQuery();
 
-  const fetchViews = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      const data = await getViews();
-      setViews(data);
-    } catch (err) {
-      console.error('Failed to fetch views:', err);
-      setError(err instanceof Error ? err.message : 'Failed to load views');
-      // Keep default views on error
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchViews();
-  }, [fetchViews]);
+  // Provide refetch function for backward compatibility
+  const refetch = useCallback(() => {
+    return queryClient.invalidateQueries({ queryKey: VIEWS_QUERY_KEY });
+  }, [queryClient]);
 
   return {
-    views,
-    isLoading,
-    error,
-    refetch: fetchViews,
+    // Fall back to default views if query hasn't loaded yet
+    views: data ?? DEFAULT_VIEWS,
+    isLoading: isLoading || isFetching,
+    error: error instanceof Error ? error.message : error ? String(error) : null,
+    refetch,
   };
 }
-

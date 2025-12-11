@@ -1,0 +1,29 @@
+{
+  "description": "Static productivity insights response for deterministic testing",
+  "promptType": "insights",
+  "response": {
+    "insights": [
+      {
+        "type": "pattern",
+        "description": "You complete most work tasks in the morning hours",
+        "data": {
+          "peakHours": ["9:00", "10:00", "11:00"],
+          "completionRate": 0.85
+        }
+      },
+      {
+        "type": "efficiency",
+        "description": "Your time estimates are typically 20% under actual duration",
+        "data": {
+          "estimateAccuracy": 0.80,
+          "averageOverrun": 1.2
+        }
+      }
+    ],
+    "recommendations": [
+      "Schedule complex tasks during your peak productivity hours (9-11 AM)",
+      "Add 20% buffer to your time estimates",
+      "Break large tasks into smaller subtasks for better tracking"
+    ]
+  }
+}

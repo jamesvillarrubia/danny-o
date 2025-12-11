@@ -286,4 +286,42 @@ export abstract class IStorageAdapter {
    * Invalidate cached insights by key
    */
   abstract invalidateCachedInsights(cacheKey: string): Promise<void>;
+
+  // ==================== App Configuration ====================
+
+  /**
+   * Get a configuration value by key
+   * Automatically decrypts if the value is marked as encrypted
+   */
+  abstract getConfig(key: string): Promise<string | null>;
+
+  /**
+   * Set a configuration value
+   * @param key Configuration key
+   * @param value Configuration value
+   * @param encrypted Whether to encrypt the value (for sensitive data like API keys)
+   */
+  abstract setConfig(key: string, value: string, encrypted?: boolean): Promise<void>;
+
+  /**
+   * Get multiple configuration values
+   */
+  abstract getConfigs(keys: string[]): Promise<Record<string, string | null>>;
+
+  /**
+   * Check if a configuration key exists
+   */
+  abstract hasConfig(key: string): Promise<boolean>;
+
+  // ==================== System Information ====================
+
+  /**
+   * Get the database dialect type (pglite or postgres)
+   */
+  abstract getDialect(): 'pglite' | 'postgres';
+
+  /**
+   * Get the database connection info (for backups and diagnostics)
+   */
+  abstract getConnectionInfo(): { dialect: 'pglite' | 'postgres'; path?: string; connectionString?: string };
 }

@@ -21,14 +21,19 @@ import {
   FolderKanban,
   Plus,
   Copy,
+  Archive,
+  Eye,
+  EyeOff,
+  ClipboardCheck,
 } from 'lucide-react';
 import { format, parseISO, isPast, isToday } from 'date-fns';
 import clsx from 'clsx';
 import type { Task } from '../types';
-import { completeTask, updateTask, duplicateTask } from '../api/client';
 import { useProjects } from '../hooks/useProjects';
 import { useLabels } from '../hooks/useLabels';
+import { useTaskMutations } from '../hooks/mutations/useTaskMutations';
 import { Select } from './Select';
+import { MarkdownContent } from './MarkdownContent';
 
 interface TaskDetailProps {
   task: Task;
@@ -37,6 +42,7 @@ interface TaskDetailProps {
   onEdit?: (task: Task) => void;
   onTaskUpdate?: (updatedTask: Task) => void;
   onDuplicate?: (newTask: Task) => void;
+  onDelete?: (taskId: string) => void;
   /** True if task is in pending completion state (recently completed, in undo window) */
   isPendingCompletion?: boolean;
 }
@@ -104,13 +110,25 @@ const filterTimeLabels = (labels: string[]): string[] => {
   return labels.filter(l => !isTimeEstimateLabel(l));
 };
 
-export function TaskDetail({ task, onClose, onComplete, onEdit, onTaskUpdate, onDuplicate, isPendingCompletion = false }: TaskDetailProps) {
+export function TaskDetail({ task, onClose, onComplete, onEdit, onTaskUpdate, onDuplicate, onDelete, isPendingCompletion = false }: TaskDetailProps) {
   const { projects, projectsMap } = useProjects();
   const { labelNames: existingLabels } = useLabels();
+  const {
+    completeTaskAsync,
+    updateTaskAsync,
+    duplicateTaskAsync,
+    deleteTaskAsync,
+  } = useTaskMutations();
+  
   const [isCompleting, setIsCompleting] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [completionMinutes, setCompletionMinutes] = useState<string>('');
   const [showTimeInput, setShowTimeInput] = useState(false);
   const [isDuplicating, setIsDuplicating] = useState(false);
+  
+  // Markdown view state - defaults to rendered markdown
+  const [showMarkdown, setShowMarkdown] = useState(true);
+  const [hasCopied, setHasCopied] = useState(false);
   
   // Inline editing state
   const [editingField, setEditingField] = useState<EditableField | null>(null);
@@ -235,7 +253,7 @@ export function TaskDetail({ task, onClose, onComplete, onEdit, onTaskUpdate, on
     setIsCompleting(true);
     try {
       const minutes = completionMinutes ? parseInt(completionMinutes, 10) : undefined;
-      await completeTask(task.id, { actualMinutes: minutes });
+      await completeTaskAsync({ taskId: task.id, options: { actualMinutes: minutes } });
       onComplete(task.id);
     } catch (err) {
       console.error('Failed to complete task:', err);
@@ -250,13 +268,51 @@ export function TaskDetail({ task, onClose, onComplete, onEdit, onTaskUpdate, on
   const handleDuplicate = async () => {
     setIsDuplicating(true);
     try {
-      const newTask = await duplicateTask(task);
+      const newTask = await duplicateTaskAsync({ task });
       onDuplicate?.(newTask);
     } catch (err) {
       console.error('Failed to duplicate task:', err);
       setSaveError('Failed to duplicate task');
     } finally {
       setIsDuplicating(false);
+    }
+  };
+
+  /**
+   * Delete/archive the current task
+   */
+  const handleDelete = async () => {
+    // Confirm before deleting
+    const confirmed = window.confirm(
+      `Are you sure you want to archive "${task.content}"?\n\nThis will permanently delete the task from your task list.`
+    );
+    if (!confirmed) return;
+
+    setIsDeleting(true);
+    try {
+      await deleteTaskAsync({ taskId: task.id });
+      onDelete?.(task.id);
+      onClose();
+    } catch (err) {
+      console.error('Failed to delete task:', err);
+      setSaveError('Failed to archive task');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  /**
+   * Copy description to clipboard
+   */
+  const handleCopyDescription = async () => {
+    if (!task.description) return;
+    
+    try {
+      await navigator.clipboard.writeText(task.description);
+      setHasCopied(true);
+      setTimeout(() => setHasCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy description:', err);
     }
   };
   
@@ -351,7 +407,7 @@ export function TaskDetail({ task, onClose, onComplete, onEdit, onTaskUpdate, on
           break;
       }
       
-      const updatedTask = await updateTask(task.id, updates);
+      const updatedTask = await updateTaskAsync({ taskId: task.id, updates });
       setEditingField(null);
       setShowLabelSuggestions(false);
       onTaskUpdate?.(updatedTask);
@@ -517,6 +573,21 @@ export function TaskDetail({ task, onClose, onComplete, onEdit, onTaskUpdate, on
               <Edit className="w-5 h-5" />
             </button>
           )}
+          {!task.isCompleted && (
+            <button
+              onClick={handleDelete}
+              disabled={isDeleting}
+              className="p-1.5 rounded-lg hover:bg-red-50 hover:text-red-500 transition-colors text-zinc-500 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              aria-label="Archive task"
+              title="Archive task"
+            >
+              {isDeleting ? (
+                <Loader2 className="w-5 h-5 animate-spin" />
+              ) : (
+                <Archive className="w-5 h-5" />
+              )}
+            </button>
+          )}
           <button
             onClick={onClose}
             className="p-1.5 rounded-lg hover:bg-zinc-100 transition-colors text-zinc-500 cursor-pointer"
@@ -613,10 +684,46 @@ export function TaskDetail({ task, onClose, onComplete, onEdit, onTaskUpdate, on
 
         {/* Description - Editable */}
         <div className="space-y-2">
-          <h4 className="text-sm font-medium text-zinc-500 flex items-center gap-2">
-            <MessageSquare className="w-4 h-4" />
-            Description
-          </h4>
+          <div className="flex items-center justify-between">
+            <h4 className="text-sm font-medium text-zinc-500 flex items-center gap-2">
+              <MessageSquare className="w-4 h-4" />
+              Description
+            </h4>
+            {/* Toggle and Copy buttons - only show when there's a description and not editing */}
+            {task.description && editingField !== 'description' && (
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setShowMarkdown(!showMarkdown)}
+                  className="p-1.5 rounded-md hover:bg-zinc-100 text-zinc-400 hover:text-zinc-600 transition-colors cursor-pointer"
+                  title={showMarkdown ? 'Show raw text' : 'Show formatted'}
+                  aria-label={showMarkdown ? 'Show raw text' : 'Show formatted markdown'}
+                >
+                  {showMarkdown ? (
+                    <EyeOff className="w-3.5 h-3.5" />
+                  ) : (
+                    <Eye className="w-3.5 h-3.5" />
+                  )}
+                </button>
+                <button
+                  onClick={handleCopyDescription}
+                  className={clsx(
+                    'p-1.5 rounded-md transition-colors cursor-pointer',
+                    hasCopied 
+                      ? 'bg-green-50 text-green-600' 
+                      : 'hover:bg-zinc-100 text-zinc-400 hover:text-zinc-600'
+                  )}
+                  title={hasCopied ? 'Copied!' : 'Copy description'}
+                  aria-label="Copy description to clipboard"
+                >
+                  {hasCopied ? (
+                    <ClipboardCheck className="w-3.5 h-3.5" />
+                  ) : (
+                    <Copy className="w-3.5 h-3.5" />
+                  )}
+                </button>
+              </div>
+            )}
+          </div>
           {editingField === 'description' ? (
             <div className="space-y-2">
               <textarea
@@ -653,19 +760,35 @@ export function TaskDetail({ task, onClose, onComplete, onEdit, onTaskUpdate, on
             <div
               onClick={() => startEdit('description')}
               className={clsx(
-                'text-sm whitespace-pre-wrap bg-zinc-50 rounded-lg p-3 min-h-[60px] group',
+                'bg-zinc-50 rounded-lg p-3 min-h-[60px] group',
                 task.isCompleted 
-                  ? 'text-zinc-400 cursor-default' 
-                  : 'text-zinc-700 cursor-pointer hover:bg-zinc-100 hover:border-zinc-300 border border-transparent transition-colors'
+                  ? 'cursor-default' 
+                  : 'cursor-pointer hover:bg-zinc-100 hover:border-zinc-300 border border-transparent transition-colors'
               )}
             >
-              {task.description || (
-                <span className="text-zinc-400 italic">
+              {task.description ? (
+                <div className="relative">
+                  {showMarkdown ? (
+                    <MarkdownContent 
+                      content={task.description} 
+                      className={task.isCompleted ? 'opacity-60' : ''} 
+                    />
+                  ) : (
+                    <div className={clsx(
+                      'text-sm whitespace-pre-wrap font-mono',
+                      task.isCompleted ? 'text-zinc-400' : 'text-zinc-700'
+                    )}>
+                      {task.description}
+                    </div>
+                  )}
+                  {!task.isCompleted && (
+                    <Pencil className="w-3.5 h-3.5 absolute top-0 right-0 opacity-0 group-hover:opacity-50 transition-opacity text-zinc-400" />
+                  )}
+                </div>
+              ) : (
+                <span className="text-sm text-zinc-400 italic">
                   {task.isCompleted ? 'No description' : 'Click to add description...'}
                 </span>
-              )}
-              {!task.isCompleted && task.description && (
-                <Pencil className="w-3.5 h-3.5 inline-block ml-2 opacity-0 group-hover:opacity-50 transition-opacity" />
               )}
             </div>
           )}

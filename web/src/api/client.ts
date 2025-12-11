@@ -65,6 +65,25 @@ export async function checkBackendHealth(): Promise<boolean> {
 }
 
 /**
+ * Check setup status (no authentication required)
+ */
+export async function getSetupStatus(): Promise<{
+  setupCompleted: boolean;
+  appVersion: string;
+  databaseType: 'pglite' | 'postgres';
+}> {
+  const baseUrl = getApiBaseUrl();
+  // Use /api prefix directly, not /api/v1 since setup is at root level
+  const response = await fetch(`${baseUrl}/api/setup/status`);
+  
+  if (!response.ok) {
+    throw new Error('Failed to check setup status');
+  }
+  
+  return response.json();
+}
+
+/**
  * Get the API key from localStorage
  */
 function getApiKey(): string {
@@ -217,6 +236,14 @@ export async function duplicateTask(task: Task): Promise<Task> {
     dueString: task.due?.date,
     labels: task.labels,
   });
+}
+
+/**
+ * Delete/archive a task permanently.
+ * This removes the task from both local storage and Todoist.
+ */
+export async function deleteTask(taskId: string): Promise<void> {
+  await fetchApi<void>(`/tasks/${taskId}`, { method: 'DELETE' });
 }
 
 export async function syncTasks(): Promise<{

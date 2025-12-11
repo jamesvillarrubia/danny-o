@@ -15,16 +15,21 @@ export class EnvironmentVariables {
   @IsNotEmpty()
   CLAUDE_API_KEY: string;
 
-  @IsEnum(['sqlite', 'postgres'])
-  DATABASE_TYPE: 'sqlite' | 'postgres';
+  @IsOptional()
+  @IsString()
+  PGLITE_PATH?: string; // Path for embedded PGlite database (defaults to ./data/tasks.db)
 
   @IsOptional()
   @IsString()
-  SQLITE_PATH?: string; // Defaults to ~/.danny/data/tasks.db (set in StorageModule)
+  PROD_DATABASE_URL?: string; // Production PostgreSQL connection string
 
   @IsOptional()
   @IsString()
-  DATABASE_URL?: string;
+  DEV_DATABASE_URL?: string; // Development PostgreSQL connection string
+
+  @IsOptional()
+  @IsEnum(['prod', 'dev'])
+  DATABASE_ENV?: 'prod' | 'dev'; // Which database to use (omit for embedded PGlite)
 
   @IsOptional()
   @IsInt()
@@ -58,7 +63,7 @@ export function validate(config: Record<string, unknown>) {
   validatedConfig.RUN_MODE = validatedConfig.RUN_MODE || 'cli';
   validatedConfig.SYNC_INTERVAL = validatedConfig.SYNC_INTERVAL || 300000;
   validatedConfig.TASK_PROCESSOR_MAX_TURNS = validatedConfig.TASK_PROCESSOR_MAX_TURNS || 5;
-  // SQLITE_PATH defaults to ~/.danny/data/tasks.db (handled in StorageModule)
+  // PGLITE_PATH defaults to ./data/tasks.db (handled in StorageModule)
 
   return validatedConfig;
 }

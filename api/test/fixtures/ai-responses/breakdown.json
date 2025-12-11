@@ -1,0 +1,40 @@
+{
+  "description": "Static subtask breakdown response for deterministic testing",
+  "promptType": "breakdown",
+  "response": {
+    "taskId": "task_1",
+    "subtasks": [
+      {
+        "content": "Research and gather requirements",
+        "order": 1,
+        "timeEstimate": "30 minutes",
+        "needsSupplies": false,
+        "supplies": []
+      },
+      {
+        "content": "Create initial implementation",
+        "order": 2,
+        "timeEstimate": "2 hours",
+        "needsSupplies": false,
+        "supplies": []
+      },
+      {
+        "content": "Test and validate",
+        "order": 3,
+        "timeEstimate": "1 hour",
+        "needsSupplies": false,
+        "supplies": []
+      },
+      {
+        "content": "Document and finalize",
+        "order": 4,
+        "timeEstimate": "30 minutes",
+        "needsSupplies": false,
+        "supplies": []
+      }
+    ],
+    "totalEstimate": "4 hours",
+    "supplyList": [],
+    "notes": "Break into focused work sessions for best results"
+  }
+}

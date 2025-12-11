@@ -2,9 +2,11 @@
  * Danny Web App
  * 
  * Main application component for the task dashboard.
+ * Includes setup check and wizard for first-run configuration.
  */
 
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Layout } from './components/Layout';
 import { TaskList } from './components/TaskList';
 import { TaskDetail } from './components/TaskDetail';
@@ -18,13 +20,15 @@ import { FilterDisplay } from './components/FilterDisplay';
 import { DebugPanel } from './components/DebugPanel';
 import { FillerPanel } from './components/FillerPanel';
 import { InsightsView } from './components/InsightsView';
-import { useTasks } from './hooks/useTasks';
+import { Setup } from './pages/Setup';
 import { useViews } from './hooks/useViews';
 import { useSettings } from './hooks/useSettings';
 import { useProjects } from './hooks/useProjects';
 import { useBackendHealth } from './hooks/useBackendHealth';
-import { createView, estimateTasksBatch, completeTask, reopenTask, getViewTasks, fullResyncTasks, enrichUrlTasks, getProductivityInsights, getComprehensiveInsights } from './api/client';
-import type { Task, View, ChatResponse, DebugPayload } from './types';
+import { useTasksQuery, TASKS_QUERY_KEY } from './hooks/queries/useTasksQuery';
+import { filterTasks, sortTasks, type SortConfig } from './lib/taskFilters';
+import { createView, estimateTasksBatch, completeTask, reopenTask, fullResyncTasks, enrichUrlTasks, getProductivityInsights, getComprehensiveInsights, getSetupStatus } from './api/client';
+import type { Task, View, ChatResponse, DebugPayload, ViewFilterConfig } from './types';
 
 /** Duration in ms before completed tasks are removed from view (2 minutes) */
 const COMPLETION_UNDO_WINDOW_MS = 2 * 60 * 1000;
@@ -80,12 +84,58 @@ function BackendHealthGate({ children }: { children: React.ReactNode }) {
 }
 
 /**
- * Main App Export with Health Gate
+ * Setup Check Gate
+ * 
+ * Checks if initial setup is completed and shows setup wizard if not.
+ */
+function SetupGate({ children }: { children: React.ReactNode }) {
+  const [setupCompleted, setSetupCompleted] = useState<boolean | null>(null);
+  const [checkingSetup, setCheckingSetup] = useState(true);
+
+  useEffect(() => {
+    async function checkSetup() {
+      try {
+        const status = await getSetupStatus();
+        setSetupCompleted(status.setupCompleted);
+      } catch (error) {
+        console.error('Failed to check setup status:', error);
+        // Assume setup is needed if check fails
+        setSetupCompleted(false);
+      } finally {
+        setCheckingSetup(false);
+      }
+    }
+
+    checkSetup();
+  }, []);
+
+  if (checkingSetup) {
+    return (
+      <div className="min-h-screen bg-zinc-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full mx-auto mb-4" />
+          <p className="text-sm text-zinc-500">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!setupCompleted) {
+    return <Setup onComplete={() => setSetupCompleted(true)} />;
+  }
+
+  return <>{children}</>;
+}
+
+/**
+ * Main App Export with Health and Setup Gates
  */
 export default function App() {
   return (
     <BackendHealthGate>
-      <AppContent />
+      <SetupGate>
+        <AppContent />
+      </SetupGate>
     </BackendHealthGate>
   );
 }
@@ -94,14 +144,20 @@ export default function App() {
  * App Content - Only rendered when backend is healthy
  */
 function AppContent() {
+  const queryClient = useQueryClient();
   const { settings, updateApiKey, updateSettings, clearCache } = useSettings();
   const { views, isLoading: viewsLoading, refetch: refetchViews } = useViews();
   const { projectsMap, isLoading: projectsLoading, refetch: refetchProjects } = useProjects();
+  
+  // Use TanStack Query for all tasks - single source of truth
+  const { data: allTasks = [], isLoading: tasksLoading, isFetching: tasksFetching } = useTasksQuery();
+  
+  // UI state
   const [currentView, setCurrentView] = useState<string>('today');
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [showSettings, setShowSettings] = useState(false);
-  const [temporaryView, setTemporaryView] = useState<View | null>(null);
-  const [activeFilter, setActiveFilter] = useState<View['filterConfig'] | null>(null);
+  const [, setTemporaryView] = useState<View | null>(null);
+  const [activeFilter, setActiveFilter] = useState<ViewFilterConfig | null>(null);
   const [showTaskForm, setShowTaskForm] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [showDebugPanel, setShowDebugPanel] = useState(false);
@@ -149,178 +205,77 @@ function AppContent() {
   const pendingCompletionTimeoutsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const [pendingCompletions, setPendingCompletions] = useState<Map<string, { task: Task; originalIndex: number }>>(new Map());
 
-  const { tasks, isLoading, refetch } = useTasks(currentView);
+  // Derived loading state
+  const isLoading = tasksLoading || tasksFetching;
   
   // Track if initial data load is complete
   const [hasInitialized, setHasInitialized] = useState(false);
   
   // Set initialized once both tasks and projects have loaded
   useEffect(() => {
-    if (!isLoading && !projectsLoading && !hasInitialized) {
+    if (!tasksLoading && !projectsLoading && !hasInitialized) {
       setHasInitialized(true);
     }
-  }, [isLoading, projectsLoading, hasInitialized]);
+  }, [tasksLoading, projectsLoading, hasInitialized]);
   
-  // All tasks state for Filler panel
-  const [allTasks, setAllTasks] = useState<Task[]>([]);
-  const [allTasksLoading, setAllTasksLoading] = useState(true);
-  const allTasksFetchedRef = useRef(false);
-  const allTasksLoadingRef = useRef(false);
-  const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const retryCountRef = useRef(0);
-
   /**
-   * Fetch ALL tasks in background for Filler panel.
-   * Only updates state if the task list has actually changed.
-   * Includes automatic retry with exponential backoff on failure.
+   * Refetch all tasks and wait for completion.
+   * Use this after mutations to refresh the cache.
+   * 
+   * Note: Uses refetchQueries instead of invalidateQueries to ensure
+   * the new data is available before the promise resolves. This fixes
+   * issues where UI components (like FillerPanel) showed stale data.
    */
-  const refetchAllTasks = useCallback(async (options?: { showLoading?: boolean; isRetry?: boolean }) => {
-    if (!settings.apiKey) return;
-    if (allTasksLoadingRef.current) return; // Prevent concurrent fetches
-    
-    allTasksLoadingRef.current = true;
-    
-    // Only show loading spinner on first fetch or if explicitly requested
-    if (options?.showLoading || !allTasksFetchedRef.current) {
-      setAllTasksLoading(true);
-    }
-    
-    try {
-      const data = await getViewTasks('all', { limit: 1000 });
-      
-      // Only update state if tasks have actually changed
-      setAllTasks(prevTasks => {
-        // Build signatures including id, updatedAt, isCompleted, and timeEstimateMinutes
-        const buildSignature = (tasks: Task[]) => tasks.map(t => 
-          `${t.id}:${t.updatedAt}:${t.isCompleted}:${t.metadata?.timeEstimateMinutes || 0}`
-        ).join(',');
-        
-        const prevSignature = buildSignature(prevTasks);
-        const newSignature = buildSignature(data.tasks);
-        
-        if (prevSignature === newSignature) {
-          // No changes, return previous array to avoid re-render
-          return prevTasks;
-        }
-        
-        return data.tasks;
-      });
-      
-      allTasksFetchedRef.current = true;
-      retryCountRef.current = 0; // Reset retry count on success
-    } catch (err) {
-      console.error('[App] Failed to fetch all tasks:', err);
-      
-      // Schedule retry with exponential backoff (1s, 2s, 4s, 8s, max 30s)
-      if (!allTasksFetchedRef.current) {
-        const delay = Math.min(1000 * Math.pow(2, retryCountRef.current), 30000);
-        retryCountRef.current++;
-        console.log(`[App] Will retry fetching all tasks in ${delay}ms (attempt ${retryCountRef.current})`);
-        
-        // Clear any existing retry timeout
-        if (retryTimeoutRef.current) {
-          clearTimeout(retryTimeoutRef.current);
-        }
-        
-        retryTimeoutRef.current = setTimeout(() => {
-          allTasksLoadingRef.current = false; // Allow the retry to proceed
-          refetchAllTasks({ isRetry: true });
-        }, delay);
-      }
-    } finally {
-      allTasksLoadingRef.current = false;
-      setAllTasksLoading(false);
-    }
-  }, [settings.apiKey]);
+  const refetchTasks = useCallback(() => {
+    return queryClient.refetchQueries({ queryKey: TASKS_QUERY_KEY });
+  }, [queryClient]);
 
-  // Fetch all tasks ONCE on mount (when API key is available)
-  // Also refetch on window focus if data is stale
-  useEffect(() => {
-    if (settings.apiKey && !allTasksFetchedRef.current) {
-      refetchAllTasks();
+  // Get the effective filter: active filter from chat OR the current view's filter
+  const effectiveFilter = useMemo((): ViewFilterConfig | null => {
+    // If there's an active filter from chat, use it
+    if (activeFilter) {
+      return activeFilter;
     }
-    
-    // Cleanup retry timeout on unmount
-    return () => {
-      if (retryTimeoutRef.current) {
-        clearTimeout(retryTimeoutRef.current);
-      }
-    };
-  }, [settings.apiKey, refetchAllTasks]);
-  
-  // Refetch all tasks when window regains focus (if initial fetch failed)
-  useEffect(() => {
-    const handleFocus = () => {
-      if (settings.apiKey && !allTasksFetchedRef.current) {
-        console.log('[App] Window focused, retrying all tasks fetch');
-        refetchAllTasks();
-      }
-    };
-    
-    window.addEventListener('focus', handleFocus);
-    return () => window.removeEventListener('focus', handleFocus);
-  }, [settings.apiKey, refetchAllTasks]);
+    // Otherwise, get the current view's filter config
+    const currentViewConfig = views.find(v => v.slug === currentView)?.filterConfig;
+    return currentViewConfig ?? null;
+  }, [activeFilter, views, currentView]);
 
-  // Sort and filter tasks client-side, merging in pending completions at their original positions
+  // Sort config for the filter utilities
+  const sortConfig = useMemo((): SortConfig => ({
+    sortBy: sortBy as SortConfig['sortBy'],
+    direction: sortDirection,
+  }), [sortBy, sortDirection]);
+
+  // Filter and sort tasks client-side, merging in pending completions at their original positions
   const sortedTasks = useMemo(() => {
-    // Start with tasks from API, excluding pending completions (we'll add them back at their original positions)
-    let filtered = tasks.filter(t => !pendingCompletions.has(t.id));
+    // Start with all tasks, excluding pending completions (we'll add them back at their original positions)
+    const tasksToFilter = allTasks.filter(t => !pendingCompletions.has(t.id));
     
-    // Filter out completed tasks unless showCompleted is true
-    if (!showCompleted) {
-      filtered = filtered.filter((t) => !t.isCompleted);
-    }
+    // Apply completion filter based on showCompleted toggle
+    // This overrides whatever the view's filter says about completed tasks
+    const filterWithCompletedOverride: ViewFilterConfig = {
+      ...effectiveFilter,
+      completed: showCompleted ? undefined : false,
+    };
     
-    // Sort the non-pending tasks
-    const sorted = [...filtered].sort((a, b) => {
-      let comparison = 0;
-      
-      switch (sortBy) {
-        case 'due': {
-          // Tasks without due dates go to the end
-          const aDate = a.due?.date ? new Date(a.due.date).getTime() : Infinity;
-          const bDate = b.due?.date ? new Date(b.due.date).getTime() : Infinity;
-          comparison = aDate - bDate;
-          break;
-        }
-        case 'priority': {
-          // Higher priority number = more important (4 is highest)
-          comparison = b.priority - a.priority;
-          break;
-        }
-        case 'created': {
-          const aCreated = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-          const bCreated = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-          comparison = aCreated - bCreated;
-          break;
-        }
-        case 'title': {
-          comparison = a.content.localeCompare(b.content);
-          break;
-        }
-      }
-      
-      // Apply direction (for priority, desc is natural so we flip the logic)
-      if (sortBy === 'priority') {
-        return sortDirection === 'desc' ? comparison : -comparison;
-      }
-      return sortDirection === 'asc' ? comparison : -comparison;
-    });
+    // Use the filter utilities
+    const filtered = filterTasks(tasksToFilter, filterWithCompletedOverride);
+    const sorted = sortTasks(filtered, sortConfig);
     
     // Insert pending completions back at their original positions
     // This keeps completed tasks exactly where they were before completion
     const pendingEntries = Array.from(pendingCompletions.entries())
       .map(([id, { task, originalIndex }]) => ({ id, task: { ...task, isCompleted: true }, originalIndex }))
-      .sort((a, b) => a.originalIndex - b.originalIndex); // Process in order of original index
+      .sort((a, b) => a.originalIndex - b.originalIndex);
     
     for (const { task, originalIndex } of pendingEntries) {
-      // Clamp the index to valid range (in case list shrunk)
       const insertIndex = Math.min(originalIndex, sorted.length);
       sorted.splice(insertIndex, 0, task);
     }
     
     return sorted;
-  }, [tasks, sortBy, sortDirection, showCompleted, pendingCompletions]);
+  }, [allTasks, effectiveFilter, sortConfig, showCompleted, pendingCompletions]);
 
   // Memoize the Set of pending completion IDs to avoid creating new Set on each render
   const pendingCompletionIds = useMemo(() => 
@@ -397,14 +352,14 @@ function AppContent() {
         batchSize: 10,
       });
       
-      // Refetch both current view and all tasks to get updated estimates
-      await Promise.all([refetch(), refetchAllTasks()]);
+      // Refetch tasks to get updated estimates
+      await refetchTasks();
     } catch (error) {
       console.error('Failed to generate estimates:', error);
     } finally {
       setIsGeneratingEstimates(false);
     }
-  }, [allTasks, refetch, refetchAllTasks]);
+  }, [allTasks, refetchTasks]);
 
   /**
    * Full resync all tasks with Todoist
@@ -416,13 +371,13 @@ function AppContent() {
       console.log(`[App] Todoist resync complete: ${result.tasks} tasks, ${result.projects} projects, ${result.labels} labels in ${result.duration}ms`);
       
       // Refetch everything to update the UI
-      await Promise.all([refetch(), refetchAllTasks({ showLoading: false }), refetchViews(), refetchProjects()]);
+      await Promise.all([refetchTasks(), refetchViews(), refetchProjects()]);
     } catch (error) {
       console.error('Failed to resync with Todoist:', error);
     } finally {
       setIsSyncingTodoist(false);
     }
-  }, [refetch, refetchAllTasks, refetchViews, refetchProjects]);
+  }, [refetchTasks, refetchViews, refetchProjects]);
 
   /**
    * Enrich URL-heavy tasks with context from linked pages
@@ -434,13 +389,13 @@ function AppContent() {
       console.log(`[App] URL enrichment complete: ${result.enriched}/${result.found} tasks enriched`);
       
       // Refetch to show updated task descriptions
-      await Promise.all([refetch(), refetchAllTasks({ showLoading: false })]);
+      await refetchTasks();
     } catch (error) {
       console.error('Failed to enrich URLs:', error);
     } finally {
       setIsEnrichingUrls(false);
     }
-  }, [refetch, refetchAllTasks]);
+  }, [refetchTasks]);
 
   /**
    * Get productivity insights from completed tasks
@@ -506,7 +461,7 @@ function AppContent() {
       });
       pendingCompletionTimeoutsRef.current.delete(taskId);
       // Refresh the task list (completed task will be filtered out naturally)
-      refetch();
+      refetchTasks();
     }, COMPLETION_UNDO_WINDOW_MS);
     
     // Store timeout ID so we can cancel on undo
@@ -531,7 +486,7 @@ function AppContent() {
         return next;
       });
     }
-  }, [sortedTasks, refetch, selectedTask]);
+  }, [sortedTasks, refetchTasks, selectedTask]);
 
   const handleTaskUndo = useCallback(async (taskId: string) => {
     // Cancel the pending removal timeout
@@ -568,16 +523,16 @@ function AppContent() {
 
     // Check if response contains a filter action
     if (response?.filterConfig) {
-      // Store the active filter
+      // Store the active filter - this will be applied client-side to cached tasks
       setActiveFilter(response.filterConfig);
-      // Switch to "all" view to show all tasks with the filter applied
+      // Clear the current view to show the filtered results
       setCurrentView('all');
       setSelectedTask(null);
-    } else {
-      // Just refetch tasks after chat action
-      refetch();
     }
-  }, [refetch]);
+    
+    // Always refetch tasks after chat action (chat may have created/modified tasks)
+    refetchTasks();
+  }, [refetchTasks]);
 
   const handleClearFilter = useCallback(() => {
     setActiveFilter(null);
@@ -627,18 +582,20 @@ function AppContent() {
   }, []);
 
   const handleSaveTask = useCallback(async () => {
-    const updatedTasks = await refetch();
+    // Refetch tasks to get the updated data
+    await refetchTasks();
     
-    // If we're editing the currently selected task, update it with fresh data
+    // If we're editing the currently selected task, find the updated version in allTasks
+    // Note: allTasks will be updated after the refetch completes on the next render
     if (editingTask && selectedTask?.id === editingTask.id) {
-      const updatedTask = updatedTasks.find(t => t.id === editingTask.id);
+      const updatedTask = allTasks.find(t => t.id === editingTask.id);
       if (updatedTask) {
         setSelectedTask(updatedTask);
       }
     }
     
     handleCloseTaskForm();
-  }, [refetch, handleCloseTaskForm, editingTask, selectedTask]);
+  }, [refetchTasks, handleCloseTaskForm, editingTask, selectedTask, allTasks]);
 
   /**
    * Handle inline task updates from TaskDetail
@@ -648,8 +605,8 @@ function AppContent() {
     // Update selected task immediately for instant feedback
     setSelectedTask(updatedTask);
     // Refetch the task list to keep it in sync
-    await refetch();
-  }, [refetch]);
+    await refetchTasks();
+  }, [refetchTasks]);
 
   /**
    * Handle task duplication from TaskDetail
@@ -657,10 +614,42 @@ function AppContent() {
    */
   const handleTaskDuplicate = useCallback(async (newTask: Task) => {
     // Refetch the task list to include the new task
-    await refetch();
+    await refetchTasks();
     // Select the newly created task
     setSelectedTask(newTask);
-  }, [refetch]);
+  }, [refetchTasks]);
+
+  /**
+   * Handle task deletion/archival from TaskDetail
+   * Removes the task from the local insights cache (stalestTasks) without
+   * triggering a full refresh. The next natural insights refresh will repopulate.
+   */
+  const handleTaskDelete = useCallback(async (taskId: string) => {
+    // Clear selection (the task will be gone)
+    setSelectedTask(null);
+    // Refetch the task list
+    await refetchTasks();
+    
+    // Remove the deleted task from the local insights cache instead of
+    // invalidating and refetching everything - that's wasteful.
+    // The list will shrink, and the next natural refresh will repopulate.
+    if (insightsData) {
+      const updatedInsights = {
+        ...insightsData,
+        stats: {
+          ...insightsData.stats,
+          stalestTasks: insightsData.stats.stalestTasks.filter(t => t.id !== taskId),
+        },
+      };
+      setInsightsData(updatedInsights);
+      // Update localStorage cache too
+      try {
+        localStorage.setItem(INSIGHTS_CACHE_KEY, JSON.stringify(updatedInsights));
+      } catch (e) {
+        // Ignore storage errors
+      }
+    }
+  }, [refetchTasks, insightsData]);
 
   /**
    * Handle API key save from welcome panel (onboarding)
@@ -763,7 +752,7 @@ function AppContent() {
             <div className={`flex flex-col min-w-0 ${selectedTask ? 'hidden md:flex md:w-1/2 lg:w-2/5' : 'flex-1'}`}>
               <FillerPanel
                 tasks={allTasks}
-                isLoading={allTasksLoading}
+                isLoading={tasksLoading}
                 onTaskSelect={handleTaskSelect}
                 onGenerateEstimates={handleGenerateEstimates}
                 isGeneratingEstimates={isGeneratingEstimates}
@@ -808,6 +797,7 @@ function AppContent() {
                 onEdit={handleEditTask}
                 onTaskUpdate={handleTaskUpdate}
                 onDuplicate={handleTaskDuplicate}
+                onDelete={handleTaskDelete}
                 isPendingCompletion={pendingCompletionIds.has(selectedTask.id)}
               />
             </div>

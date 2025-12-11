@@ -108,6 +108,20 @@ export interface BarChartProps {
   layout?: 'horizontal' | 'vertical';
   type?: 'default' | 'stacked' | 'percent';
   customTooltip?: React.ComponentType<TooltipProps>;
+  /** 
+   * Control animation behavior:
+   * - `undefined` (default): Animate only on first render per session
+   * - `true`: Always animate
+   * - `false`: Never animate
+   */
+  animate?: boolean;
+  /**
+   * Unique key to identify this chart for animation tracking.
+   * If not provided, uses a hash of the categories.
+   */
+  animationKey?: string;
+  /** Animation duration in milliseconds. Default: 400 */
+  animationDuration?: number;
 }
 
 const defaultColors: AvailableChartColorsKeys[] = [

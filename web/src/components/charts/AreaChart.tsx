@@ -3,9 +3,15 @@
  * 
  * An area chart component built on Recharts with proper Tailwind v4 support.
  * Uses hex colors directly instead of CSS class-based fills.
+ * 
+ * Animation behavior:
+ * - By default, animates only on first render (per session) to avoid
+ *   repetitive animations when switching tabs.
+ * - Use `animate={false}` to disable animation entirely.
+ * - Use `animate={true}` to force animation on every render.
  */
 
-import React from 'react';
+import React, { useRef, useEffect } from 'react';
 import {
   AreaChart as RechartsAreaChart,
   Area,
@@ -22,6 +28,10 @@ import {
   colorValues,
   constructCategoryColors,
 } from '../../lib/chartUtils';
+import {
+  shouldChartAnimate,
+  markChartAnimated,
+} from '../../lib/chartAnimation';
 
 // Custom tooltip component
 interface TooltipProps {
@@ -108,6 +118,20 @@ export interface AreaChartProps {
   curveType?: 'linear' | 'natural' | 'monotone' | 'step';
   connectNulls?: boolean;
   customTooltip?: React.ComponentType<TooltipProps>;
+  /** 
+   * Control animation behavior:
+   * - `undefined` (default): Animate only on first render per session
+   * - `true`: Always animate
+   * - `false`: Never animate
+   */
+  animate?: boolean;
+  /**
+   * Unique key to identify this chart for animation tracking.
+   * If not provided, uses a hash of the categories.
+   */
+  animationKey?: string;
+  /** Animation duration in milliseconds. Default: 400 */
+  animationDuration?: number;
 }
 
 const defaultColors: AvailableChartColorsKeys[] = [
@@ -130,10 +154,28 @@ export function AreaChart({
   curveType = 'monotone',
   connectNulls = false,
   customTooltip: CustomTooltip,
+  animate,
+  animationKey,
+  animationDuration = 400,
 }: AreaChartProps) {
   const categoryColors = constructCategoryColors(categories, colors);
+  const hasAnimatedRef = useRef(false);
   
   const stacked = type === 'stacked' || type === 'percent';
+  
+  // Determine the chart's unique key for animation tracking
+  const chartKey = animationKey ?? `area-${categories.join(',')}-${data.length}`;
+  
+  // Determine if we should animate
+  const shouldAnimate = shouldChartAnimate(animate, chartKey);
+  
+  // Mark as animated after first render
+  useEffect(() => {
+    if (shouldAnimate && !hasAnimatedRef.current) {
+      hasAnimatedRef.current = true;
+      markChartAnimated(chartKey);
+    }
+  }, [shouldAnimate, chartKey]);
   
   return (
     <div className={cx('w-full h-64', className)}>
@@ -213,6 +255,9 @@ export function AreaChart({
                 fill={`url(#gradient-${category})`}
                 stackId={stacked ? 'stack' : undefined}
                 connectNulls={connectNulls}
+                isAnimationActive={shouldAnimate}
+                animationDuration={animationDuration}
+                animationEasing="ease-out"
               />
             );
           })}

@@ -269,14 +269,14 @@ To receive real-time updates from Todoist:
 
 ## Local Development
 
-### Choosing Your Database
+### Database Selection
 
-By default, the API uses local SQLite. Use these convenience scripts to switch databases:
+By default, the API uses embedded PGlite. Use these convenience scripts to switch databases:
 
 ```bash
 cd api
 
-# Use local SQLite (default)
+# Use embedded PGlite (default)
 pnpm start:dev
 
 # Use production PostgreSQL (requires PROD_DATABASE_URL in .env)
@@ -383,143 +383,137 @@ curl https://danny-tasks-api.fly.dev/api/ai-logs/summary
 
 ## Database Management
 
-Danny Tasks includes CLI tools for managing database backups, migrations, and syncing data between environments.
+Danny Tasks uses **PGlite** (embedded PostgreSQL) for local development and **PostgreSQL** for production, ensuring perfect compatibility.
 
-### Quick Reference
+### Database Architecture
+
+**Local Development / Self-Hosting:**
+- Uses PGlite (real Postgres, embedded)
+- Data stored in `./data/tasks.db`
+- No separate database server needed
+- Perfect for personal use
+
+**Production / Teams:**
+- Uses remote PostgreSQL (Neon, Supabase, Fly Postgres)
+- Set via `PROD_DATABASE_URL` environment variable
+- Optimized for concurrent access and scaling
+
+### Auto-Migrations
+
+Migrations run automatically on application startup:
+1. App detects version change
+2. Creates backup (if `BACKUP_BEFORE_UPDATE=true`)
+3. Runs pending migrations
+4. Updates version in config
+5. Starts normally
+
+**Disable auto-migrations:**
 
 ```bash
-# Export current database to JSON
-pnpm db:export [--output backup.json]
-
-# Import JSON backup into current database
-pnpm db:import --input backup.json [--mode merge|replace] [--force]
-
-# Push local SQLite data to production PostgreSQL
-pnpm db:push [--target prod|dev] [--yes]
-
-# Pull production PostgreSQL data to local SQLite
-pnpm db:pull [--source prod|dev] [--yes]
+AUTO_UPDATE=false  # Requires manual migration management
 ```
 
-### Configuration Setup
+### Backups
 
-Configure database URLs once in `api/.env.local` (gitignored, not committed):
+**Automatic backups** are created:
+- Before each migration/update
+- Stored in `./data/backups/`
+- Retained for 30 days (configurable via `BACKUP_RETENTION_DAYS`)
+
+**Manual backup:**
 
 ```bash
-# Create or edit api/.env.local
-cd api
+# PGlite (embedded)
+cp ./data/tasks.db ./backups/manual-backup-$(date +%Y%m%d).db
 
-# Add your database URLs:
-cat >> .env.local << 'EOF'
-# Production database (required for db:push/db:pull)
-PROD_DATABASE_URL="postgresql://user:password@your-neon-host/database"
-
-# Development database (optional)
-DEV_DATABASE_URL="postgresql://user:password@dev-host/database-dev"
-EOF
+# Remote Postgres
+pg_dump $PROD_DATABASE_URL > backup-$(date +%Y%m%d).sql
 ```
 
-**Why `.env.local`?**
-- Automatically loaded by the scripts (via dotenv)
-- Already gitignored (safe for credentials)
-- Configure once, use forever
-- See `api/.env.example` for the full template
+### Configuration
 
-The default local SQLite path (`~/.danny/data/tasks.db`) works automatically - no configuration needed.
+Configure database in `api/.env`:
+
+```bash
+# Use embedded PGlite (default - no config needed)
+# Data stored in ./data/tasks.db
+
+# Or use remote PostgreSQL:
+DATABASE_ENV=prod
+PROD_DATABASE_URL="postgresql://user:password@host:5432/database"
+```
 
 ### Common Workflows
 
-#### 1. Push Local Data to Production
+#### 1. Local Development with Embedded Database
 
-When you want to migrate your local SQLite data to production PostgreSQL:
-
-```bash
-cd api
-
-# First time: configure .env.local (one-time setup)
-# echo 'PROD_DATABASE_URL="postgresql://..."' >> .env.local
-
-# Push with confirmation prompt
-pnpm db:push --target prod
-
-# Or skip confirmation
-pnpm db:push --target prod --yes
-```
-
-**⚠️ Warning**: This replaces all data in production. The command will:
-- Export your local SQLite database
-- Verify schema compatibility (checks migrations)
-- Replace all data in production PostgreSQL
-- Preserve sync tokens and AI interactions
-
-#### 2. Pull Production Data Locally
-
-When you want to test with production data locally:
+By default, Danny Tasks uses embedded PGlite - no configuration needed:
 
 ```bash
 cd api
 
-# Pull with confirmation prompt (uses PROD_DATABASE_URL from .env.local)
-pnpm db:pull --source prod
-
-# Or skip confirmation
-pnpm db:pull --source prod --yes
+# Start dev server (uses ./data/tasks.db automatically)
+pnpm start:dev
 ```
 
-This replaces your local SQLite database with production data, useful for:
-- Debugging production issues locally
-- Testing new features with real data
-- Refreshing local development environment
+Data stored in `./data/tasks.db` - commit or backup this directory for data portability.
+
+#### 2. Using Remote PostgreSQL for Development
+
+Test against a remote database (useful for debugging prod issues):
+
+```bash
+# Set in api/.env
+DATABASE_ENV=dev
+DEV_DATABASE_URL=postgresql://user:pass@host:5432/danny_dev
+
+# Start with dev database
+pnpm start:dev:dev
+```
 
 #### 3. Create Manual Backups
 
-Create timestamped JSON backups:
+**PGlite (Embedded):**
 
 ```bash
-cd api
+# Simple file copy
+cp ./data/tasks.db ./backups/backup-$(date +%Y%m%d).db
 
-# Backup local SQLite (automatic)
-pnpm db:export --output ./backups/backup-$(date +%Y%m%d).json
-
-# Backup production PostgreSQL
-# Set DATABASE_URL temporarily to target production
-DATABASE_URL="$PROD_DATABASE_URL" pnpm db:export --output ./backups/prod-backup.json
-
-# Or read PROD_DATABASE_URL from .env.local and use it
-pnpm db:export --output ./backups/prod-backup.json
-# (Note: export reads current DATABASE_URL or falls back to SQLite)
+# Or use Docker
+docker cp danny-tasks-api:/app/data/tasks.db ./backup.db
 ```
 
-Backups include:
-- All tasks, metadata, history
-- Projects and labels
-- Dashboard views
-- Sync state and AI interactions
-- Cached insights
-- Migration compatibility info
+**Remote PostgreSQL:**
+
+```bash
+# Using pg_dump
+pg_dump $PROD_DATABASE_URL > backup-$(date +%Y%m%d).sql
+
+# Or via Fly.io
+fly postgres backup show --app danny-tasks-db
+fly postgres backup create --app danny-tasks-db
+```
 
 #### 4. Restore from Backup
 
-Restore a JSON backup into any database:
+**PGlite:**
 
 ```bash
-cd api
+# Stop app
+docker-compose down
 
-# Restore to local SQLite (merge mode - keeps existing data)
-pnpm db:import --input ./backups/backup-20240101.json --mode merge
+# Restore file
+cp ./backups/backup-20240101.db ./data/tasks.db
 
-# Restore to production (replace mode - clears first)
-# Temporarily override DATABASE_URL to target production
-DATABASE_URL="$(grep PROD_DATABASE_URL .env.local | cut -d= -f2-)" \
-  pnpm db:import --input backup.json --mode replace
-
-# Force import even if migrations differ
-pnpm db:import --input backup.json --mode replace --force
+# Restart
+docker-compose up -d
 ```
 
-**Import Modes:**
-- `merge` (default): Upserts records, keeps existing data
-- `replace`: Clears all tables first, then imports
+**Remote Postgres:**
+
+```bash
+psql $PROD_DATABASE_URL < backup-20240101.sql
+```
 
 ### Automated Backups
 
@@ -536,58 +530,69 @@ To download a backup:
 3. Download the artifact
 4. Extract and use `pnpm db:import`
 
-### Schema Migration Safety
+### Migration Strategy
 
-The tools check migration compatibility before importing:
+Migrations run automatically on app startup via `KyselyAdapter.runMigrations()`.
 
-```bash
-# If schemas differ, you'll see:
-⚠️  Migration mismatch detected:
-  Source has migrations not in target: add_scheduling_fields
-  Target has migrations not in source: add_insights_cache
+**Migration flow:**
+1. App starts
+2. Checks current version vs database version
+3. Creates backup if update detected
+4. Applies pending migrations
+5. Updates version in `app_config` table
 
-# Options:
-1. Run migrations on both databases first
-2. Use --force to override (risky!)
+**Adding new migrations:**
+
+Edit `api/src/storage/adapters/kysely.adapter.ts` and add to `runMigrations()`:
+
+```typescript
+await this.runMigration('your_migration_name', async () => {
+  // Your migration code
+  await db.schema.alterTable('tasks').addColumn('new_field', 'text').execute();
+});
 ```
 
-**Best Practice**: Always ensure both databases have the same migrations applied before syncing data.
+**Future Enhancement**: Consider adopting Kysely's file-based migration system or Neon's database branching.
 
-The schema migrations run automatically when the app starts (`KyselyAdapter.runMigrations()`). For future enhancement, consider:
-- Adopting Kysely's native migration system
-- Using Neon's database branching for schema changes
+### Switching Between Databases
 
-### Syncing Between Environments
-
-For dev → prod workflow (ensure `.env.local` has both DEV_DATABASE_URL and PROD_DATABASE_URL):
+**Development workflow:**
 
 ```bash
-cd api
-
-# 1. Test locally with SQLite
+# Use embedded PGlite (default)
 pnpm start:dev
 
-# 2. When ready, push to dev environment
-pnpm db:push --target dev --yes
+# Test against dev Postgres
+pnpm start:dev:dev
 
-# 3. Test in dev, then promote to prod
-pnpm db:pull --source dev  # Get dev data locally first (optional)
-pnpm db:push --target prod
+# Test against prod Postgres (read-only recommended)
+pnpm start:dev:prod
 ```
 
-### Troubleshooting Database Operations
+**Production deployment:**
 
-**"Schema mismatch" error**:
-- Run migrations on both databases: restart the app in both environments
-- Check `fly logs` for migration errors
-- Use `--force` only if you understand the risk
+```bash
+# Fly.io automatically sets DATABASE_ENV=prod
+# Railway/Render: configure in platform settings
+DATABASE_ENV=prod
+PROD_DATABASE_URL=postgresql://...
+```
 
-**"Connection timeout"**:
-- Verify `DATABASE_URL` is correct
-- Check database is not paused (Neon auto-pauses)
-- Test with: `fly ssh console` then try connecting
+### Troubleshooting
 
-**Large backup files**:
+**"No such table" error**:
+- Migrations didn't run
+- Check logs: `docker-compose logs api`
+- Ensure app started successfully
+
+**"Connection refused"**:
+- Database not accessible
+- Check `PROD_DATABASE_URL` is correct
+- Verify firewall/network access
+
+**Backup/restore failures**:
+- For PGlite: ensure `/app/data` volume is mounted
+- For Postgres: ensure `pg_dump`/`psql` are installed
 - AI interactions table can be large
 - Consider excluding it: modify `DATA_TABLES` in `scripts/db-tools.ts`
 - Compress backups: `gzip backup.json`

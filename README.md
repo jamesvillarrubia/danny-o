@@ -2,6 +2,21 @@
 
 AI-powered task management system with intelligent categorization, prioritization, and time estimation.
 
+## 🚀 Quick Deploy
+
+Get Danny Tasks running in minutes with one-click deployment:
+
+[![Deploy on Railway](https://railway.app/button.svg)](https://railway.app/template/danny-tasks)
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/yourusername/danny-tasks)
+
+Or self-host with Docker:
+
+```bash
+docker-compose up -d
+```
+
+Visit http://localhost to complete the setup wizard.
+
 ## Project Structure
 
 ```
@@ -45,32 +60,60 @@ tasks/
 
 ## Quick Start
 
-### Prerequisites
+### For End Users (Self-Hosting)
+
+**Docker Compose (Recommended)**
+
+```bash
+# Clone the repository
+git clone https://github.com/yourusername/danny-tasks.git
+cd danny-tasks
+
+# Start the stack
+docker-compose up -d
+
+# Visit http://localhost and complete the setup wizard
+```
+
+**Single Docker Image**
+
+```bash
+docker run -d \
+  -p 3000:8080 \
+  -v $(pwd)/data:/app/data \
+  --name danny-tasks \
+  ghcr.io/yourusername/danny-tasks-api:latest
+```
+
+### For Developers
+
+**Prerequisites**
 
 - Node.js 22+
 - pnpm 9+
 - [Todoist API key](https://todoist.com/prefs/integrations)
 - [Claude API key](https://console.anthropic.com/)
 
-### Development
-
-**Option 1: Run everything together (recommended)**
+**Local Development**
 
 ```bash
-# From root directory
-pnpm install                          # Install all workspace dependencies
-cp api/.env.example api/.env         # Edit with your API keys
-pnpm dev                             # Start API (port 3000) + Web (port 3001)
+# Install dependencies
+pnpm install
+
+# Start both API and Web in dev mode
+pnpm dev
+
+# Or run separately:
+pnpm dev:api  # API on port 3000
+pnpm dev:web  # Web on port 3001
 ```
 
-**Option 2: Run services separately**
+The app uses **embedded PGlite** by default (zero config). To use remote PostgreSQL:
 
 ```bash
-# Terminal 1 - API (backend)
-pnpm dev:api                         # Starts HTTP server on port 3000
-
-# Terminal 2 - Web (frontend)
-pnpm dev:web                         # Starts Vite dev server on port 3001
+# Set in api/.env
+DATABASE_ENV=dev
+DEV_DATABASE_URL=postgresql://user:pass@localhost:5432/danny
 ```
 
 ### CLI Commands
@@ -190,10 +233,19 @@ npx tsc --noEmit            # Type checking
 
 ## Deployment
 
-- **API** → [Fly.io](https://fly.io) (container deployment)
-- **Web** → [Vercel](https://vercel.com) (static/SSR)
+### One-Click Platforms
 
-See [api/DEPLOYMENT.md](./api/DEPLOYMENT.md) for full deployment guide.
+- **Railway** → Auto-deploy on push, managed Postgres optional
+- **Render** → Auto-deploy on push, persistent disk for PGlite
+- **Fly.io** → Manual deploy, use Fly Postgres for production
+
+### Self-Hosted
+
+- **Docker** → `docker-compose up` for full stack
+- **Manual** → Build and run on any Node.js 22+ server
+
+See [SELF_HOSTING.md](./SELF_HOSTING.md) for detailed self-hosting guide.
+See [api/DEPLOYMENT.md](./api/DEPLOYMENT.md) for production deployment guide.
 
 ## Documentation
 
@@ -210,8 +262,20 @@ See [api/DEPLOYMENT.md](./api/DEPLOYMENT.md) for full deployment guide.
 - **AI-Powered Classification** — Automatically categorizes tasks using Claude AI
 - **Model Context Protocol (MCP)** — 17 MCP tools for AI agent integration
 - **Intelligent Enrichment** — Estimates time, energy level, and supplies needed
-- **Multi-Database Support** — SQLite (local), PostgreSQL (production)
+- **Embedded Database** — PGlite (embedded Postgres) with optional cloud upgrade
+- **Auto-Updates** — Automatic migrations with backup-first strategy
+- **Setup Wizard** — Easy first-run configuration via web UI
 - **CLI & HTTP & MCP Modes** — Three interfaces to the same business logic
+
+## Update Strategy
+
+Danny Tasks automatically updates when deployed:
+
+- **Cloud Platforms** (Railway/Render): Git push → auto-deploy → backup → migrate
+- **Docker Self-Host**: `docker pull` + restart → backup → migrate  
+- **Manual Mode**: Set `AUTO_UPDATE=false` for full control
+
+All updates create backups before running migrations. See [SELF_HOSTING.md](./SELF_HOSTING.md) for details.
 
 ## License
 

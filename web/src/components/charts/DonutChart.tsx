@@ -4,9 +4,15 @@
  * A responsive donut/pie chart component built on Recharts.
  * Uses hex colors directly instead of CSS class-based fills.
  * Automatically adjusts sizing and label display based on container width.
+ * 
+ * Animation behavior:
+ * - By default, animates only on first render (per session) to avoid
+ *   repetitive animations when switching tabs.
+ * - Use `animate={false}` to disable animation entirely.
+ * - Use `animate={true}` to force animation on every render.
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
   PieChart,
   Pie,
@@ -20,6 +26,11 @@ import {
   type AvailableChartColorsKeys, 
   colorValues,
 } from '../../lib/chartUtils';
+import {
+  shouldChartAnimate,
+  markChartAnimated,
+  generateChartKey,
+} from '../../lib/chartAnimation';
 
 // Custom tooltip component
 interface TooltipProps {
@@ -102,6 +113,21 @@ export interface DonutChartProps {
   variant?: 'donut' | 'pie';
   label?: string;
   customTooltip?: React.ComponentType<TooltipProps>;
+  /** 
+   * Control animation behavior:
+   * - `undefined` (default): Animate only on first render per session
+   * - `true`: Always animate
+   * - `false`: Never animate
+   */
+  animate?: boolean;
+  /**
+   * Unique key to identify this chart for animation tracking.
+   * If not provided, uses a hash of the data.
+   * Charts with the same key will share animation state.
+   */
+  animationKey?: string;
+  /** Animation duration in milliseconds. Default: 400 */
+  animationDuration?: number;
 }
 
 const defaultColors: AvailableChartColorsKeys[] = [
@@ -122,13 +148,31 @@ export function DonutChart({
   variant = 'donut',
   label,
   customTooltip: CustomTooltip,
+  animate,
+  animationKey,
+  animationDuration = 400,
 }: DonutChartProps) {
   // Track container width for responsive adjustments
   const [containerWidth, setContainerWidth] = useState(0);
+  const hasAnimatedRef = useRef(false);
   
   const handleResize = useCallback((width: number) => {
     setContainerWidth(width);
   }, []);
+
+  // Determine the chart's unique key for animation tracking
+  const chartKey = animationKey ?? generateChartKey('donut', data);
+  
+  // Determine if we should animate
+  const shouldAnimate = shouldChartAnimate(animate, chartKey);
+  
+  // Mark as animated after first render
+  useEffect(() => {
+    if (shouldAnimate && !hasAnimatedRef.current) {
+      hasAnimatedRef.current = true;
+      markChartAnimated(chartKey);
+    }
+  }, [shouldAnimate, chartKey]);
   
   // Map data to include fill colors
   const chartData = data.map((item, index) => ({
@@ -205,6 +249,9 @@ export function DonutChart({
             paddingAngle={2}
             label={renderLabel}
             labelLine={showLabel ? { stroke: '#a1a1aa', strokeWidth: 1 } : false}
+            isAnimationActive={shouldAnimate}
+            animationDuration={animationDuration}
+            animationEasing="ease-out"
           >
             {chartData.map((entry, index) => (
               <Cell 

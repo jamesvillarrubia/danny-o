@@ -1,0 +1,27 @@
+{
+  "description": "Static classification response for deterministic testing",
+  "promptType": "classify",
+  "response": [
+    {
+      "taskIndex": 0,
+      "taskId": "task_1",
+      "category": "work",
+      "confidence": 0.95,
+      "reasoning": "Software development task - involves code review, pull requests, or technical work"
+    },
+    {
+      "taskIndex": 1,
+      "taskId": "task_2",
+      "category": "home-maintenance",
+      "confidence": 0.90,
+      "reasoning": "Home repair or maintenance task - involves fixing, cleaning, or maintaining household items"
+    },
+    {
+      "taskIndex": 2,
+      "taskId": "task_3",
+      "category": "personal-family",
+      "confidence": 0.85,
+      "reasoning": "Personal or family-related task - involves errands, appointments, or family activities"
+    }
+  ]
+}

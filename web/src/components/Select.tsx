@@ -9,7 +9,7 @@ import { forwardRef, type SelectHTMLAttributes } from 'react';
 import { ChevronDown } from 'lucide-react';
 import clsx from 'clsx';
 
-interface SelectProps extends SelectHTMLAttributes<HTMLSelectElement> {
+interface SelectProps extends Omit<SelectHTMLAttributes<HTMLSelectElement>, 'size'> {
   /** Size variant - 'sm' for compact inline editing, 'default' for forms */
   size?: 'sm' | 'default';
 }

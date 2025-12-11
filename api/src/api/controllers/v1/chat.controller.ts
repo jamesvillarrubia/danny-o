@@ -1,26 +1,19 @@
 /**
  * Chat Controller (v1)
- * 
+ *
  * HTTP endpoint for Danny chat conversations.
  * Wraps the process_text_agent functionality for web clients.
- * 
+ *
  * Endpoints:
  * - POST /v1/chat - Send a message to Danny
  */
 
-import {
-  Controller,
-  Post,
-  Body,
-  HttpCode,
-  HttpStatus,
-  Inject,
-  Logger,
-  Optional,
-} from '@nestjs/common';
+import { Controller, Post, Body, HttpCode, HttpStatus, Inject, Logger } from '@nestjs/common';
 import { IStorageAdapter, ITaskProvider } from '../../../common/interfaces';
 import { SyncService } from '../../../task/services/sync.service';
 import { ClaudeService } from '../../../ai/services/claude.service';
+import { SearchService } from '../../../ai/services/search.service';
+import { TaxonomyService } from '../../../config/taxonomy/taxonomy.service';
 import { extractReadableContent } from '../../../common/utils/content-extractor';
 import Anthropic from '@anthropic-ai/sdk';
 
@@ -77,7 +70,11 @@ KEY CONTEXT:
 
 Remember: The user will continue this conversation. Your summary must provide enough context that the assistant can respond naturally without asking the user to repeat themselves.`;
 
-const DANNY_CHAT_SYSTEM_PROMPT = `You are Danny, a helpful and friendly task management assistant.
+/**
+ * Base system prompt for Danny chat (without dynamic context).
+ * The full prompt is built by combining this with workspace context.
+ */
+const DANNY_CHAT_BASE_PROMPT = `You are Danny, a helpful and friendly task management assistant.
 You help the user manage their tasks in Todoist via natural conversation.
 
 # Your Personality
@@ -201,7 +198,7 @@ interface ChatResponseDto {
     messages: Anthropic.MessageParam[];
     tools: Array<{ name: string; description: string; input_schema: any }>;
   };
-  /** 
+  /**
    * If history was summarized, this contains the new compressed history.
    * Frontend should replace its history with this to stay in sync.
    */
@@ -219,6 +216,8 @@ export class ChatController {
     @Inject('ITaskProvider') private readonly taskProvider: ITaskProvider,
     private readonly syncService: SyncService,
     @Inject(ClaudeService) private readonly claudeService: ClaudeService,
+    @Inject(TaxonomyService) private readonly taxonomyService: TaxonomyService,
+    private readonly searchService: SearchService,
   ) {}
 
   /**
@@ -233,7 +232,8 @@ export class ChatController {
     if (!this.claudeService) {
       this.logger.error('ClaudeService is not available');
       return {
-        response: 'Sorry, the AI service is not available. Please check that CLAUDE_API_KEY is set in your environment variables.',
+        response:
+          'Sorry, the AI service is not available. Please check that CLAUDE_API_KEY is set in your environment variables.',
         success: false,
       };
     }
@@ -248,18 +248,24 @@ export class ChatController {
       // Process conversation history - summarize if too long
       let processedHistory = body.history || [];
       const historyLength = this.estimateHistoryLength(processedHistory);
-      
+
       if (historyLength > MAX_HISTORY_CHARS && processedHistory.length > KEEP_RECENT_MESSAGES) {
         this.logger.log(`History too long (${historyLength} chars), summarizing...`);
         processedHistory = await this.summarizeHistory(processedHistory);
-        this.logger.log(`Summarized history to ${this.estimateHistoryLength(processedHistory)} chars`);
+        this.logger.log(
+          `Summarized history to ${this.estimateHistoryLength(processedHistory)} chars`,
+        );
       }
+
+      // Build system prompt with workspace context
+      const systemPrompt = await this.buildSystemPrompt();
 
       // Run conversation with history and page context
       const result = await this.runChatLoop(
-        body.message, 
-        tools, 
-        5, 
+        body.message,
+        tools,
+        systemPrompt,
+        5,
         body.pageContext,
         processedHistory,
       );
@@ -300,9 +306,7 @@ export class ChatController {
    * Summarize conversation history when it gets too long.
    * Keeps the last KEEP_RECENT_MESSAGES intact and summarizes the rest.
    */
-  private async summarizeHistory(
-    history: ConversationMessage[],
-  ): Promise<ConversationMessage[]> {
+  private async summarizeHistory(history: ConversationMessage[]): Promise<ConversationMessage[]> {
     if (!this.claudeService || history.length <= KEEP_RECENT_MESSAGES) {
       return history;
     }
@@ -352,7 +356,8 @@ export class ChatController {
         },
         {
           role: 'assistant' as const,
-          content: 'Understood, I have the context from our previous conversation. Let me continue helping you.',
+          content:
+            'Understood, I have the context from our previous conversation. Let me continue helping you.',
         },
         ...toKeep,
       ];
@@ -364,34 +369,113 @@ export class ChatController {
   }
 
   /**
+   * Build workspace context for the system prompt.
+   * This includes available projects, categories, and labels.
+   */
+  private async buildWorkspaceContext(): Promise<string> {
+    const parts: string[] = [];
+
+    // Get projects from storage (Todoist projects)
+    try {
+      const projects = await this.storage.getProjects();
+      if (projects && projects.length > 0) {
+        parts.push("# User's Todoist Projects\n");
+        parts.push("These are the actual projects in the user's Todoist account:\n");
+        for (const project of projects) {
+          parts.push(`- **${project.name}** (ID: ${project.id})`);
+        }
+        parts.push('');
+      }
+    } catch (error) {
+      this.logger.warn('Could not fetch projects for context');
+    }
+
+    // Add task categories (the AI classification categories)
+    parts.push('# Task Categories (for organization)\n');
+    parts.push('Tasks are organized into these categories:\n');
+    parts.push('- **work**: Job-related tasks and projects');
+    parts.push(
+      '- **home-improvement**: Aspirational home improvement projects (building, renovations)',
+    );
+    parts.push('- **home-maintenance**: Regular home upkeep (repairs, yard work, cleaning)');
+    parts.push('- **personal-family**: Groceries, errands, family coordination, personal tasks');
+    parts.push('- **speaking-gig**: Conference talks, presentations, speaking opportunities');
+    parts.push(
+      '- **big-ideas**: Long-term personal goals (book writing, tool building, podcast ideas)',
+    );
+    parts.push('- **inspiration**: Creative sparks and ideas to explore');
+    parts.push('- **inbox**: Unclassified tasks needing categorization');
+    parts.push('');
+
+    // Get labels from taxonomy service
+    try {
+      const labelCategories = this.taxonomyService.getLabelsByCategory();
+      if (labelCategories && labelCategories.length > 0) {
+        parts.push('# Available Labels\n');
+        parts.push('Labels can be applied to tasks for cross-cutting organization:\n');
+        for (const category of labelCategories) {
+          parts.push(`\n**${category.category}:**`);
+          for (const label of category.labels) {
+            if (!label.status || label.status === 'active') {
+              const desc = label.description ? ` - ${label.description}` : '';
+              parts.push(`- ${label.name}${desc}`);
+            }
+          }
+        }
+        parts.push('');
+      }
+    } catch (error) {
+      this.logger.warn('Could not fetch labels from taxonomy');
+    }
+
+    return parts.join('\n');
+  }
+
+  /**
+   * Build the full system prompt with workspace context
+   */
+  private async buildSystemPrompt(): Promise<string> {
+    const workspaceContext = await this.buildWorkspaceContext();
+
+    return `${DANNY_CHAT_BASE_PROMPT}
+
+# Your User's Workspace
+
+${workspaceContext}
+
+Use this context when discussing or creating tasks. Match projects and labels to the user's existing organizational structure.`;
+  }
+
+  /**
    * Build tools for the chat agent
    */
   private buildChatTools(actions: NonNullable<ChatResponseDto['actions']>) {
     return [
       {
         name: 'search_tasks',
-        description: 'Search for existing tasks by content or description',
+        description: 'Search for existing tasks using smart fuzzy matching. Handles typos, different wording, partial matches, and semantic understanding.',
         input_schema: {
           type: 'object' as const,
           properties: {
-            query: { type: 'string', description: 'Search query' },
+            query: { type: 'string', description: 'Search query (natural language, handles typos and variations)' },
           },
           required: ['query'],
         },
         handler: async (toolArgs: any) => {
-          const allTasks = await this.storage.getTasks({ completed: false });
-          const matches = allTasks.filter(
-            (t) =>
-              t.content.toLowerCase().includes(toolArgs.query.toLowerCase()) ||
-              (t.description && t.description.toLowerCase().includes(toolArgs.query.toLowerCase())),
-          );
-          return matches.slice(0, 10).map((t) => ({
-            id: t.id,
-            content: t.content,
-            description: t.description,
-            category: t.metadata?.category,
-            priority: t.priority,
-            due: t.due?.date,
+          const result = await this.searchService.search(toolArgs.query, {
+            limit: 10,
+            minScore: 0.25,
+          });
+          
+          return result.matches.map((m) => ({
+            id: m.task.id,
+            content: m.task.content,
+            description: m.task.description,
+            category: m.task.metadata?.category,
+            priority: m.task.priority,
+            due: m.task.due?.date,
+            score: Math.round(m.score * 100),
+            matchedOn: m.matchedOn,
           }));
         },
       },
@@ -474,7 +558,10 @@ export class ChatController {
             content: { type: 'string', description: 'Task content/title' },
             description: { type: 'string', description: 'Optional description' },
             priority: { type: 'number', description: 'Priority 1-4 (4 is highest)' },
-            dueString: { type: 'string', description: 'Due date in natural language (e.g., "tomorrow", "next monday")' },
+            dueString: {
+              type: 'string',
+              description: 'Due date in natural language (e.g., "tomorrow", "next monday")',
+            },
           },
           required: ['content'],
         },
@@ -485,7 +572,7 @@ export class ChatController {
             priority: toolArgs.priority || 1,
             dueString: toolArgs.dueString,
           });
-          
+
           actions.push({
             type: 'create_task',
             description: `Created task: ${task.content}`,
@@ -517,7 +604,7 @@ export class ChatController {
           if (toolArgs.dueString) updates.dueString = toolArgs.dueString;
 
           await this.taskProvider.updateTask(toolArgs.taskId, updates);
-          
+
           actions.push({
             type: 'update_task',
             description: `Updated task`,
@@ -534,7 +621,10 @@ export class ChatController {
           type: 'object' as const,
           properties: {
             taskId: { type: 'string', description: 'Task ID to complete' },
-            actualMinutes: { type: 'number', description: 'How long it actually took (in minutes)' },
+            actualMinutes: {
+              type: 'number',
+              description: 'How long it actually took (in minutes)',
+            },
           },
           required: ['taskId'],
         },
@@ -544,9 +634,9 @@ export class ChatController {
           if (toolArgs.actualMinutes) {
             metadata.actualDuration = toolArgs.actualMinutes;
           }
-          
+
           await this.syncService.completeTask(toolArgs.taskId, metadata);
-          
+
           actions.push({
             type: 'complete_task',
             description: `Completed task: ${task?.content || 'unknown'}`,
@@ -565,12 +655,13 @@ export class ChatController {
   private async runChatLoop(
     userMessage: string,
     tools: any[],
+    systemPrompt: string,
     maxTurns = 5,
     pageContext?: PageContext,
     history?: ConversationMessage[],
-  ): Promise<{ 
-    success: boolean; 
-    message: string; 
+  ): Promise<{
+    success: boolean;
+    message: string;
     turns: number;
     debugMessages: {
       systemPrompt: string;
@@ -584,9 +675,16 @@ export class ChatController {
 
     // Build the user message with page context if available
     let fullUserMessage = userMessage;
-    if (pageContext && (pageContext.url || pageContext.title || pageContext.html || pageContext.text || pageContext.selection)) {
+    if (
+      pageContext &&
+      (pageContext.url ||
+        pageContext.title ||
+        pageContext.html ||
+        pageContext.text ||
+        pageContext.selection)
+    ) {
       const contextParts: string[] = ['<page_context>'];
-      
+
       if (pageContext.url) {
         contextParts.push(`URL: ${pageContext.url}`);
       }
@@ -596,7 +694,7 @@ export class ChatController {
       if (pageContext.selection) {
         contextParts.push(`Selected text: "${pageContext.selection}"`);
       }
-      
+
       // Extract clean content using Readability if HTML is available
       if (pageContext.html || pageContext.text) {
         const extracted = extractReadableContent(pageContext.html, pageContext.text, {
@@ -604,26 +702,28 @@ export class ChatController {
           maxContentLength: 4000,
           minContentLength: 50,
         });
-        
+
         if (extracted.content) {
           const sourceNote = extracted.usedReadability ? '(article content)' : '(page text)';
           contextParts.push(`Page content ${sourceNote}:\n${extracted.content}`);
         }
-        
-        this.logger.debug(`Content extraction: usedReadability=${extracted.usedReadability}, length=${extracted.content.length}`);
+
+        this.logger.debug(
+          `Content extraction: usedReadability=${extracted.usedReadability}, length=${extracted.content.length}`,
+        );
       }
-      
+
       contextParts.push('</page_context>');
       contextParts.push('');
       contextParts.push(userMessage);
-      
+
       fullUserMessage = contextParts.join('\n');
       this.logger.debug(`Chat includes page context from: ${pageContext.url || pageContext.title}`);
     }
 
     // Build messages array: start with history, then add current message
     const messages: Anthropic.MessageParam[] = [];
-    
+
     // Add conversation history if provided
     if (history && history.length > 0) {
       this.logger.debug(`Including ${history.length} messages from conversation history`);
@@ -651,7 +751,7 @@ export class ChatController {
       const response = await this.claudeService.getClient().messages.create({
         model: this.claudeService.getModel(),
         max_tokens: 2048,
-        system: DANNY_CHAT_SYSTEM_PROMPT,
+        system: systemPrompt,
         messages: messages,
         tools: tools,
       });
@@ -734,11 +834,10 @@ export class ChatController {
       message: finalResponse,
       turns: turnCount,
       debugMessages: {
-        systemPrompt: DANNY_CHAT_SYSTEM_PROMPT,
+        systemPrompt,
         messages,
         tools: debugTools,
       },
     };
   }
 }
-

@@ -246,9 +246,19 @@ jobs:
           echo "test-web: ${{ needs.test-web.result }}"
           echo "test-extension: ${{ needs.test-extension.result }}"
           
-          # Fail if any required test failed (not skipped, not success)
+          # Fail if ANY test failed (not skipped, not success)
           if [[ "${{ needs.test-api.result }}" == "failure" ]]; then
             echo "::error::test-api failed"
+            exit 1
+          fi
+          
+          if [[ "${{ needs.test-web.result }}" == "failure" ]]; then
+            echo "::error::test-web failed"
+            exit 1
+          fi
+          
+          if [[ "${{ needs.test-extension.result }}" == "failure" ]]; then
+            echo "::error::test-extension failed"
             exit 1
           fi
           

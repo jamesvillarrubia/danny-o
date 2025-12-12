@@ -185,7 +185,7 @@ jobs:
           kill $SERVER_PID 2>/dev/null || true
           
           # Exit with failure if either test failed
-          if [[[ $HEALTH_PASS -eq 0 ]] || [[[ $TASKS_PASS -eq 0 ]]; then
+          if [[ $HEALTH_PASS -eq 0 ]] || [[ $TASKS_PASS -eq 0 ]]; then
             echo "::error::Contract tests failed (health: $HEALTH_PASS, tasks: $TASKS_PASS)"
             exit 1
           fi

@@ -4,27 +4,49 @@
  * Loads the Danny web app in an iframe and provides page context.
  */
 
-// Default URL - update this to your Vercel deployment URL
-const DEFAULT_DANNY_URL = 'http://localhost:3001';
+// Environment URLs
+// Note: Update production URL after deploying to Vercel
+const ENVIRONMENTS = {
+  local: 'http://localhost:3001',
+  develop: 'https://danny-web-dev.vercel.app',  // Or your custom Vercel preview domain
+  production: 'https://danny-web.vercel.app'    // Or your custom production domain
+};
+
+// Default environment
+const DEFAULT_ENVIRONMENT = 'local';
 
 // DOM elements
 const loadingEl = document.getElementById('loading');
 const errorEl = document.getElementById('error');
 const frameEl = document.getElementById('danny-frame');
+const envSelector = document.getElementById('environment');
+const envBadge = document.getElementById('env-badge');
 
 // Current page context
 let currentPageContext = null;
 let iframeReady = false;
 
-// Get the Danny URL from storage or use default
-async function getDannyUrl() {
-  const result = await chrome.storage.local.get(['dannyUrl']);
-  return result.dannyUrl || DEFAULT_DANNY_URL;
+// Get the current environment from storage or use default
+async function getEnvironment() {
+  const result = await chrome.storage.local.get(['environment']);
+  return result.environment || DEFAULT_ENVIRONMENT;
 }
 
-// Save the Danny URL to storage
-async function setDannyUrl(url) {
-  await chrome.storage.local.set({ dannyUrl: url });
+// Save the current environment to storage
+async function setEnvironment(environment) {
+  await chrome.storage.local.set({ environment });
+}
+
+// Get the Danny URL for the current environment
+async function getDannyUrl() {
+  const env = await getEnvironment();
+  return ENVIRONMENTS[env] || ENVIRONMENTS[DEFAULT_ENVIRONMENT];
+}
+
+// Update the environment badge
+function updateEnvironmentBadge(environment) {
+  envBadge.textContent = environment;
+  envBadge.className = `env-badge ${environment}`;
 }
 
 // Request page context from background script
@@ -135,15 +157,10 @@ function retryLoad() {
   loadDanny();
 }
 
-// Open settings to configure URL
+// Open settings to configure URL (kept for backward compatibility with error screen)
 async function openSettings() {
-  const currentUrl = await getDannyUrl();
-  const newUrl = prompt('Enter the Danny dashboard URL:', currentUrl);
-  
-  if (newUrl && newUrl.trim()) {
-    await setDannyUrl(newUrl.trim());
-    loadDanny();
-  }
+  const currentEnv = await getEnvironment();
+  alert(`Current environment: ${currentEnv}\n\nEnvironment URLs:\n- Local: ${ENVIRONMENTS.local}\n- Develop: ${ENVIRONMENTS.develop}\n- Production: ${ENVIRONMENTS.production}\n\nUse the dropdown at the top to switch environments.`);
 }
 
 // Listen for messages from background script (tab changes)
@@ -164,10 +181,30 @@ window.addEventListener('message', async (event) => {
   }
 });
 
+// Handle environment change
+envSelector.addEventListener('change', async (e) => {
+  const newEnv = e.target.value;
+  await setEnvironment(newEnv);
+  updateEnvironmentBadge(newEnv);
+  
+  // Reload the iframe with the new environment
+  iframeReady = false;
+  loadDanny();
+});
+
+// Initialize environment selector
+async function initEnvironmentSelector() {
+  const currentEnv = await getEnvironment();
+  envSelector.value = currentEnv;
+  updateEnvironmentBadge(currentEnv);
+}
+
 // Make functions available globally
 window.retryLoad = retryLoad;
 window.openSettings = openSettings;
 
-// Load on startup
+// Initialize and load on startup
+initEnvironmentSelector().then(() => {
 loadDanny();
+});
 

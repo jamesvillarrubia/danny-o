@@ -314,12 +314,39 @@ jobs:
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
+  deploy-web-dev:
+    needs: [ changes, gate ]
+    if: ${{
+        always() &&
+        github.ref_name == 'develop' &&
+        github.event_name == 'push' &&
+        needs.gate.result == 'success' &&
+        needs.changes.outputs.web == 'true'
+      }}
+    runs-on: ubuntu-latest
+    environment: development
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.commitSha || github.sha }}
+      - name: Deploy to Vercel (preview)
+        working-directory: web
+        run: |
+          npm i -g vercel
+          vercel pull --yes --environment=preview --token=${{ secrets.VERCEL_TOKEN }}
+          vercel build --token=${{ secrets.VERCEL_TOKEN }}
+          vercel deploy --prebuilt --token=${{ secrets.VERCEL_TOKEN }} > deployment-url.txt
+          echo "Deployed to: $(cat deployment-url.txt)"
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
   #=============================================================================
   # STAGE 5: PROMOTE (develop only, after tag AND deploy-api-dev)
   #=============================================================================
 
   promote:
-    needs: [ version, tag, deploy-api-dev ]
+    needs: [ version, tag, deploy-api-dev, deploy-web-dev ]
     if: ${{
         always() &&
         github.ref_name == 'develop' &&
@@ -327,7 +354,8 @@ jobs:
         needs.version.result == 'success' &&
         needs.version.outputs.version != '' &&
         needs.tag.result == 'success' &&
-        (needs.deploy-api-dev.result == 'success' || needs.deploy-api-dev.result == 'skipped')
+        (needs.deploy-api-dev.result == 'success' || needs.deploy-api-dev.result == 'skipped') &&
+        (needs.deploy-web-dev.result == 'success' || needs.deploy-web-dev.result == 'skipped')
       }}
     runs-on: ubuntu-latest
     steps:
@@ -370,18 +398,48 @@ jobs:
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
+  deploy-web-prod:
+    needs: [ changes, gate, version ]
+    if: ${{
+        always() &&
+        github.ref_name == 'main' &&
+        github.event_name == 'push' &&
+        needs.gate.result == 'success' &&
+        needs.version.result == 'success' &&
+        needs.version.outputs.version != '' &&
+        needs.changes.outputs.web == 'true'
+      }}
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.commitSha || github.sha }}
+      - name: Deploy to Vercel (production)
+        working-directory: web
+        run: |
+          npm i -g vercel
+          vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
+          vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
+          vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }} > deployment-url.txt
+          echo "Deployed to: $(cat deployment-url.txt)"
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
   #=============================================================================
   # STAGE 7: RELEASE (main only, after deploy-api-prod)
   #=============================================================================
 
   release:
-    needs: [ deploy-api-prod, version ]
+    needs: [ deploy-api-prod, deploy-web-prod, version ]
     if: ${{
         always() &&
         github.ref_name == 'main' &&
         needs.version.result == 'success' &&
         needs.version.outputs.version != '' &&
-        needs.deploy-api-prod.result == 'success'
+        needs.deploy-api-prod.result == 'success' &&
+        (needs.deploy-web-prod.result == 'success' || needs.deploy-web-prod.result == 'skipped')
       }}
     runs-on: ubuntu-latest
     steps:

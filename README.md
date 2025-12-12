@@ -4,18 +4,41 @@ AI-powered task management system with intelligent categorization, prioritizatio
 
 ## 🚀 Quick Deploy
 
-Get Danny Tasks running in minutes with one-click deployment:
+**Automated Deployments (Recommended):**
 
-[![Deploy on Railway](https://railway.app/button.svg)](https://railway.app/template/danny-tasks)
-[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/yourusername/danny-tasks)
+Push to GitHub and let CI/CD handle everything:
 
-Or self-host with Docker:
+```bash
+# Deploy to develop (staging)
+git push origin develop
+
+# Deploy to production (merge PR from develop → main)
+# GitHub Actions will:
+# 1. Run all tests
+# 2. Deploy API to Fly.io
+# 3. Deploy Web to Vercel
+# 4. Create release
+```
+
+**Local Development:**
+
+Run locally with Docker:
 
 ```bash
 docker-compose up -d
 ```
 
-Visit http://localhost to complete the setup wizard.
+Visit http://localhost:3001 to complete the setup wizard.
+
+## Environments
+
+Danny Tasks supports a three-environment workflow:
+
+| Environment | API | Web | Database | Use Case |
+|------------|-----|-----|----------|----------|
+| **Local** | `localhost:3000` | `localhost:3001` | Local Postgres | Development |
+| **Develop** | `danny-tasks-api-dev.fly.dev` | `danny-web-dev.vercel.app` | Neon | Staging/Testing |
+| **Production** | `danny-tasks-api-prod.fly.dev` | `danny-web.vercel.app` | Neon | Live |
 
 ## Project Structure
 
@@ -34,6 +57,7 @@ tasks/
 │   └── vercel.json
 │
 ├── extension/        # Browser extension (Chrome)
+│   └── Supports environment switching (Local/Develop/Production)
 │
 └── legacy/           # Original JS prototype (archived)
 ```
@@ -139,6 +163,22 @@ pnpm mcp
 cd api && pnpm mcp
 ```
 
+### Chrome Extension
+
+The extension provides a side panel with environment switching:
+
+**Installation:**
+1. Open Chrome → `chrome://extensions/`
+2. Enable "Developer mode"
+3. Click "Load unpacked" → Select `extension/` folder
+
+**Environment Switching:**
+- Use the dropdown at the top to switch between Local/Develop/Production
+- Your selection persists across browser restarts
+- Each environment maintains its own API keys and settings
+
+See [extension/README.md](./extension/README.md) for detailed setup instructions.
+
 ### Build & Test
 
 ```bash
@@ -233,11 +273,37 @@ npx tsc --noEmit            # Type checking
 
 ## Deployment
 
-### One-Click Platforms
+### Automated CI/CD (Recommended)
 
-- **Railway** → Auto-deploy on push, managed Postgres optional
-- **Render** → Auto-deploy on push, persistent disk for PGlite
-- **Fly.io** → Manual deploy, use Fly Postgres for production
+Deployments happen automatically via GitHub Actions when you push to `develop` or `main`:
+
+**Workflow:**
+1. Push to `develop` → Tests run → Deploy to staging (Fly.io + Vercel)
+2. Merge PR to `main` → Tests run → Deploy to production (Fly.io + Vercel)
+
+**Setup:**
+- API deploys to Fly.io (both develop and production)
+- Web deploys to Vercel (both develop and production)
+- All deployments are test-gated (must pass tests first)
+- No manual deployment needed
+
+See [DEPLOYMENT.md](./DEPLOYMENT.md) for complete deployment setup guide.
+
+### Manual Deployment (if needed)
+
+**API (Fly.io):**
+```bash
+cd api
+fly deploy --app danny-tasks-api-prod   # Production
+fly deploy --app danny-tasks-api-dev    # Develop
+```
+
+**Web (Vercel):**
+```bash
+cd web
+vercel --prod                           # Production
+vercel                                  # Preview/Develop
+```
 
 ### Self-Hosted
 
@@ -245,17 +311,18 @@ npx tsc --noEmit            # Type checking
 - **Manual** → Build and run on any Node.js 22+ server
 
 See [SELF_HOSTING.md](./SELF_HOSTING.md) for detailed self-hosting guide.
-See [api/DEPLOYMENT.md](./api/DEPLOYMENT.md) for production deployment guide.
 
 ## Documentation
 
 | Document | Description |
 |----------|-------------|
-| [DEVELOPMENT.md](./DEVELOPMENT.md) | **Development guide & troubleshooting** |
+| [DEPLOYMENT.md](./DEPLOYMENT.md) | **Complete deployment guide (Fly.io + Vercel + CI/CD)** |
+| [DEVELOPMENT.md](./DEVELOPMENT.md) | Development guide & troubleshooting |
 | [api/README.md](./api/README.md) | API documentation |
-| [api/DEPLOYMENT.md](./api/DEPLOYMENT.md) | Deployment guide |
+| [api/DEPLOYMENT.md](./api/DEPLOYMENT.md) | API deployment details (Fly.io) |
 | [api/ARCHITECTURE.md](./api/ARCHITECTURE.md) | Architecture details |
 | [api/DOCKER.md](./api/DOCKER.md) | Docker setup |
+| [extension/README.md](./extension/README.md) | Chrome extension setup & usage |
 
 ## Features
 

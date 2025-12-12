@@ -52,10 +52,12 @@ jobs:
         run: |
           TARGET="${{ inputs.target || 'prod' }}"
           TIMESTAMP=$(date +%Y%m%d-%H%M%S)
-          OUTPUT="backup-${TARGET}-${TIMESTAMP}.json"
+          OUTPUT="backup-${TARGET}-${TIMESTAMP}.sql"
           
           echo "Creating backup: ${OUTPUT}"
-          pnpm db:export --output "${OUTPUT}"
+          # Note: db:export was removed during PGlite migration
+          # For Neon/Postgres databases, use pg_dump directly
+          pg_dump "${DATABASE_URL}" -f "${OUTPUT}" --no-owner --no-acl
           
           # Store output filename for later steps
           echo "BACKUP_FILE=${OUTPUT}" >> $GITHUB_ENV
@@ -64,7 +66,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: database-backup-${{ github.run_number }}
-          path: api/backup-*.json
+          path: api/backup-*.sql
           retention-days: 30
           compression-level: 9
 
@@ -94,7 +96,7 @@ jobs:
           \`\`\`bash
           # Download the artifact from this workflow run
           # Then in api/ directory:
-          pnpm db:import --input backup-prod-TIMESTAMP.json --mode replace
+          psql "${DATABASE_URL}" -f backup-prod-TIMESTAMP.sql
           \`\`\`
           EOF
 

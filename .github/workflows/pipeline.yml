@@ -174,14 +174,21 @@ jobs:
           sleep 8
           
           # Run contract tests (individual workflow files for stability)
-          npx stepci run step-ci/workflows/blueprint/health.yaml
-          npx stepci run step-ci/workflows/blueprint/tasks.yaml
-          TEST_RESULT=$?
+          # Run both and fail if either fails
+          HEALTH_PASS=0
+          TASKS_PASS=0
+          
+          npx stepci run step-ci/workflows/blueprint/health.yaml && HEALTH_PASS=1 || HEALTH_PASS=0
+          npx stepci run step-ci/workflows/blueprint/tasks.yaml && TASKS_PASS=1 || TASKS_PASS=0
           
           # Cleanup
           kill $SERVER_PID 2>/dev/null || true
           
-          exit $TEST_RESULT
+          # Exit with failure if either test failed
+          if [[[ $HEALTH_PASS -eq 0 ]] || [[[ $TASKS_PASS -eq 0 ]]; then
+            echo "::error::Contract tests failed (health: $HEALTH_PASS, tasks: $TASKS_PASS)"
+            exit 1
+          fi
 
   test-web:
     needs: [ changes ]

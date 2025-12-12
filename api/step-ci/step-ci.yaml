@@ -14,7 +14,7 @@ config:
 
 # Include all workflow files
 components:
-  # Blueprint tests - all routes
+  # Blueprint tests - all routes, response format validation
   - path: workflows/blueprint/health.yaml
   - path: workflows/blueprint/tasks.yaml
   - path: workflows/blueprint/projects.yaml
@@ -22,9 +22,11 @@ components:
   - path: workflows/blueprint/ai.yaml
   - path: workflows/blueprint/stats.yaml
   - path: workflows/blueprint/errors.yaml
+  - path: workflows/blueprint/scheduling.yaml
   
-  # Contract tests - user flows
+  # Contract tests - end-to-end user flow sequences
+  - path: workflows/contracts/task-lifecycle.yaml
   - path: workflows/contracts/sync-classify-complete.yaml
   - path: workflows/contracts/ai-workflow.yaml
-  - path: workflows/contracts/task-lifecycle.yaml
+  - path: workflows/contracts/scheduling-workflow.yaml
 

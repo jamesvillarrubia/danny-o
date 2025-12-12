@@ -324,7 +324,7 @@ You're being orchestrated by Claude in a chat. Format responses conversationally
           required: ['taskId'],
         },
         handler: async (args: any) => {
-          await this.taskProvider.completeTask(args.taskId);
+          await this.taskProvider.closeTask(args.taskId);
           return { success: true, taskId: args.taskId };
         },
       },
@@ -339,7 +339,7 @@ You're being orchestrated by Claude in a chat. Format responses conversationally
           required: ['taskId'],
         },
         handler: async (args: any) => {
-          await this.taskProvider.completeTask(args.taskId);
+          await this.taskProvider.closeTask(args.taskId);
           return { success: true, taskId: args.taskId, archived: true };
         },
       },
@@ -419,7 +419,7 @@ You're being orchestrated by Claude in a chat. Format responses conversationally
         },
         handler: async (args: any) => {
           try {
-            await this.taskProvider.addCommentToTask(args.taskId, args.content);
+            await this.taskProvider.addComment(args.taskId, args.content);
             return {
               success: true,
               taskId: args.taskId,

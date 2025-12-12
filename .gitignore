@@ -20,6 +20,7 @@ build/
 *.db-wal
 data/
 .danny/  # CLI data directory (typically in ~/.danny/)
+:memory:/  # PGlite in-memory database artifacts
 
 # IDE / Editor
 .vscode/

@@ -1,3 +1,10 @@
+/**
+ * Vitest Configuration
+ * 
+ * Unit tests only - contract tests use Step-CI.
+ * @see test/TESTING_STRATEGY.md
+ */
+
 import { defineConfig } from 'vitest/config';
 import { resolve } from 'path';
 
@@ -6,7 +13,18 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     setupFiles: ['./test/setup.ts'],
-    include: ['test/**/*.spec.ts'],
+    
+    // Unit tests only - pure logic and internal behavior
+    // Contract tests are handled by Step-CI (pnpm test:step-ci:mock)
+    include: ['test/unit/**/*.spec.ts'],
+    
+    // Exclude integration/e2e (now covered by Step-CI contracts)
+    exclude: [
+      'test/integration/**',
+      'test/e2e/**',
+      'node_modules/**',
+    ],
+    
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
@@ -20,7 +38,8 @@ export default defineConfig({
         'src/main.ts',
       ],
     },
-    // Use tsx for TypeScript execution
+    
+    // Fork pool for isolation
     pool: 'forks',
     poolOptions: {
       forks: {
@@ -28,6 +47,7 @@ export default defineConfig({
       },
     },
   },
+  
   resolve: {
     alias: {
       '@': resolve(__dirname, './src'),
@@ -42,4 +62,3 @@ export default defineConfig({
     },
   },
 });
-

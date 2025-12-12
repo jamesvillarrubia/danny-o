@@ -152,8 +152,36 @@ jobs:
           cache: 'pnpm'
           cache-dependency-path: api/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
-      - run: pnpm lint
-      - run: pnpm test
+      
+      # Static analysis
+      - name: Lint
+        run: pnpm lint
+      
+      # Unit tests (pure logic, algorithms)
+      - name: Unit Tests
+        run: pnpm test
+      
+      # Contract tests (API boundary tests via Step-CI)
+      - name: Build for Contract Tests
+        run: pnpm build
+      - name: Contract Tests
+        run: |
+          # Start server in background with mocks
+          RUN_MODE=http USE_MOCKS=true PGLITE_PATH=:memory: node dist/main.js &
+          SERVER_PID=$!
+          
+          # Wait for server to be ready
+          sleep 8
+          
+          # Run contract tests (individual workflow files for stability)
+          npx stepci run step-ci/workflows/blueprint/health.yaml
+          npx stepci run step-ci/workflows/blueprint/tasks.yaml
+          TEST_RESULT=$?
+          
+          # Cleanup
+          kill $SERVER_PID 2>/dev/null || true
+          
+          exit $TEST_RESULT
 
   test-web:
     needs: [ changes ]

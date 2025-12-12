@@ -4,7 +4,7 @@
  * In-memory implementation of IStorageAdapter for testing.
  */
 
-import { IStorageAdapter, Task, TaskMetadata, TaskHistory, Project, Label, TaskFilters, SyncState } from '../../src/common/interfaces';
+import { IStorageAdapter, Task, TaskMetadata, TaskHistory, Project, Label, TaskFilters, SyncState, TaskInsightStats } from '../../src/common/interfaces';
 
 export class MockStorageAdapter implements IStorageAdapter {
   private tasks: Map<string, Task> = new Map();
@@ -277,6 +277,121 @@ export class MockStorageAdapter implements IStorageAdapter {
     return results;
   }
 
+  // Task Insight Stats
+  async getTaskInsightStats(): Promise<TaskInsightStats> {
+    const tasks = Array.from(this.tasks.values());
+    return {
+      totalActive: tasks.filter(t => !t.isCompleted).length,
+      completedLast7Days: 0,
+      completedLast30Days: 0,
+      avgCompletionTimeMinutes: null,
+      categoryCounts: [],
+      priorityCounts: [],
+      overdueCount: 0,
+      dueTodayCount: 0,
+      dueThisWeekCount: 0,
+      noDateCount: tasks.filter(t => !t.dueDate).length,
+    };
+  }
+
+  // Dashboard Views
+  private views: Map<number, any> = new Map();
+  private viewIdCounter = 1;
+
+  async getViews(): Promise<any[]> {
+    return Array.from(this.views.values());
+  }
+
+  async getView(slugOrId: string | number): Promise<any | null> {
+    if (typeof slugOrId === 'number') {
+      return this.views.get(slugOrId) || null;
+    }
+    return Array.from(this.views.values()).find(v => v.slug === slugOrId) || null;
+  }
+
+  async createView(data: { name: string; slug: string; filterConfig: any; orderIndex?: number }): Promise<any> {
+    const view = {
+      id: this.viewIdCounter++,
+      ...data,
+      isDefault: false,
+      orderIndex: data.orderIndex ?? 0,
+    };
+    this.views.set(view.id, view);
+    return view;
+  }
+
+  async updateView(slugOrId: string | number, data: { name?: string; filterConfig?: any; orderIndex?: number }): Promise<boolean> {
+    const view = await this.getView(slugOrId);
+    if (!view) return false;
+    Object.assign(view, data);
+    return true;
+  }
+
+  async deleteView(slugOrId: string | number): Promise<boolean> {
+    const view = await this.getView(slugOrId);
+    if (!view || view.isDefault) return false;
+    return this.views.delete(view.id);
+  }
+
+  // Cached Insights
+  private cachedInsights: Map<string, { data: any; generatedAt: string; expiresAt: string }> = new Map();
+
+  async getCachedInsights<T>(cacheKey: string): Promise<{ data: T; generatedAt: string; expiresAt: string } | null> {
+    const cached = this.cachedInsights.get(cacheKey);
+    if (!cached) return null;
+    if (new Date(cached.expiresAt) < new Date()) {
+      this.cachedInsights.delete(cacheKey);
+      return null;
+    }
+    return cached as { data: T; generatedAt: string; expiresAt: string };
+  }
+
+  async setCachedInsights<T>(cacheKey: string, data: T, ttlHours = 24): Promise<void> {
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + ttlHours * 60 * 60 * 1000);
+    this.cachedInsights.set(cacheKey, {
+      data,
+      generatedAt: now.toISOString(),
+      expiresAt: expiresAt.toISOString(),
+    });
+  }
+
+  async invalidateCachedInsights(cacheKey: string): Promise<void> {
+    this.cachedInsights.delete(cacheKey);
+  }
+
+  // App Configuration
+  private configs: Map<string, string> = new Map();
+
+  async getConfig(key: string): Promise<string | null> {
+    return this.configs.get(key) || null;
+  }
+
+  async setConfig(key: string, value: string, encrypted = false): Promise<void> {
+    this.configs.set(key, value);
+  }
+
+  async getConfigs(keys: string[]): Promise<Record<string, string | null>> {
+    const result: Record<string, string | null> = {};
+    for (const key of keys) {
+      result[key] = this.configs.get(key) || null;
+    }
+    return result;
+  }
+
+  async hasConfig(key: string): Promise<boolean> {
+    return this.configs.has(key);
+  }
+
+  // System Information
+  getDialect(): 'pglite' | 'postgres' {
+    return 'pglite';
+  }
+
+  getConnectionInfo(): { dialect: 'pglite' | 'postgres'; path?: string; connectionString?: string } {
+    return { dialect: 'pglite', path: ':memory:' };
+  }
+
   // Helper methods for testing
   clear(): void {
     this.tasks.clear();
@@ -287,6 +402,9 @@ export class MockStorageAdapter implements IStorageAdapter {
     this.lastSyncTime = null;
     this.syncToken = '*';
     this.aiInteractions = [];
+    this.views.clear();
+    this.cachedInsights.clear();
+    this.configs.clear();
   }
 
   seedTasks(tasks: Task[]): void {

@@ -87,6 +87,7 @@ export class AIController {
       description: body.description?.trim(),
       priority: 1,
       isCompleted: false,
+      projectId: 'inbox', // Default to inbox for AI analysis
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -284,7 +285,7 @@ export class AIController {
     // Save estimate
     await this.enrichmentService.enrichTask(body.taskId, {
       timeEstimate: result.timeEstimate,
-      timeEstimateMinutes: result.timeEstimateMinutes,
+      timeEstimateMinutes: result.timeEstimateMinutes ?? undefined,
       size: result.size,
       aiConfidence: result.confidence,
       aiReasoning: result.reasoning,
@@ -396,7 +397,7 @@ export class AIController {
       // Save the estimate
       await this.enrichmentService.enrichTask(result.taskId, {
         timeEstimate: result.timeEstimate,
-        timeEstimateMinutes: result.timeEstimateMinutes,
+        timeEstimateMinutes: result.timeEstimateMinutes ?? undefined,
         size: result.size,
         aiConfidence: result.confidence,
         aiReasoning: result.reasoning,

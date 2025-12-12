@@ -41,8 +41,8 @@ export class ClaudeService implements OnModuleInit {
   private deterministicMode: boolean;
 
   constructor(
-    @Optional() @Inject(ConfigService) private readonly configService?: ConfigService,
     @Inject(PromptsService) private readonly promptsService: PromptsService,
+    @Optional() @Inject(ConfigService) private readonly configService?: ConfigService,
     @Optional() @Inject('IStorageAdapter') private readonly storage?: IStorageAdapter,
   ) {
     // Use the June 2024 version which is more widely available

@@ -30,7 +30,8 @@ const logger = new Logger('TaskProviderModule');
       useFactory: (configService: ConfigService) => {
         const todoistApiKey = configService.get<string>('TODOIST_API_KEY');
         if (!todoistApiKey) {
-          throw new Error('TODOIST_API_KEY is required');
+          logger.warn('TODOIST_API_KEY not set - REST API provider disabled');
+          return null;
         }
         return new TodoistProvider(todoistApiKey);
       },

@@ -5,6 +5,11 @@
   "buildCommand": "cd web && pnpm build",
   "installCommand": "cd web && pnpm install",
   "outputDirectory": "web/dist",
+  "build": {
+    "env": {
+      "VITE_API_URL": "@danny_api_url"
+    }
+  },
   "rewrites": [
     {
       "source": "/(.*)",

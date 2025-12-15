@@ -3,9 +3,13 @@
  *
  * First-run configuration wizard for Danny Tasks.
  * Collects API keys and optional database configuration.
+ * 
+ * For deployed backends (postgres), database selection is hidden since
+ * it's configured via environment variables on the server.
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { getSetupStatus } from '../api/client';
 
 interface SetupFormData {
   claudeApiKey: string;
@@ -27,6 +31,33 @@ export function Setup({ onComplete }: SetupProps) {
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
+  // Backend configuration - determines what options to show
+  const [backendDbType, setBackendDbType] = useState<'pglite' | 'postgres' | null>(null);
+  const [checkingBackend, setCheckingBackend] = useState(true);
+  
+  // Check backend database type on mount
+  useEffect(() => {
+    async function checkBackend() {
+      try {
+        const status = await getSetupStatus();
+        setBackendDbType(status.databaseType);
+        // If backend is postgres, pre-select it and hide the option
+        if (status.databaseType === 'postgres') {
+          setFormData(prev => ({ ...prev, databaseType: 'postgres' }));
+        }
+      } catch (err) {
+        console.error('Failed to check backend status:', err);
+        // Default to showing all options if we can't reach backend
+      } finally {
+        setCheckingBackend(false);
+      }
+    }
+    checkBackend();
+  }, []);
+  
+  // For deployed postgres backends, database is already configured
+  const isDeployedBackend = backendDbType === 'postgres';
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -120,76 +151,88 @@ export function Setup({ onComplete }: SetupProps) {
             </p>
           </div>
 
-          {/* Database Selection */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-3">
-              Database Storage
-            </label>
-            
-            <div className="space-y-3">
-              {/* Embedded Option */}
-              <label className="flex items-start p-4 border-2 border-gray-200 rounded-lg cursor-pointer hover:border-blue-500 transition-colors">
-                <input
-                  type="radio"
-                  name="databaseType"
-                  value="embedded"
-                  checked={formData.databaseType === 'embedded'}
-                  onChange={() => setFormData({ ...formData, databaseType: 'embedded', databaseUrl: '' })}
-                  className="mt-1"
-                />
-                <div className="ml-3">
-                  <div className="font-medium text-gray-900">
-                    Embedded Database (Recommended)
-                  </div>
-                  <div className="text-sm text-gray-600">
-                    No setup required. Perfect for personal use and getting started quickly.
-                  </div>
-                </div>
+          {/* Database Selection - Only shown for self-hosted (pglite) backends */}
+          {!isDeployedBackend && !checkingBackend && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-3">
+                Database Storage
               </label>
-
-              {/* Cloud Postgres Option */}
-              <label className="flex items-start p-4 border-2 border-gray-200 rounded-lg cursor-pointer hover:border-blue-500 transition-colors">
-                <input
-                  type="radio"
-                  name="databaseType"
-                  value="postgres"
-                  checked={formData.databaseType === 'postgres'}
-                  onChange={() => setFormData({ ...formData, databaseType: 'postgres' })}
-                  className="mt-1"
-                />
-                <div className="ml-3">
-                  <div className="font-medium text-gray-900">Cloud PostgreSQL</div>
-                  <div className="text-sm text-gray-600">
-                    For production or team use. Requires external database (Neon, Supabase, etc.)
+              
+              <div className="space-y-3">
+                {/* Embedded Option */}
+                <label className="flex items-start p-4 border-2 border-gray-200 rounded-lg cursor-pointer hover:border-blue-500 transition-colors">
+                  <input
+                    type="radio"
+                    name="databaseType"
+                    value="embedded"
+                    checked={formData.databaseType === 'embedded'}
+                    onChange={() => setFormData({ ...formData, databaseType: 'embedded', databaseUrl: '' })}
+                    className="mt-1"
+                  />
+                  <div className="ml-3">
+                    <div className="font-medium text-gray-900">
+                      Embedded Database (Recommended)
+                    </div>
+                    <div className="text-sm text-gray-600">
+                      No setup required. Perfect for personal use and getting started quickly.
+                    </div>
                   </div>
-                </div>
-              </label>
-            </div>
+                </label>
 
-            {/* Postgres URL Input */}
-            {formData.databaseType === 'postgres' && (
-              <div className="mt-3">
-                <input
-                  type="text"
-                  required
-                  value={formData.databaseUrl}
-                  onChange={(e) => setFormData({ ...formData, databaseUrl: e.target.value })}
-                  placeholder="postgresql://user:password@host:5432/database"
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-                <p className="text-xs text-gray-500 mt-1">
-                  Free PostgreSQL databases:{' '}
-                  <a href="https://neon.tech" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
-                    Neon
-                  </a>
-                  {', '}
-                  <a href="https://supabase.com" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
-                    Supabase
-                  </a>
-                </p>
+                {/* Cloud Postgres Option */}
+                <label className="flex items-start p-4 border-2 border-gray-200 rounded-lg cursor-pointer hover:border-blue-500 transition-colors">
+                  <input
+                    type="radio"
+                    name="databaseType"
+                    value="postgres"
+                    checked={formData.databaseType === 'postgres'}
+                    onChange={() => setFormData({ ...formData, databaseType: 'postgres' })}
+                    className="mt-1"
+                  />
+                  <div className="ml-3">
+                    <div className="font-medium text-gray-900">Cloud PostgreSQL</div>
+                    <div className="text-sm text-gray-600">
+                      For production or team use. Requires external database (Neon, Supabase, etc.)
+                    </div>
+                  </div>
+                </label>
               </div>
-            )}
-          </div>
+
+              {/* Postgres URL Input */}
+              {formData.databaseType === 'postgres' && (
+                <div className="mt-3">
+                  <input
+                    type="text"
+                    required
+                    value={formData.databaseUrl}
+                    onChange={(e) => setFormData({ ...formData, databaseUrl: e.target.value })}
+                    placeholder="postgresql://user:password@host:5432/database"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Free PostgreSQL databases:{' '}
+                    <a href="https://neon.tech" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                      Neon
+                    </a>
+                    {', '}
+                    <a href="https://supabase.com" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                      Supabase
+                    </a>
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+          
+          {/* Info banner for deployed backends */}
+          {isDeployedBackend && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <p className="text-sm text-blue-800">
+                <strong>Cloud Backend Detected:</strong> Database is already configured on the server. 
+                Only API keys need to be set up.
+              </p>
+            </div>
+          )}
 
           {/* Error Message */}
           {error && (

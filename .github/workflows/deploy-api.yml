@@ -1,0 +1,107 @@
+# Deploy API to Fly.io
+#
+# Deploys the NestJS API to Fly.io and sets secrets from GitHub secrets.
+# 
+# Required GitHub Secrets:
+#   - FLY_API_TOKEN: Fly.io API token (get from `fly tokens create deploy`)
+#   - CLAUDE_API_KEY: Anthropic Claude API key
+#   - TODOIST_API_KEY: Todoist API key
+#   - DATABASE_URL_PROD: Production PostgreSQL connection string
+#   - DATABASE_URL_DEV: Development PostgreSQL connection string
+#   - ENCRYPTION_KEY: Key for encrypting stored secrets (32 char hex)
+
+name: Deploy API
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+    paths:
+      - 'api/**'
+      - '.github/workflows/deploy-api.yml'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - prod
+
+jobs:
+  deploy:
+    name: Deploy to Fly.io
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Determine environment
+        id: env
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "environment=${{ github.event.inputs.environment }}" >> $GITHUB_OUTPUT
+          elif [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            echo "environment=prod" >> $GITHUB_OUTPUT
+          else
+            echo "environment=dev" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Set app name
+        id: app
+        run: |
+          if [ "${{ steps.env.outputs.environment }}" = "prod" ]; then
+            echo "name=danny-tasks-api-prod" >> $GITHUB_OUTPUT
+          else
+            echo "name=danny-tasks-api-dev" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Setup Fly.io CLI
+        uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Set Fly.io secrets
+        working-directory: api
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          # Set secrets based on environment
+          if [ "${{ steps.env.outputs.environment }}" = "prod" ]; then
+            flyctl secrets set \
+              CLAUDE_API_KEY="${{ secrets.CLAUDE_API_KEY }}" \
+              TODOIST_API_KEY="${{ secrets.TODOIST_API_KEY }}" \
+              DATABASE_URL="${{ secrets.DATABASE_URL_PROD }}" \
+              ENCRYPTION_KEY="${{ secrets.ENCRYPTION_KEY }}" \
+              DATABASE_ENV=prod \
+              NODE_ENV=production \
+              --app ${{ steps.app.outputs.name }}
+          else
+            flyctl secrets set \
+              CLAUDE_API_KEY="${{ secrets.CLAUDE_API_KEY }}" \
+              TODOIST_API_KEY="${{ secrets.TODOIST_API_KEY }}" \
+              DATABASE_URL="${{ secrets.DATABASE_URL_DEV }}" \
+              ENCRYPTION_KEY="${{ secrets.ENCRYPTION_KEY }}" \
+              DATABASE_ENV=dev \
+              NODE_ENV=production \
+              --app ${{ steps.app.outputs.name }}
+          fi
+
+      - name: Deploy to Fly.io
+        working-directory: api
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          flyctl deploy --app ${{ steps.app.outputs.name }} --remote-only
+
+      - name: Verify deployment
+        working-directory: api
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          # Wait for deployment to be healthy
+          sleep 10
+          flyctl status --app ${{ steps.app.outputs.name }}
+

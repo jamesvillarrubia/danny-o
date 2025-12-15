@@ -1,11 +1,11 @@
-# Ignore the API - it's deployed separately
-api/
+# Ignore the backend API - it's deployed separately (use full path to avoid matching web/src/api/)
+/api
 
 # Ignore legacy code
-legacy/
+/legacy
 
 # Ignore test files
-test/
+/test
 **/*.test.ts
 **/*.spec.ts
 

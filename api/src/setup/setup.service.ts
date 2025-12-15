@@ -20,6 +20,8 @@ export interface SetupStatus {
   setupCompleted: boolean;
   appVersion: string;
   databaseType: 'pglite' | 'postgres';
+  /** True if API keys are configured via environment variables */
+  envConfigured: boolean;
 }
 
 @Injectable()
@@ -27,6 +29,14 @@ export class SetupService {
   private readonly logger = new Logger(SetupService.name);
 
   constructor(@Inject('IStorageAdapter') private readonly storage: IStorageAdapter) {}
+
+  /**
+   * Check if API keys are configured via environment variables.
+   * For cloud deployments (Fly.io, Railway, etc.), this is the preferred method.
+   */
+  private hasEnvApiKeys(): boolean {
+    return !!(process.env.CLAUDE_API_KEY && process.env.TODOIST_API_KEY);
+  }
 
   async getSetupStatus(): Promise<SetupStatus> {
     const configs = await this.storage.getConfigs(['setup_completed', 'app_version']);
@@ -36,10 +46,19 @@ export class SetupService {
       ? 'postgres' 
       : 'pglite';
 
+    // Check if configured via env vars (cloud deployments)
+    const envConfigured = this.hasEnvApiKeys();
+    
+    // Setup is complete if either:
+    // 1. setup_completed flag is set in database (web UI setup)
+    // 2. API keys are set via environment variables (cloud deployment)
+    const setupCompleted = configs.setup_completed === 'true' || envConfigured;
+
     return {
-      setupCompleted: configs.setup_completed === 'true',
+      setupCompleted,
       appVersion: configs.app_version || '2.0.0',
       databaseType,
+      envConfigured,
     };
   }
 

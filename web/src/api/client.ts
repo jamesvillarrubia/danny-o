@@ -87,6 +87,8 @@ export async function getSetupStatus(): Promise<{
   setupCompleted: boolean;
   appVersion: string;
   databaseType: 'pglite' | 'postgres';
+  /** True if API keys are configured via environment variables (cloud deployment) */
+  envConfigured?: boolean;
 }> {
   const baseUrl = getApiBaseUrl();
   // Use /api prefix directly, not /api/v1 since setup is at root level

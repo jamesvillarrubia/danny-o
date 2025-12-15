@@ -5,7 +5,6 @@
   "buildCommand": "cd web && pnpm build",
   "installCommand": "cd web && pnpm install",
   "outputDirectory": "web/dist",
-  "functions": {},
   "rewrites": [
     {
       "source": "/(.*)",

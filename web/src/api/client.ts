@@ -10,12 +10,19 @@ import type { Task, View, ChatResponse, ListTasksResponse, ListViewsResponse, Ap
 /** Default local development URL */
 const LOCAL_API_URL = 'http://localhost:3001';
 
-/** Fallback to environment variable if set */
+/** Build-time environment variable (set by Vite/Vercel) */
 const ENV_API_URL = import.meta.env.VITE_API_URL || '';
+
+/**
+ * Detect if we're running in a deployed environment (Vercel, etc.)
+ * If VITE_API_URL is set at build time, we're deployed.
+ */
+const IS_DEPLOYED = !!ENV_API_URL;
 
 /**
  * Runtime state for environment configuration.
  * These values are updated when the user changes settings.
+ * Default to 'auto' which uses VITE_API_URL if set, otherwise local.
  */
 let currentEnvironment: ApiEnvironment = 'local';
 let currentProductionUrl = '';
@@ -24,19 +31,28 @@ let currentProductionUrl = '';
  * Get the current API base URL based on environment setting.
  * 
  * Priority:
- * 1. If environment is 'production', use productionUrl from settings
- * 2. If environment is 'local', use localhost:3001
- * 3. Fallback to VITE_API_URL environment variable
+ * 1. If VITE_API_URL is set (deployed), use it as the default
+ * 2. If environment is 'production' AND productionUrl is set, use productionUrl
+ * 3. If environment is 'local' AND not deployed, use localhost:3001
+ * 4. Fallback to VITE_API_URL or empty (proxy mode)
  */
 function getApiBaseUrl(): string {
-  if (currentEnvironment === 'production' && currentProductionUrl) {
-    return currentProductionUrl;
+  // In deployed environments, always use the build-time API URL
+  // unless user has explicitly configured a custom production URL
+  if (IS_DEPLOYED) {
+    if (currentEnvironment === 'production' && currentProductionUrl) {
+      return currentProductionUrl;
+    }
+    return ENV_API_URL;
   }
+  
+  // Local development: use localhost
   if (currentEnvironment === 'local') {
     return LOCAL_API_URL;
   }
-  // Fallback to env variable or empty (proxy mode)
-  return ENV_API_URL;
+  
+  // Fallback for edge cases
+  return ENV_API_URL || LOCAL_API_URL;
 }
 
 /**

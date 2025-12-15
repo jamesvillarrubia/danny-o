@@ -8,8 +8,8 @@
 // Note: Update production URL after deploying to Vercel
 const ENVIRONMENTS = {
   local: 'http://localhost:3001',
-  develop: 'https://danny-web-dev.vercel.app',  // Or your custom Vercel preview domain
-  production: 'https://danny-web.vercel.app'    // Or your custom production domain
+  develop: 'https://danny-o-git-develop-james-villarrubias-projects.vercel.app',
+  production: 'https://danny-o.vercel.app'
 };
 
 // Default environment

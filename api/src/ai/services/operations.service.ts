@@ -22,6 +22,7 @@ import {
   SupplyAnalysisDto,
   SearchResultDto,
   InsightsDto,
+  ComprehensiveInsightsDto,
 } from '../dto';
 
 interface Label {
@@ -120,6 +121,8 @@ export class AIOperationsService {
             category: result.category,
             labels: existingLabels,
             suggestedLabels: suggestedLabels,
+            requiresDriving: result.requiresDriving ?? false,
+            timeConstraint: result.timeConstraint ?? 'anytime',
             confidence: result.confidence,
             reasoning: result.reasoning,
           });
@@ -213,14 +216,20 @@ export class AIOperationsService {
     this.logger.log(`Estimated: ${result.estimate} (${result.size})`);
 
     // Parse time estimate to minutes if not provided
-    const timeEstimateMinutes =
-      result.timeEstimateMinutes || this.parseTimeToMinutes(result.estimate);
+    // If needsBreakdown is true, timeEstimateMinutes should be null
+    const needsBreakdown = result.needsBreakdown === true || result.estimate === 'needs-breakdown';
+    const timeEstimateMinutes = needsBreakdown 
+      ? null 
+      : (result.timeEstimateMinutes || this.parseTimeToMinutes(result.estimate));
 
     return {
       taskId: task.id,
       timeEstimate: result.estimate,
       timeEstimateMinutes,
+      needsBreakdown,
       size: result.size,
+      requiresDriving: result.requiresDriving ?? false,
+      timeConstraint: result.timeConstraint ?? 'anytime',
       confidence: result.confidence,
       reasoning: result.reasoning,
     };
@@ -459,26 +468,125 @@ export class AIOperationsService {
 
   /**
    * Analyze completion patterns and provide insights
+   * Uses pre-computed statistics from the database (not raw task data)
    */
   async generateInsights(): Promise<InsightsDto> {
     this.logger.log('Generating insights...');
 
-    // Get recent history
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    // Get pre-computed statistics from the database
+    // This is more accurate and uses fewer tokens than sending raw task data
+    const stats = await this.storage.getTaskInsightStats();
 
-    const history = await this.storage.getTaskHistory({
-      startDate: thirtyDaysAgo,
-      limit: 1000,
+    this.logger.log(`Stats: ${stats.totalActive} active, ${stats.totalCompletedLast30Days} completed (30d), ${stats.taskAgeBuckets.stale} stale`);
+
+    // Build prompt with structured statistics (not raw task lists)
+    const prompt = this.prompts.getInsightsPrompt(stats);
+    const result = await this.claude.query(prompt, {
+      temperature: 0.3, // Lower temperature for more deterministic JSON output
+      interactionType: 'insights',
+      inputContext: {
+        totalActive: stats.totalActive,
+        totalCompletedLast30Days: stats.totalCompletedLast30Days,
+        staleTaskCount: stats.taskAgeBuckets.stale,
+        overdueTasks: stats.overdueTasks,
+      },
     });
 
-    const currentTasks = await this.storage.getTasks({ completed: false });
-
-    // For now, use a simple prompt
-    const prompt = `Analyze patterns from ${history.length} completed tasks and ${currentTasks.length} active tasks`;
-    const result = await this.claude.query(prompt);
-
     this.logger.log('Insights generated');
+    return result;
+  }
+
+  /**
+   * Cache key for comprehensive insights
+   */
+  private static readonly INSIGHTS_CACHE_KEY = 'comprehensive-insights';
+  
+  /**
+   * Default cache TTL in hours (24 hours)
+   */
+  private static readonly INSIGHTS_CACHE_TTL_HOURS = 24;
+
+  /**
+   * Generate comprehensive insights with full stats and AI analysis
+   * This is the enhanced version that returns everything for the Insights view
+   * 
+   * @param forceRefresh If true, bypasses cache and regenerates insights
+   */
+  async generateComprehensiveInsights(forceRefresh: boolean = false): Promise<ComprehensiveInsightsDto> {
+    const cacheKey = AIOperationsService.INSIGHTS_CACHE_KEY;
+
+    // Check cache first (unless force refresh)
+    if (!forceRefresh) {
+      const cached = await this.storage.getCachedInsights<ComprehensiveInsightsDto>(cacheKey);
+      if (cached) {
+        this.logger.log(`Returning cached insights (generated ${cached.generatedAt}, expires ${cached.expiresAt})`);
+        return cached.data;
+      }
+    }
+
+    this.logger.log('Generating comprehensive insights...');
+
+    // Get pre-computed statistics from the database
+    const stats = await this.storage.getTaskInsightStats();
+
+    this.logger.log(`Stats: ${stats.totalActive} active, ${stats.totalCompletedLast30Days} completed (30d), score: ${stats.productivityScore}`);
+
+    // Build prompt and get AI analysis
+    const prompt = this.prompts.getInsightsPrompt(stats);
+    const aiResult = await this.claude.query(prompt, {
+      temperature: 0.3,
+      interactionType: 'comprehensive-insights',
+      inputContext: {
+        totalActive: stats.totalActive,
+        totalCompletedLast30Days: stats.totalCompletedLast30Days,
+        productivityScore: stats.productivityScore,
+        currentStreak: stats.currentStreak,
+      },
+    });
+
+    this.logger.log('Comprehensive insights generated');
+
+    const result: ComprehensiveInsightsDto = {
+      stats: {
+        totalActive: stats.totalActive,
+        totalCompletedLast30Days: stats.totalCompletedLast30Days,
+        activeByCategory: stats.activeByCategory,
+        completedByCategory: stats.completedByCategory,
+        taskAgeBuckets: stats.taskAgeBuckets,
+        completionRateLast7Days: stats.completionRateLast7Days,
+        completionRateLast30Days: stats.completionRateLast30Days,
+        tasksWithEstimates: stats.tasksWithEstimates,
+        tasksWithoutEstimates: stats.tasksWithoutEstimates,
+        overdueTasks: stats.overdueTasks,
+        dueSoon: stats.dueSoon,
+        topLabels: stats.topLabels,
+        stalestTasks: stats.stalestTasks,
+        completionsByDayOfWeek: stats.completionsByDayOfWeek,
+        dailyCompletions: stats.dailyCompletions,
+        currentStreak: stats.currentStreak,
+        longestStreak: stats.longestStreak,
+        lastCompletionDate: stats.lastCompletionDate,
+        productivityScore: stats.productivityScore,
+        categoryVelocity: stats.categoryVelocity,
+        procrastinationStats: stats.procrastinationStats,
+      },
+      aiAnalysis: {
+        summary: aiResult.summary || '',
+        keyFindings: aiResult.keyFindings || [],
+        habits: aiResult.habits || { good: [], needsWork: [] },
+        recommendations: aiResult.recommendations || [],
+      },
+      generatedAt: new Date().toISOString(),
+      periodDays: 30,
+    };
+
+    // Cache the result
+    await this.storage.setCachedInsights(
+      cacheKey, 
+      result, 
+      AIOperationsService.INSIGHTS_CACHE_TTL_HOURS
+    );
+
     return result;
   }
 

@@ -57,7 +57,8 @@ Set secrets in Fly.io:
 
 ```bash
 # Required
-fly secrets set DATABASE_URL="postgresql://user:pass@host:5432/dbname"
+fly secrets set DATABASE_ENV="prod"  # Tell app to use PROD_DATABASE_URL
+fly secrets set PROD_DATABASE_URL="postgresql://user:pass@host:5432/dbname"
 fly secrets set TODOIST_API_KEY="your_todoist_key"
 fly secrets set CLAUDE_API_KEY="your_claude_key"
 
@@ -68,7 +69,11 @@ fly secrets set CRON_SECRET="$(openssl rand -hex 32)"
 fly secrets set TODOIST_WEBHOOK_SECRET="your_webhook_secret"
 ```
 
-**Note**: If you created a Fly Postgres database, `DATABASE_URL` is automatically set. You can verify with:
+**Note**: If you created a Fly Postgres database during `fly launch`, the connection string is automatically set as `DATABASE_URL`. You'll need to:
+1. Copy it to `PROD_DATABASE_URL`: `fly secrets set PROD_DATABASE_URL="$(fly secrets list | grep DATABASE_URL | cut -d= -f2-)"`
+2. Set `DATABASE_ENV=prod` to tell the app to use it
+
+Verify with:
 ```bash
 fly secrets list
 ```
@@ -86,6 +91,9 @@ To create manually:
 ```bash
 fly postgres create --name danny-tasks-db
 fly postgres attach danny-tasks-db --app danny-tasks-api
+
+# Then set DATABASE_ENV to tell app to use production database
+fly secrets set DATABASE_ENV="prod"
 ```
 
 #### Option B: External Database (Neon/Supabase)
@@ -261,12 +269,52 @@ To receive real-time updates from Todoist:
 
 ## Local Development
 
-### API
+### Database Selection
 
-For local development, the app uses SQLite by default:
+By default, the API uses embedded PGlite. Use these convenience scripts to switch databases:
 
 ```bash
-# Run API locally (uses SQLite)
+cd api
+
+# Use embedded PGlite (default)
+pnpm start:dev
+
+# Use production PostgreSQL (requires PROD_DATABASE_URL in .env)
+pnpm start:dev:prod
+
+# Use development PostgreSQL (requires DEV_DATABASE_URL in .env)
+pnpm start:dev:dev
+```
+
+Other modes also support database selection:
+
+```bash
+# HTTP mode with different databases
+pnpm start:http        # SQLite
+pnpm start:http:prod   # Production PostgreSQL
+pnpm start:http:dev    # Development PostgreSQL
+
+# CLI mode with different databases
+pnpm cli               # SQLite
+pnpm cli:prod          # Production PostgreSQL
+pnpm cli:dev           # Development PostgreSQL
+
+# MCP mode with different databases
+pnpm mcp               # SQLite
+pnpm mcp:prod          # Production PostgreSQL
+pnpm mcp:dev           # Development PostgreSQL
+```
+
+This is useful for:
+- Testing locally against production data
+- Debugging production issues with actual data
+- Running migrations against specific environments
+
+### API
+
+Run the API locally with SQLite (default):
+
+```bash
 cd api
 pnpm install
 pnpm start:http
@@ -330,6 +378,224 @@ curl https://danny-tasks-api.fly.dev/api/ai-logs?limit=50
 # Get summary
 curl https://danny-tasks-api.fly.dev/api/ai-logs/summary
 ```
+
+---
+
+## Database Management
+
+Danny Tasks uses **PGlite** (embedded PostgreSQL) for local development and **PostgreSQL** for production, ensuring perfect compatibility.
+
+### Database Architecture
+
+**Local Development / Self-Hosting:**
+- Uses PGlite (real Postgres, embedded)
+- Data stored in `./data/tasks.db`
+- No separate database server needed
+- Perfect for personal use
+
+**Production / Teams:**
+- Uses remote PostgreSQL (Neon, Supabase, Fly Postgres)
+- Set via `PROD_DATABASE_URL` environment variable
+- Optimized for concurrent access and scaling
+
+### Auto-Migrations
+
+Migrations run automatically on application startup:
+1. App detects version change
+2. Creates backup (if `BACKUP_BEFORE_UPDATE=true`)
+3. Runs pending migrations
+4. Updates version in config
+5. Starts normally
+
+**Disable auto-migrations:**
+
+```bash
+AUTO_UPDATE=false  # Requires manual migration management
+```
+
+### Backups
+
+**Automatic backups** are created:
+- Before each migration/update
+- Stored in `./data/backups/`
+- Retained for 30 days (configurable via `BACKUP_RETENTION_DAYS`)
+
+**Manual backup:**
+
+```bash
+# PGlite (embedded)
+cp ./data/tasks.db ./backups/manual-backup-$(date +%Y%m%d).db
+
+# Remote Postgres
+pg_dump $PROD_DATABASE_URL > backup-$(date +%Y%m%d).sql
+```
+
+### Configuration
+
+Configure database in `api/.env`:
+
+```bash
+# Use embedded PGlite (default - no config needed)
+# Data stored in ./data/tasks.db
+
+# Or use remote PostgreSQL:
+DATABASE_ENV=prod
+PROD_DATABASE_URL="postgresql://user:password@host:5432/database"
+```
+
+### Common Workflows
+
+#### 1. Local Development with Embedded Database
+
+By default, Danny Tasks uses embedded PGlite - no configuration needed:
+
+```bash
+cd api
+
+# Start dev server (uses ./data/tasks.db automatically)
+pnpm start:dev
+```
+
+Data stored in `./data/tasks.db` - commit or backup this directory for data portability.
+
+#### 2. Using Remote PostgreSQL for Development
+
+Test against a remote database (useful for debugging prod issues):
+
+```bash
+# Set in api/.env
+DATABASE_ENV=dev
+DEV_DATABASE_URL=postgresql://user:pass@host:5432/danny_dev
+
+# Start with dev database
+pnpm start:dev:dev
+```
+
+#### 3. Create Manual Backups
+
+**PGlite (Embedded):**
+
+```bash
+# Simple file copy
+cp ./data/tasks.db ./backups/backup-$(date +%Y%m%d).db
+
+# Or use Docker
+docker cp danny-tasks-api:/app/data/tasks.db ./backup.db
+```
+
+**Remote PostgreSQL:**
+
+```bash
+# Using pg_dump
+pg_dump $PROD_DATABASE_URL > backup-$(date +%Y%m%d).sql
+
+# Or via Fly.io
+fly postgres backup show --app danny-tasks-db
+fly postgres backup create --app danny-tasks-db
+```
+
+#### 4. Restore from Backup
+
+**PGlite:**
+
+```bash
+# Stop app
+docker-compose down
+
+# Restore file
+cp ./backups/backup-20240101.db ./data/tasks.db
+
+# Restart
+docker-compose up -d
+```
+
+**Remote Postgres:**
+
+```bash
+psql $PROD_DATABASE_URL < backup-20240101.sql
+```
+
+### Automated Backups
+
+Production database is automatically backed up daily via GitHub Actions:
+
+- **Schedule**: Daily at 2 AM UTC
+- **Retention**: 30 days
+- **Location**: GitHub Actions artifacts
+- **Manual trigger**: Run from Actions tab
+
+To download a backup:
+1. Go to GitHub Actions → "Backup Production Database"
+2. Select a workflow run
+3. Download the artifact
+4. Extract and use `pnpm db:import`
+
+### Migration Strategy
+
+Migrations run automatically on app startup via `KyselyAdapter.runMigrations()`.
+
+**Migration flow:**
+1. App starts
+2. Checks current version vs database version
+3. Creates backup if update detected
+4. Applies pending migrations
+5. Updates version in `app_config` table
+
+**Adding new migrations:**
+
+Edit `api/src/storage/adapters/kysely.adapter.ts` and add to `runMigrations()`:
+
+```typescript
+await this.runMigration('your_migration_name', async () => {
+  // Your migration code
+  await db.schema.alterTable('tasks').addColumn('new_field', 'text').execute();
+});
+```
+
+**Future Enhancement**: Consider adopting Kysely's file-based migration system or Neon's database branching.
+
+### Switching Between Databases
+
+**Development workflow:**
+
+```bash
+# Use embedded PGlite (default)
+pnpm start:dev
+
+# Test against dev Postgres
+pnpm start:dev:dev
+
+# Test against prod Postgres (read-only recommended)
+pnpm start:dev:prod
+```
+
+**Production deployment:**
+
+```bash
+# Fly.io automatically sets DATABASE_ENV=prod
+# Railway/Render: configure in platform settings
+DATABASE_ENV=prod
+PROD_DATABASE_URL=postgresql://...
+```
+
+### Troubleshooting
+
+**"No such table" error**:
+- Migrations didn't run
+- Check logs: `docker-compose logs api`
+- Ensure app started successfully
+
+**"Connection refused"**:
+- Database not accessible
+- Check `PROD_DATABASE_URL` is correct
+- Verify firewall/network access
+
+**Backup/restore failures**:
+- For PGlite: ensure `/app/data` volume is mounted
+- For Postgres: ensure `pg_dump`/`psql` are installed
+- AI interactions table can be large
+- Consider excluding it: modify `DATA_TABLES` in `scripts/db-tools.ts`
+- Compress backups: `gzip backup.json`
 
 ---
 

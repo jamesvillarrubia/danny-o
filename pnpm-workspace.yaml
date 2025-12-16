@@ -1,0 +1,7 @@
+# pnpm workspace configuration
+# This allows coordinated development of multiple packages
+packages:
+  - 'api'
+  - 'web'
+  - 'extension'
+  - 'legacy'

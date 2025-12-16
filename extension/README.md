@@ -36,20 +36,36 @@ Alternatively, use an online tool like [CloudConvert](https://cloudconvert.com/s
 
 ## Configuration
 
-### Set Danny URL
+### Environment Switching
 
-By default, the extension connects to `http://localhost:3001` for development.
+The extension supports three environments that you can switch between using the dropdown at the top of the side panel:
 
-For production:
+- **Local** (`http://localhost:3001`) - Your local development server
+- **Develop** (`https://danny-web-dev.vercel.app`) - Staging/testing environment on Vercel
+- **Production** (`https://danny-web.vercel.app`) - Live production environment on Vercel
+
+**Note:** Update these URLs in `extension/sidepanel.js` if you use custom Vercel domains.
+
+**How to switch:**
 1. Click the Danny extension icon to open the side panel
-2. If it can't connect, click "Configure URL"
-3. Enter your Vercel deployment URL (e.g., `https://danny-tasks.vercel.app`)
+2. Use the "Environment" dropdown at the top
+3. Select Local, Develop, or Production
+4. The extension will automatically reload with the new environment
 
-The URL is stored in Chrome's local storage.
+**Environment persistence:**
+- Your selected environment is saved in Chrome's local storage
+- It persists across browser restarts
+- Each Chrome profile can have its own environment setting
+
+**Default environment:**
+- The extension defaults to "Local" for development
+- Change it to "Production" for daily use
 
 ### API Key
 
 The API key is configured in the web app itself (not the extension). Once you set it in the settings screen, it's stored in the browser's localStorage and persists across sessions.
+
+**Note:** Each environment (Local, Develop, Production) maintains its own separate localStorage, so you'll need to configure API keys separately for each environment you use.
 
 ## Usage
 
@@ -71,9 +87,25 @@ The API key is configured in the web app itself (not the extension). Once you se
 
 ### "Couldn't connect" error
 
-1. Make sure the Danny server/web app is running
-2. Check the URL configuration
-3. Ensure CORS is enabled on the server (it is by default)
+**For Local environment:**
+1. Make sure the Danny web app is running (`pnpm dev` or `pnpm dev:web`)
+2. Verify it's accessible at `http://localhost:3001`
+3. Check the terminal for any errors
+
+**For Develop/Production environments:**
+1. Verify the Vercel deployment is live
+2. Check the environment URLs are correct:
+   - Develop: `https://danny-web-dev.vercel.app`
+   - Production: `https://danny-web.vercel.app`
+3. Ensure CORS is enabled on the API (it is by default)
+4. Test the URL directly in a browser tab
+5. Check Vercel Dashboard for deployment status: https://vercel.com/dashboard
+
+**General troubleshooting:**
+1. Click "Try Again" button in the error screen
+2. Try switching to a different environment
+3. Check browser console for errors (F12 → Console tab)
+4. Verify the iframe can load the URL (check for HTTPS/mixed content issues)
 
 ### Extension not loading
 

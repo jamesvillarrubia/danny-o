@@ -1,0 +1,51 @@
+services:
+  - type: web
+    name: danny-tasks-api
+    runtime: docker
+    dockerfilePath: ./api/Dockerfile
+    dockerContext: ./api
+    plan: starter
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: RUN_MODE
+        value: http
+      - key: PORT
+        value: 8080
+      - key: AUTO_UPDATE
+        value: true
+      - key: BACKUP_BEFORE_UPDATE
+        value: true
+      - key: BACKUP_RETENTION_DAYS
+        value: "30"
+      - key: DATABASE_ENV
+        sync: false
+      - key: PROD_DATABASE_URL
+        sync: false
+      - key: CLAUDE_API_KEY
+        sync: false
+      - key: TODOIST_API_KEY
+        sync: false
+      - key: ENCRYPTION_SECRET
+        generateValue: true
+    disk:
+      name: danny-data
+      mountPath: /app/data
+      sizeGB: 1
+    healthCheckPath: /health
+
+  - type: web
+    name: danny-tasks-web
+    runtime: docker
+    dockerfilePath: ./web/Dockerfile
+    dockerContext: ./web
+    plan: starter
+    autoDeploy: true
+    envVars:
+      - key: VITE_API_URL
+        value: https://danny-tasks-api.onrender.com
+    routes:
+      - type: redirect
+        source: /*
+        destination: https://danny-tasks-web.onrender.com

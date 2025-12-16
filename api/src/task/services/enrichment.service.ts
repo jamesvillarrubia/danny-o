@@ -10,7 +10,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { IStorageAdapter } from '../../common/interfaces/storage-adapter.interface';
 import { ITaskProvider } from '../../common/interfaces/task-provider.interface';
-import { Task, Project } from '../../common/interfaces';
+import { Task, Project, TimeConstraint } from '../../common/interfaces';
 import {
   TaskMetadataDto,
   EnrichmentOptionsDto,
@@ -48,6 +48,20 @@ const CATEGORY_MAPPINGS: Record<string, string> = {
 
 const VALID_SIZES = ['XS', 'S', 'M', 'L', 'XL'];
 const VALID_ENERGY_LEVELS = ['low', 'medium', 'high'];
+const VALID_TIME_CONSTRAINTS: TimeConstraint[] = ['business-hours', 'weekdays-only', 'evenings', 'weekends', 'anytime'];
+
+// Time bucket labels for Todoist - these should exist as labels in your Todoist account
+const TIME_BUCKET_LABELS = {
+  15: '15-minutes',
+  30: '30-minutes',
+  45: '45-minutes',
+  60: '1-hour',
+  90: '90-minutes',
+  120: '2-hours',
+} as const;
+
+const NEEDS_BREAKDOWN_LABEL = 'needs-breakdown';
+const ALL_TIME_LABELS = [...Object.values(TIME_BUCKET_LABELS), NEEDS_BREAKDOWN_LABEL];
 
 @Injectable()
 export class EnrichmentService {
@@ -92,14 +106,43 @@ export class EnrichmentService {
       this.validateEnergyLevel(metadata.energyLevel);
     }
 
+    if (metadata.timeConstraint) {
+      this.validateTimeConstraint(metadata.timeConstraint);
+    }
+
     // Save AI recommendation with timestamp (use validated category)
     if (validatedCategory) {
       await this.storage.saveFieldMetadata(taskId, 'recommended_category', validatedCategory, now);
     }
 
-    if (metadata.timeEstimate) {
-      const minutes = this.parseTimeEstimate(metadata.timeEstimate);
+    // Handle time estimates - save metadata, sync duration, and apply time bucket label
+    // Check for explicit null/undefined vs having a value
+    const hasExplicitNull = metadata.timeEstimateMinutes === null || 
+                           metadata.timeEstimate === 'needs-breakdown';
+    const minutes = hasExplicitNull ? null : (
+      metadata.timeEstimateMinutes ?? 
+      (metadata.timeEstimate ? this.parseTimeEstimate(metadata.timeEstimate) : null)
+    );
+    
+    if (minutes && minutes > 0) {
       await this.storage.saveFieldMetadata(taskId, 'time_estimate_minutes', minutes, now);
+      
+      // Auto-sync duration to Todoist for time blocking
+      try {
+        await this.taskProvider.updateTaskDuration(taskId, minutes);
+        this.logger.log(`Synced duration ${minutes}min to Todoist for task ${taskId}`);
+      } catch (error: any) {
+        this.logger.warn(`Failed to sync duration to Todoist: ${error.message}`);
+        // Don't fail enrichment if Todoist sync fails
+      }
+      
+      // Apply time bucket label (15min, 30min, 1hr, etc. or needs-breakdown)
+      await this.applyTimeBucketLabel(taskId, minutes);
+    } else if (hasExplicitNull || metadata.timeEstimate) {
+      // Explicitly null or needs-breakdown means task is too complex or can't be estimated
+      // Apply needs-breakdown label
+      this.logger.log(`Task ${taskId} marked as needs-breakdown (cannot estimate time)`);
+      await this.applyTimeBucketLabel(taskId, null);
     }
 
     // Save to old metadata format for backward compatibility
@@ -205,6 +248,56 @@ export class EnrichmentService {
     const avg = Math.round((min + max) / 2);
 
     return avg * multiplier;
+  }
+
+  /**
+   * Get the appropriate time bucket label for a given duration in minutes.
+   * Returns 'needs-breakdown' for tasks > 2 hours.
+   */
+  private getTimeBucketLabel(minutes: number): string {
+    if (minutes <= 0) return NEEDS_BREAKDOWN_LABEL;
+    if (minutes <= 15) return TIME_BUCKET_LABELS[15];
+    if (minutes <= 30) return TIME_BUCKET_LABELS[30];
+    if (minutes <= 45) return TIME_BUCKET_LABELS[45];
+    if (minutes <= 60) return TIME_BUCKET_LABELS[60];
+    if (minutes <= 90) return TIME_BUCKET_LABELS[90];
+    if (minutes <= 120) return TIME_BUCKET_LABELS[120];
+    // Tasks over 2 hours need to be broken down
+    return NEEDS_BREAKDOWN_LABEL;
+  }
+
+  /**
+   * Apply time bucket label to a task based on estimated minutes.
+   * Removes any existing time bucket labels first to avoid conflicts.
+   */
+  private async applyTimeBucketLabel(taskId: string, minutes: number | null): Promise<void> {
+    try {
+      const task = await this.storage.getTask(taskId);
+      if (!task) {
+        this.logger.warn(`Task ${taskId} not found, cannot apply time label`);
+        return;
+      }
+
+      const currentLabels = task.labels || [];
+      
+      // Remove any existing time bucket labels
+      const filteredLabels = currentLabels.filter(
+        (label) => !ALL_TIME_LABELS.includes(label.toLowerCase().replace(/\s+/g, '-'))
+      );
+
+      // Determine the new time label
+      const newTimeLabel = minutes ? this.getTimeBucketLabel(minutes) : NEEDS_BREAKDOWN_LABEL;
+      
+      // Add the new time label
+      const updatedLabels = [...filteredLabels, newTimeLabel];
+
+      // Update task in Todoist
+      await this.taskProvider.updateTask(taskId, { labels: updatedLabels });
+      this.logger.log(`Applied time label "${newTimeLabel}" to task ${taskId} (${minutes || 'unknown'} min)`);
+    } catch (error: any) {
+      this.logger.warn(`Failed to apply time bucket label: ${error.message}`);
+      // Don't fail enrichment if label application fails
+    }
   }
 
   /**
@@ -315,6 +408,21 @@ export class EnrichmentService {
   }
 
   /**
+   * Get tasks that require driving (for trip batching)
+   */
+  async getTasksRequiringDriving(): Promise<Task[]> {
+    return await this.storage.queryTasksByMetadata({ requiresDriving: true });
+  }
+
+  /**
+   * Get tasks by time constraint (for scheduling)
+   */
+  async getTasksByTimeConstraint(timeConstraint: TimeConstraint): Promise<Task[]> {
+    this.validateTimeConstraint(timeConstraint);
+    return await this.storage.queryTasksByMetadata({ timeConstraint });
+  }
+
+  /**
    * Update task category
    */
   async updateCategory(taskId: string, category: string): Promise<void> {
@@ -385,6 +493,14 @@ export class EnrichmentService {
     if (!VALID_ENERGY_LEVELS.includes(energyLevel)) {
       throw new Error(
         `Invalid energy level: ${energyLevel}. Valid levels: ${VALID_ENERGY_LEVELS.join(', ')}`,
+      );
+    }
+  }
+
+  private validateTimeConstraint(timeConstraint: string): void {
+    if (!VALID_TIME_CONSTRAINTS.includes(timeConstraint as TimeConstraint)) {
+      throw new Error(
+        `Invalid time constraint: ${timeConstraint}. Valid constraints: ${VALID_TIME_CONSTRAINTS.join(', ')}`,
       );
     }
   }

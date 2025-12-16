@@ -2,6 +2,44 @@
 
 AI-powered task management system with intelligent categorization, prioritization, and time estimation.
 
+## 🚀 Quick Deploy
+
+**Automated Deployments (Recommended):**
+
+Push to GitHub and let CI/CD handle everything:
+
+```bash
+# Deploy to develop (staging)
+git push origin develop
+
+# Deploy to production (merge PR from develop → main)
+# GitHub Actions will:
+# 1. Run all tests
+# 2. Deploy API to Fly.io
+# 3. Deploy Web to Vercel
+# 4. Create release
+```
+
+**Local Development:**
+
+Run locally with Docker:
+
+```bash
+docker-compose up -d
+```
+
+Visit http://localhost:3001 to complete the setup wizard.
+
+## Environments
+
+Danny Tasks supports a three-environment workflow:
+
+| Environment | API | Web | Database | Use Case |
+|------------|-----|-----|----------|----------|
+| **Local** | `localhost:3000` | `localhost:3001` | Local Postgres | Development |
+| **Develop** | `danny-tasks-api-dev.fly.dev` | `danny-web-dev.vercel.app` | Neon | Staging/Testing |
+| **Production** | `danny-tasks-api-prod.fly.dev` | `danny-web.vercel.app` | Neon | Live |
+
 ## Project Structure
 
 ```
@@ -19,6 +57,7 @@ tasks/
 │   └── vercel.json
 │
 ├── extension/        # Browser extension (Chrome)
+│   └── Supports environment switching (Local/Develop/Production)
 │
 └── legacy/           # Original JS prototype (archived)
 ```
@@ -45,43 +84,113 @@ tasks/
 
 ## Quick Start
 
-### Prerequisites
+### For End Users (Self-Hosting)
+
+**Docker Compose (Recommended)**
+
+```bash
+# Clone the repository
+git clone https://github.com/yourusername/danny-tasks.git
+cd danny-tasks
+
+# Start the stack
+docker-compose up -d
+
+# Visit http://localhost and complete the setup wizard
+```
+
+**Single Docker Image**
+
+```bash
+docker run -d \
+  -p 3000:8080 \
+  -v $(pwd)/data:/app/data \
+  --name danny-tasks \
+  ghcr.io/yourusername/danny-tasks-api:latest
+```
+
+### For Developers
+
+**Prerequisites**
 
 - Node.js 22+
-- pnpm
+- pnpm 9+
 - [Todoist API key](https://todoist.com/prefs/integrations)
 - [Claude API key](https://console.anthropic.com/)
 
-### Development
+**Local Development**
 
 ```bash
-# API (backend)
-cd api
+# Install dependencies
 pnpm install
-cp .env.example .env  # Edit with your API keys
-pnpm start:http
 
-# Web (frontend) - in another terminal
-cd web
-pnpm install
+# Start both API and Web in dev mode
 pnpm dev
+
+# Or run separately:
+pnpm dev:api  # API on port 3000
+pnpm dev:web  # Web on port 3001
+```
+
+The app uses **embedded PGlite** by default (zero config). To use remote PostgreSQL:
+
+```bash
+# Set in api/.env
+DATABASE_ENV=dev
+DEV_DATABASE_URL=postgresql://user:pass@localhost:5432/danny
 ```
 
 ### CLI Commands
 
 ```bash
-cd api
+# From root directory
 pnpm cli sync          # Sync tasks from Todoist
 pnpm cli list          # List tasks
 pnpm cli classify      # AI classification
 pnpm cli plan today    # Generate daily plan
+
+# Or from api directory
+cd api && pnpm cli <command>
 ```
 
 ### MCP Server (for AI agents)
 
 ```bash
-cd api
+# From root directory
 pnpm mcp
+
+# Or from api directory
+cd api && pnpm mcp
+```
+
+### Chrome Extension
+
+The extension provides a side panel with environment switching:
+
+**Installation:**
+1. Open Chrome → `chrome://extensions/`
+2. Enable "Developer mode"
+3. Click "Load unpacked" → Select `extension/` folder
+
+**Environment Switching:**
+- Use the dropdown at the top to switch between Local/Develop/Production
+- Your selection persists across browser restarts
+- Each environment maintains its own API keys and settings
+
+See [extension/README.md](./extension/README.md) for detailed setup instructions.
+
+### Build & Test
+
+```bash
+# Build both API and Web
+pnpm build
+
+# Run all tests
+pnpm test
+
+# Or individually
+pnpm build:api / pnpm build:web
+pnpm test:api / pnpm test:web
 ```
 
 ## CI/CD
@@ -164,27 +273,76 @@ npx tsc --noEmit            # Type checking
 
 ## Deployment
 
-- **API** → [Fly.io](https://fly.io) (container deployment)
-- **Web** → [Vercel](https://vercel.com) (static/SSR)
+### Automated CI/CD (Recommended)
 
-See [api/DEPLOYMENT.md](./api/DEPLOYMENT.md) for full deployment guide.
+Deployments happen automatically via GitHub Actions when you push to `develop` or `main`:
+
+**Workflow:**
+1. Push to `develop` → Tests run → Deploy to staging (Fly.io + Vercel)
+2. Merge PR to `main` → Tests run → Deploy to production (Fly.io + Vercel)
+
+**Setup:**
+- API deploys to Fly.io (both develop and production)
+- Web deploys to Vercel (both develop and production)
+- All deployments are test-gated (must pass tests first)
+- No manual deployment needed
+
+See [DEPLOYMENT.md](./DEPLOYMENT.md) for complete deployment setup guide.
+
+### Manual Deployment (if needed)
+
+**API (Fly.io):**
+```bash
+cd api
+fly deploy --app danny-tasks-api-prod   # Production
+fly deploy --app danny-tasks-api-dev    # Develop
+```
+
+**Web (Vercel):**
+```bash
+cd web
+vercel --prod                           # Production
+vercel                                  # Preview/Develop
+```
+
+### Self-Hosted
+
+- **Docker** → `docker-compose up` for full stack
+- **Manual** → Build and run on any Node.js 22+ server
+
+See [SELF_HOSTING.md](./SELF_HOSTING.md) for detailed self-hosting guide.
 
 ## Documentation
 
 | Document | Description |
 |----------|-------------|
+| [DEPLOYMENT.md](./DEPLOYMENT.md) | **Complete deployment guide (Fly.io + Vercel + CI/CD)** |
+| [DEVELOPMENT.md](./DEVELOPMENT.md) | Development guide & troubleshooting |
 | [api/README.md](./api/README.md) | API documentation |
-| [api/DEPLOYMENT.md](./api/DEPLOYMENT.md) | Deployment guide |
+| [api/DEPLOYMENT.md](./api/DEPLOYMENT.md) | API deployment details (Fly.io) |
 | [api/ARCHITECTURE.md](./api/ARCHITECTURE.md) | Architecture details |
 | [api/DOCKER.md](./api/DOCKER.md) | Docker setup |
+| [extension/README.md](./extension/README.md) | Chrome extension setup & usage |
 
 ## Features
 
 - **AI-Powered Classification** — Automatically categorizes tasks using Claude AI
 - **Model Context Protocol (MCP)** — 17 MCP tools for AI agent integration
 - **Intelligent Enrichment** — Estimates time, energy level, and supplies needed
-- **Multi-Database Support** — SQLite (local), PostgreSQL (production)
+- **Embedded Database** — PGlite (embedded Postgres) with optional cloud upgrade
+- **Auto-Updates** — Automatic migrations with backup-first strategy
+- **Setup Wizard** — Easy first-run configuration via web UI
 - **CLI & HTTP & MCP Modes** — Three interfaces to the same business logic
+
+## Update Strategy
+
+Danny Tasks automatically updates when deployed:
+
+- **Cloud Platforms** (Railway/Render): Git push → auto-deploy → backup → migrate
+- **Docker Self-Host**: `docker pull` + restart → backup → migrate  
+- **Manual Mode**: Set `AUTO_UPDATE=false` for full control
+
+All updates create backups before running migrations. See [SELF_HOSTING.md](./SELF_HOSTING.md) for details.
 
 ## License
 

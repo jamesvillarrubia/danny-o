@@ -1,0 +1,20 @@
+# Ignore the backend API - it's deployed separately (use full path to avoid matching web/src/api/)
+/api
+
+# Ignore legacy code
+/legacy
+
+# Ignore test files
+/test
+**/*.test.ts
+**/*.spec.ts
+
+# Ignore development files
+*.md
+.env*
+docker-compose*.yml
+Dockerfile
+fly.toml
+railway.json
+render.yaml
+

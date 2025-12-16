@@ -17,6 +17,9 @@ import { CLIModule } from './cli/cli.module';
 import { HealthModule } from './health/health.module';
 import { ApiModule } from './api/api.module';
 import { SentryModule } from './sentry/sentry.module';
+import { SetupModule } from './setup/setup.module';
+import { UpdatesModule } from './updates/updates.module';
+import { BackupsModule } from './backups/backups.module';
 
 @Module({
   imports: [
@@ -37,6 +40,13 @@ import { SentryModule } from './sentry/sentry.module';
     AIModule,
     MCPModule,
     CLIModule,
+
+    // Setup wizard
+    SetupModule,
+
+    // Updates and backups
+    UpdatesModule,
+    BackupsModule,
 
     // API layer (HTTP endpoints for Vercel)
     ApiModule,

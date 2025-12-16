@@ -52,7 +52,7 @@ export class TaskTools {
         limit: {
           type: 'number',
           description: 'Maximum number of tasks to return',
-          default: 50,
+          default: 1000,
         },
       },
     },
@@ -61,7 +61,7 @@ export class TaskTools {
     const tasks = await this.storage.getTasks({
       category: args.category,
       priority: args.priority,
-      limit: args.limit || 50,
+      limit: args.limit || 1000,
       completed: false,
     });
 

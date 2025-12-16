@@ -14,6 +14,11 @@ import { IStorageAdapter } from '../../common/interfaces';
 interface QueryOptions {
   temperature?: number;
   maxTokens?: number;
+  /**
+   * Seed for deterministic output. When set with temperature=0,
+   * provides reproducible results (best effort by API).
+   */
+  seed?: number;
   // Logging options
   interactionType?: string;
   taskId?: string;
@@ -32,17 +37,38 @@ export class ClaudeService implements OnModuleInit {
   private model: string;
   private maxTokens: number;
   private temperature: number;
+  private defaultSeed?: number;
+  private deterministicMode: boolean;
 
   constructor(
-    @Optional() @Inject(ConfigService) private readonly configService?: ConfigService,
     @Inject(PromptsService) private readonly promptsService: PromptsService,
+    @Optional() @Inject(ConfigService) private readonly configService?: ConfigService,
     @Optional() @Inject('IStorageAdapter') private readonly storage?: IStorageAdapter,
   ) {
     // Use the June 2024 version which is more widely available
     // Can be overridden via CLAUDE_MODEL env var
     this.model = process.env.CLAUDE_MODEL || 'claude-3-5-sonnet-20240620';
     this.maxTokens = 4096;
-    this.temperature = 0.7;
+    
+    // Deterministic mode configuration
+    // When AI_DETERMINISTIC=true, use temperature=0 and optional seed for reproducible results
+    this.deterministicMode = process.env.AI_DETERMINISTIC === 'true';
+    
+    // Temperature: 0.0 for maximum determinism, 0.7 for creativity
+    // Can be overridden via AI_TEMPERATURE env var
+    const envTemp = process.env.AI_TEMPERATURE;
+    if (envTemp !== undefined) {
+      this.temperature = parseFloat(envTemp);
+    } else {
+      this.temperature = this.deterministicMode ? 0.0 : 0.7;
+    }
+    
+    // Seed for deterministic sampling (optional)
+    // Set via AI_SEED env var for reproducible test results
+    const envSeed = process.env.AI_SEED;
+    if (envSeed !== undefined) {
+      this.defaultSeed = parseInt(envSeed, 10);
+    }
   }
 
   onModuleInit() {
@@ -62,7 +88,13 @@ export class ClaudeService implements OnModuleInit {
     }
 
     this.client = new Anthropic({ apiKey });
-    this.logger.log(`Initialized with model: ${this.model}`);
+    
+    // Log initialization with deterministic settings
+    if (this.deterministicMode) {
+      this.logger.log(`Initialized in DETERMINISTIC mode: model=${this.model}, temp=${this.temperature}, seed=${this.defaultSeed ?? 'none'}`);
+    } else {
+      this.logger.log(`Initialized with model: ${this.model}, temp=${this.temperature}`);
+    }
   }
 
   /**
@@ -91,14 +123,21 @@ export class ClaudeService implements OnModuleInit {
     }
     
     const startTime = Date.now();
+    const effectiveTemp = options.temperature ?? this.temperature;
+    const effectiveSeed = options.seed ?? this.defaultSeed;
     
     try {
-      this.logger.log('Sending query to Claude...');
+      if (this.deterministicMode) {
+        this.logger.debug(`Deterministic query: temp=${effectiveTemp}, seed=${effectiveSeed ?? 'none'}`);
+      } else {
+        this.logger.log('Sending query to Claude...');
+      }
 
-      const response = await this.client.messages.create({
+      // Build request parameters
+      const requestParams: Anthropic.MessageCreateParams = {
         model: this.model,
         max_tokens: options.maxTokens || this.maxTokens,
-        temperature: options.temperature ?? this.temperature,
+        temperature: effectiveTemp,
         system: this.promptsService.SYSTEM_PROMPT,
         messages: [
           {
@@ -106,7 +145,18 @@ export class ClaudeService implements OnModuleInit {
             content: prompt,
           },
         ],
-      });
+      };
+      
+      // Add metadata for deterministic mode (seed support may vary by API version)
+      if (effectiveSeed !== undefined) {
+        // Note: seed support depends on API version. If not supported, it's ignored.
+        (requestParams as any).metadata = {
+          ...(requestParams as any).metadata,
+          user_id: `seed_${effectiveSeed}`,  // Use user_id as a pseudo-seed identifier
+        };
+      }
+
+      const response = await this.client.messages.create(requestParams);
 
       const textContent = response.content[0].type === 'text' 
         ? response.content[0].text 
@@ -134,7 +184,10 @@ export class ClaudeService implements OnModuleInit {
         throw new Error('AI response did not contain valid JSON');
       }
 
-      const parsed = JSON.parse(jsonMatch[0]);
+      // Sanitize JSON - fix control characters in string literals
+      // Claude sometimes returns newlines/tabs inside strings which is invalid JSON
+      const sanitizedJson = this.sanitizeJsonString(jsonMatch[0]);
+      const parsed = JSON.parse(sanitizedJson);
       
       // Log successful interaction
       await this.logInteraction({
@@ -333,12 +386,73 @@ export class ClaudeService implements OnModuleInit {
   /**
    * Get current model information
    */
-  getModelInfo(): { model: string; maxTokens: number; temperature: number } {
+  getModelInfo(): { model: string; maxTokens: number; temperature: number; deterministicMode: boolean; seed?: number } {
     return {
       model: this.model,
       maxTokens: this.maxTokens,
       temperature: this.temperature,
+      deterministicMode: this.deterministicMode,
+      seed: this.defaultSeed,
     };
+  }
+
+  /**
+   * Check if deterministic mode is enabled
+   */
+  isDeterministic(): boolean {
+    return this.deterministicMode;
+  }
+
+  /**
+   * Sanitize JSON string to fix control characters in string literals.
+   * Claude sometimes returns actual newlines/tabs inside JSON strings which is invalid.
+   */
+  private sanitizeJsonString(json: string): string {
+    // Replace control characters inside string values with their escaped equivalents
+    // This regex finds strings and replaces unescaped control chars within them
+    let result = '';
+    let inString = false;
+    let escaped = false;
+    
+    for (let i = 0; i < json.length; i++) {
+      const char = json[i];
+      const code = char.charCodeAt(0);
+      
+      if (escaped) {
+        result += char;
+        escaped = false;
+        continue;
+      }
+      
+      if (char === '\\') {
+        result += char;
+        escaped = true;
+        continue;
+      }
+      
+      if (char === '"') {
+        inString = !inString;
+        result += char;
+        continue;
+      }
+      
+      // If we're in a string and hit a control character, escape it
+      if (inString && code < 32) {
+        if (code === 10) {
+          result += '\\n';  // newline
+        } else if (code === 13) {
+          result += '\\r';  // carriage return
+        } else if (code === 9) {
+          result += '\\t';  // tab
+        } else {
+          result += `\\u${code.toString(16).padStart(4, '0')}`;
+        }
+      } else {
+        result += char;
+      }
+    }
+    
+    return result;
   }
 
   /**

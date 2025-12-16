@@ -1,28 +1,35 @@
 /**
  * Kysely Storage Adapter
- * 
+ *
  * Unified database adapter using Kysely for type-safe queries.
- * Supports both SQLite (local dev) and PostgreSQL (Neon prod).
+ * Supports both PGlite (embedded Postgres) and PostgreSQL (remote/cloud).
  */
 
 import { Injectable, Logger } from '@nestjs/common';
-import { Kysely, SqliteDialect, PostgresDialect, sql } from 'kysely';
-import BetterSqlite3 from 'better-sqlite3';
+import { Kysely, PostgresDialect, sql } from 'kysely';
 import { Pool } from 'pg';
 import { dirname, resolve, join } from 'path';
 import { mkdirSync, existsSync, readdirSync, readFileSync } from 'fs';
 import { createHash } from 'crypto';
 
 import { IStorageAdapter } from '../../common/interfaces/storage-adapter.interface';
-import { Task, Project, Label, TaskFilters, TaskMetadata } from '../../common/interfaces/task.interface';
+import {
+  Task,
+  Project,
+  Label,
+  TaskFilters,
+  TaskMetadata,
+  TimeConstraint,
+  TaskInsightStats,
+} from '../../common/interfaces/task.interface';
 import { Database } from '../database.types';
 
-export type DatabaseDialect = 'sqlite' | 'postgres';
+export type DatabaseDialect = 'pglite' | 'postgres';
 
 export interface KyselyAdapterOptions {
   dialect: DatabaseDialect;
-  // SQLite options
-  sqlitePath?: string;
+  // PGlite options
+  pglitePath?: string;
   // PostgreSQL options
   connectionString?: string;
 }
@@ -38,40 +45,75 @@ export class KyselyAdapter implements IStorageAdapter {
   }
 
   async initialize(): Promise<void> {
-    if (this.options.dialect === 'sqlite') {
-      await this.initializeSqlite();
-    } else {
-      await this.initializePostgres();
+    try {
+      if (this.options.dialect === 'pglite') {
+        await this.initializePGlite();
+      } else {
+        await this.initializePostgres();
+      }
+
+      // Create schema
+      this.logger.log('Creating database schema...');
+      await this.createSchema();
+
+      // Run migrations
+      this.logger.log('Running database migrations...');
+      await this.runMigrations();
+
+      this.logger.log(`Kysely adapter initialized (${this.options.dialect})`);
+    } catch (error: any) {
+      this.logger.error(`Failed to initialize Kysely adapter: ${error.message}`);
+      this.logger.error(error.stack);
+      throw error;
     }
-
-    // Create schema
-    await this.createSchema();
-    
-    // Run migrations
-    await this.runMigrations();
-
-    this.logger.log(`Kysely adapter initialized (${this.options.dialect})`);
   }
 
-  private async initializeSqlite(): Promise<void> {
-    const dbPath = this.options.sqlitePath;
-    if (!dbPath) {
-      throw new Error('SQLite path required for sqlite dialect');
+  private async initializePGlite(): Promise<void> {
+    try {
+      const dbPath = this.options.pglitePath || './data/tasks.db';
+      this.logger.log(`Initializing PGlite at ${dbPath}...`);
+      
+      // Ensure directory exists
+      const dir = dirname(dbPath);
+      mkdirSync(dir, { recursive: true });
+      this.logger.log('Data directory created');
+
+      // Dynamically import PGlite
+      this.logger.log('Importing PGlite...');
+      const { PGlite } = await import('@electric-sql/pglite');
+      this.logger.log('PGlite imported successfully');
+      
+      this.logger.log('Creating PGlite instance...');
+      const pglite = new PGlite(dbPath);
+      
+      // Wait for PGlite to be ready
+      this.logger.log('Waiting for PGlite to be ready...');
+      await pglite.ready;
+      this.logger.log('PGlite is ready');
+
+      // Create a Pool-compatible wrapper for PGlite
+      const poolAdapter = {
+        connect: async () => ({
+          query: async (sql: string, params?: any[]) => pglite.query(sql, params),
+          release: () => {},
+        }),
+        end: async () => await pglite.close(),
+        query: async (sql: string, params?: any[]) => pglite.query(sql, params),
+      };
+
+      this.logger.log('Creating Kysely instance...');
+      this.db = new Kysely<Database>({
+        dialect: new PostgresDialect({
+          pool: poolAdapter as any,
+        }),
+      });
+
+      this.logger.log(`PGlite database initialized successfully at ${dbPath}`);
+    } catch (error: any) {
+      this.logger.error(`Failed to initialize PGlite: ${error.message}`);
+      this.logger.error(error.stack);
+      throw error;
     }
-
-    // Ensure directory exists
-    const dir = dirname(dbPath);
-    mkdirSync(dir, { recursive: true });
-
-    const sqliteDb = new BetterSqlite3(dbPath);
-    sqliteDb.pragma('journal_mode = WAL');
-    sqliteDb.pragma('foreign_keys = ON');
-
-    this.db = new Kysely<Database>({
-      dialect: new SqliteDialect({ database: sqliteDb }),
-    });
-
-    this.logger.log(`SQLite database initialized at ${dbPath}`);
   }
 
   private async initializePostgres(): Promise<void> {
@@ -119,14 +161,15 @@ export class KyselyAdapter implements IStorageAdapter {
 
   private async createSchema(): Promise<void> {
     const db = this.getDb();
-    const isPg = this.options.dialect === 'postgres';
+    // Both PGlite and Postgres use same types (Postgres-compatible)
 
     // Tasks table
+    this.logger.log('Creating tasks table...');
     await db.schema
       .createTable('tasks')
       .ifNotExists()
-      .addColumn('id', 'text', col => col.primaryKey())
-      .addColumn('content', 'text', col => col.notNull())
+      .addColumn('id', 'text', (col) => col.primaryKey())
+      .addColumn('content', 'text', (col) => col.notNull())
       .addColumn('description', 'text')
       .addColumn('project_id', 'text')
       .addColumn('parent_id', 'text')
@@ -136,20 +179,22 @@ export class KyselyAdapter implements IStorageAdapter {
       .addColumn('due_date', 'text')
       .addColumn('due_datetime', 'text')
       .addColumn('due_timezone', 'text')
-      .addColumn('labels', isPg ? 'jsonb' : 'text')
+      .addColumn('labels', 'jsonb')
       .addColumn('created_at', 'text')
-      .addColumn('is_completed', 'integer', col => col.defaultTo(0))
+      .addColumn('is_completed', 'integer', (col) => col.defaultTo(0))
       .addColumn('completed_at', 'text')
       .addColumn('content_hash', 'text')
-      .addColumn('raw_data', isPg ? 'jsonb' : 'text')
-      .addColumn('last_synced_at', 'text', col => col.defaultTo(sql`CURRENT_TIMESTAMP`))
+      .addColumn('raw_data', 'jsonb')
+      .addColumn('last_synced_at', 'text', (col) => col.defaultTo(sql`CURRENT_TIMESTAMP`))
       .execute();
 
     // Task metadata table
     await db.schema
       .createTable('task_metadata')
       .ifNotExists()
-      .addColumn('task_id', 'text', col => col.primaryKey().references('tasks.id').onDelete('cascade'))
+      .addColumn('task_id', 'text', (col) =>
+        col.primaryKey().references('tasks.id').onDelete('cascade'),
+      )
       .addColumn('category', 'text')
       .addColumn('time_estimate', 'text')
       .addColumn('time_estimate_minutes', 'integer')
@@ -157,8 +202,8 @@ export class KyselyAdapter implements IStorageAdapter {
       .addColumn('size', 'text')
       .addColumn('ai_confidence', 'real')
       .addColumn('ai_reasoning', 'text')
-      .addColumn('needs_supplies', 'integer', col => col.defaultTo(0))
-      .addColumn('can_delegate', 'integer', col => col.defaultTo(0))
+      .addColumn('needs_supplies', 'integer', (col) => col.defaultTo(0))
+      .addColumn('can_delegate', 'integer', (col) => col.defaultTo(0))
       .addColumn('energy_level', 'text')
       .addColumn('classification_source', 'text')
       .addColumn('recommended_category', 'text')
@@ -168,127 +213,158 @@ export class KyselyAdapter implements IStorageAdapter {
       .addColumn('priority_classified_at', 'text')
       .addColumn('last_synced_state', 'text')
       .addColumn('last_synced_at', 'text')
-      .addColumn('recommendation_applied', 'integer', col => col.defaultTo(0))
-      .addColumn('created_at', 'text', col => col.defaultTo(sql`CURRENT_TIMESTAMP`))
-      .addColumn('updated_at', 'text', col => col.defaultTo(sql`CURRENT_TIMESTAMP`))
+      .addColumn('recommendation_applied', 'integer', (col) => col.defaultTo(0))
+      .addColumn('requires_driving', 'integer', (col) => col.defaultTo(0))
+      .addColumn('time_constraint', 'text')
+      .addColumn('created_at', 'text', (col) => col.defaultTo(sql`CURRENT_TIMESTAMP`))
+      .addColumn('updated_at', 'text', (col) => col.defaultTo(sql`CURRENT_TIMESTAMP`))
       .execute();
 
     // Task history table
     await db.schema
       .createTable('task_history')
       .ifNotExists()
-      .addColumn('id', isPg ? 'serial' : 'integer', col => isPg ? col.primaryKey() : col.primaryKey().autoIncrement())
-      .addColumn('task_id', 'text', col => col.notNull())
-      .addColumn('content', 'text', col => col.notNull())
-      .addColumn('completed_at', 'text', col => col.notNull())
+      .addColumn('id', 'serial', (col) => col.primaryKey())
+      .addColumn('task_id', 'text', (col) => col.notNull())
+      .addColumn('content', 'text', (col) => col.notNull())
+      .addColumn('completed_at', 'text', (col) => col.notNull())
       .addColumn('actual_duration', 'integer')
       .addColumn('estimated_duration', 'integer')
       .addColumn('category', 'text')
-      .addColumn('context', isPg ? 'jsonb' : 'text')
-      .addColumn('created_at', 'text', col => col.defaultTo(sql`CURRENT_TIMESTAMP`))
+      .addColumn('context', 'jsonb')
+      .addColumn('created_at', 'text', (col) => col.defaultTo(sql`CURRENT_TIMESTAMP`))
       .execute();
 
     // Projects table
     await db.schema
       .createTable('projects')
       .ifNotExists()
-      .addColumn('id', 'text', col => col.primaryKey())
-      .addColumn('name', 'text', col => col.notNull())
+      .addColumn('id', 'text', (col) => col.primaryKey())
+      .addColumn('name', 'text', (col) => col.notNull())
       .addColumn('color', 'text')
       .addColumn('parent_id', 'text')
       .addColumn('order', 'integer')
-      .addColumn('is_shared', 'integer', col => col.defaultTo(0))
-      .addColumn('is_favorite', 'integer', col => col.defaultTo(0))
-      .addColumn('is_inbox_project', 'integer', col => col.defaultTo(0))
-      .addColumn('raw_data', isPg ? 'jsonb' : 'text')
-      .addColumn('last_synced_at', 'text', col => col.defaultTo(sql`CURRENT_TIMESTAMP`))
+      .addColumn('is_shared', 'integer', (col) => col.defaultTo(0))
+      .addColumn('is_favorite', 'integer', (col) => col.defaultTo(0))
+      .addColumn('is_inbox_project', 'integer', (col) => col.defaultTo(0))
+      .addColumn('raw_data', 'jsonb')
+      .addColumn('last_synced_at', 'text', (col) => col.defaultTo(sql`CURRENT_TIMESTAMP`))
       .execute();
 
     // Labels table
     await db.schema
       .createTable('labels')
       .ifNotExists()
-      .addColumn('id', 'text', col => col.primaryKey())
-      .addColumn('name', 'text', col => col.notNull())
+      .addColumn('id', 'text', (col) => col.primaryKey())
+      .addColumn('name', 'text', (col) => col.notNull())
       .addColumn('color', 'text')
       .addColumn('order', 'integer')
-      .addColumn('is_favorite', 'integer', col => col.defaultTo(0))
-      .addColumn('last_synced_at', 'text', col => col.defaultTo(sql`CURRENT_TIMESTAMP`))
+      .addColumn('is_favorite', 'integer', (col) => col.defaultTo(0))
+      .addColumn('last_synced_at', 'text', (col) => col.defaultTo(sql`CURRENT_TIMESTAMP`))
       .execute();
 
     // Sync state table
     await db.schema
       .createTable('sync_state')
       .ifNotExists()
-      .addColumn('key', 'text', col => col.primaryKey())
+      .addColumn('key', 'text', (col) => col.primaryKey())
       .addColumn('value', 'text')
-      .addColumn('updated_at', 'text', col => col.defaultTo(sql`CURRENT_TIMESTAMP`))
+      .addColumn('updated_at', 'text', (col) => col.defaultTo(sql`CURRENT_TIMESTAMP`))
       .execute();
 
     // AI interactions logging table
     await db.schema
       .createTable('ai_interactions')
       .ifNotExists()
-      .addColumn('id', isPg ? 'serial' : 'integer', col => isPg ? col.primaryKey() : col.primaryKey().autoIncrement())
-      .addColumn('interaction_type', 'text', col => col.notNull())
+      .addColumn('id', 'serial', (col) => col.primaryKey())
+      .addColumn('interaction_type', 'text', (col) => col.notNull())
       .addColumn('task_id', 'text')
-      .addColumn('input_context', isPg ? 'jsonb' : 'text')
+      .addColumn('input_context', 'jsonb')
       .addColumn('prompt_used', 'text')
-      .addColumn('ai_response', isPg ? 'jsonb' : 'text')
+      .addColumn('ai_response', 'jsonb')
       .addColumn('action_taken', 'text')
-      .addColumn('success', 'integer', col => col.defaultTo(1))
+      .addColumn('success', 'integer', (col) => col.defaultTo(1))
       .addColumn('error_message', 'text')
       .addColumn('latency_ms', 'integer')
       .addColumn('model_used', 'text')
-      .addColumn('created_at', 'text', col => col.defaultTo(sql`CURRENT_TIMESTAMP`))
+      .addColumn('created_at', 'text', (col) => col.defaultTo(sql`CURRENT_TIMESTAMP`))
       .execute();
 
     // Migrations table
     await db.schema
       .createTable('migrations')
       .ifNotExists()
-      .addColumn('id', 'text', col => col.primaryKey())
-      .addColumn('applied_at', 'text', col => col.defaultTo(sql`CURRENT_TIMESTAMP`))
+      .addColumn('id', 'text', (col) => col.primaryKey())
+      .addColumn('applied_at', 'text', (col) => col.defaultTo(sql`CURRENT_TIMESTAMP`))
       .execute();
 
     // Dashboard views table
     await db.schema
       .createTable('views')
       .ifNotExists()
-      .addColumn('id', isPg ? 'serial' : 'integer', col => isPg ? col.primaryKey() : col.primaryKey().autoIncrement())
-      .addColumn('name', 'text', col => col.notNull())
-      .addColumn('slug', 'text', col => col.notNull().unique())
-      .addColumn('filter_config', isPg ? 'jsonb' : 'text', col => col.notNull())
-      .addColumn('is_default', 'integer', col => col.defaultTo(0))
-      .addColumn('order_index', 'integer', col => col.defaultTo(0))
-      .addColumn('created_at', 'text', col => col.defaultTo(sql`CURRENT_TIMESTAMP`))
-      .addColumn('updated_at', 'text', col => col.defaultTo(sql`CURRENT_TIMESTAMP`))
+      .addColumn('id', 'serial', (col) => col.primaryKey())
+      .addColumn('name', 'text', (col) => col.notNull())
+      .addColumn('slug', 'text', (col) => col.notNull().unique())
+      .addColumn('filter_config', 'jsonb', (col) => col.notNull())
+      .addColumn('is_default', 'integer', (col) => col.defaultTo(0))
+      .addColumn('order_index', 'integer', (col) => col.defaultTo(0))
+      .addColumn('created_at', 'text', (col) => col.defaultTo(sql`CURRENT_TIMESTAMP`))
+      .addColumn('updated_at', 'text', (col) => col.defaultTo(sql`CURRENT_TIMESTAMP`))
+      .execute();
+
+    // Cached insights table - stores expensive AI-generated insights
+    await db.schema
+      .createTable('cached_insights')
+      .ifNotExists()
+      .addColumn('id', 'serial', (col) => col.primaryKey())
+      .addColumn('cache_key', 'text', (col) => col.notNull().unique())
+      .addColumn('data', 'jsonb', (col) => col.notNull())
+      .addColumn('generated_at', 'text', (col) => col.notNull())
+      .addColumn('expires_at', 'text', (col) => col.notNull())
+      .addColumn('created_at', 'text', (col) => col.defaultTo(sql`CURRENT_TIMESTAMP`))
+      .execute();
+
+    // App configuration table - stores application settings and API keys
+    await db.schema
+      .createTable('app_config')
+      .ifNotExists()
+      .addColumn('key', 'text', (col) => col.primaryKey())
+      .addColumn('value', 'text', (col) => col.notNull())
+      .addColumn('encrypted', 'integer', (col) => col.defaultTo(0))
+      .addColumn('updated_at', 'text', (col) => col.defaultTo(sql`CURRENT_TIMESTAMP`))
       .execute();
 
     // Create indices
     await sql`CREATE INDEX IF NOT EXISTS idx_tasks_project_id ON tasks(project_id)`.execute(db);
     await sql`CREATE INDEX IF NOT EXISTS idx_tasks_is_completed ON tasks(is_completed)`.execute(db);
-    await sql`CREATE INDEX IF NOT EXISTS idx_task_metadata_category ON task_metadata(category)`.execute(db);
-    await sql`CREATE INDEX IF NOT EXISTS idx_task_history_completed_at ON task_history(completed_at)`.execute(db);
-    await sql`CREATE INDEX IF NOT EXISTS idx_ai_interactions_type ON ai_interactions(interaction_type)`.execute(db);
-    await sql`CREATE INDEX IF NOT EXISTS idx_ai_interactions_created ON ai_interactions(created_at)`.execute(db);
+    await sql`CREATE INDEX IF NOT EXISTS idx_task_metadata_category ON task_metadata(category)`.execute(
+      db,
+    );
+    await sql`CREATE INDEX IF NOT EXISTS idx_task_history_completed_at ON task_history(completed_at)`.execute(
+      db,
+    );
+    await sql`CREATE INDEX IF NOT EXISTS idx_ai_interactions_type ON ai_interactions(interaction_type)`.execute(
+      db,
+    );
+    await sql`CREATE INDEX IF NOT EXISTS idx_ai_interactions_created ON ai_interactions(created_at)`.execute(
+      db,
+    );
     await sql`CREATE INDEX IF NOT EXISTS idx_views_slug ON views(slug)`.execute(db);
 
     this.logger.log('Database schema created successfully');
 
     // Seed default views if none exist
     await this.seedDefaultViews();
+
+    // Seed default app config if none exist
+    await this.seedDefaultConfig();
   }
 
   private async seedDefaultViews(): Promise<void> {
     const db = this.getDb();
-    
+
     // Check if views already exist
-    const existingViews = await db
-      .selectFrom('views')
-      .select('id')
-      .limit(1)
-      .execute();
+    const existingViews = await db.selectFrom('views').select('id').limit(1).execute();
 
     if (existingViews.length > 0) {
       return; // Views already seeded
@@ -319,7 +395,7 @@ export class KyselyAdapter implements IStorageAdapter {
         name: 'High Priority',
         slug: 'high-priority',
         filter_config: JSON.stringify({
-          priority: [1, 2],
+          priority: [3, 4], // P2 (high) and P1 (urgent) - higher number = higher priority
           completed: false,
         }),
         is_default: 1,
@@ -337,19 +413,145 @@ export class KyselyAdapter implements IStorageAdapter {
     ];
 
     for (const view of defaultViews) {
-      await db
-        .insertInto('views')
-        .values(view)
-        .execute();
+      await db.insertInto('views').values(view).execute();
     }
 
     this.logger.log('Default views seeded');
   }
 
+  private async seedDefaultConfig(): Promise<void> {
+    const db = this.getDb();
+
+    // Check if config already exists
+    const existingConfig = await db.selectFrom('app_config').select('key').limit(1).execute();
+
+    if (existingConfig.length > 0) {
+      return; // Config already seeded
+    }
+
+    // Read version from package.json
+    const packageJson = require('../../../package.json');
+
+    const defaultConfig = [
+      {
+        key: 'setup_completed',
+        value: 'false',
+        encrypted: 0,
+      },
+      {
+        key: 'app_version',
+        value: packageJson.version,
+        encrypted: 0,
+      },
+      {
+        key: 'auto_update',
+        value: 'true',
+        encrypted: 0,
+      },
+      {
+        key: 'backup_before_update',
+        value: 'true',
+        encrypted: 0,
+      },
+      {
+        key: 'backup_retention_days',
+        value: '30',
+        encrypted: 0,
+      },
+    ];
+
+    for (const config of defaultConfig) {
+      await db.insertInto('app_config').values(config).execute();
+    }
+
+    this.logger.log('Default app config seeded');
+  }
+
   private async runMigrations(): Promise<void> {
-    // Migrations are handled by schema creation for now
-    // Can add Kysely migrator later if needed
+    const db = this.getDb();
+
+    // Migration: Add scheduling fields (requires_driving, time_constraint)
+    await this.runMigration('add_scheduling_fields', async () => {
+      // Check if columns exist by trying to select them
+      try {
+        await sql`SELECT requires_driving FROM task_metadata LIMIT 1`.execute(db);
+      } catch (error) {
+        // Column doesn't exist, add it
+        await sql`ALTER TABLE task_metadata ADD COLUMN requires_driving INTEGER DEFAULT 0`.execute(
+          db,
+        );
+        this.logger.log('Added requires_driving column to task_metadata');
+      }
+
+      try {
+        await sql`SELECT time_constraint FROM task_metadata LIMIT 1`.execute(db);
+      } catch (error) {
+        // Column doesn't exist, add it
+        await sql`ALTER TABLE task_metadata ADD COLUMN time_constraint TEXT`.execute(db);
+        this.logger.log('Added time_constraint column to task_metadata');
+      }
+    });
+
+    // Migration: Fix high-priority view filter (was [1,2] which is P4/P3, should be [3,4] for P2/P1)
+    await this.runMigration('fix_high_priority_view', async () => {
+      const wrongConfig = JSON.stringify({ priority: [1, 2], completed: false });
+      const correctConfig = JSON.stringify({ priority: [3, 4], completed: false });
+
+      await db
+        .updateTable('views')
+        .set({ filter_config: correctConfig })
+        .where('slug', '=', 'high-priority')
+        .where('filter_config', '=', wrongConfig)
+        .execute();
+
+      this.logger.log('Fixed high-priority view filter: [1,2] -> [3,4]');
+    });
+
+    // Migration: Add cached_insights table for caching expensive AI-generated insights
+    await this.runMigration('add_cached_insights_table', async () => {
+      await db.schema
+        .createTable('cached_insights')
+        .ifNotExists()
+        .addColumn('id', 'serial', (col) => col.primaryKey())
+        .addColumn('cache_key', 'text', (col) => col.notNull().unique())
+        .addColumn('data', 'jsonb', (col) => col.notNull())
+        .addColumn('generated_at', 'text', (col) => col.notNull())
+        .addColumn('expires_at', 'text', (col) => col.notNull())
+        .addColumn('created_at', 'text', (col) => col.defaultTo(sql`CURRENT_TIMESTAMP`))
+        .execute();
+      this.logger.log('Created cached_insights table');
+    });
+
     this.logger.log('Migrations complete');
+  }
+
+  private async runMigration(migrationId: string, migrationFn: () => Promise<void>): Promise<void> {
+    const db = this.getDb();
+
+    // Check if migration already applied
+    const applied = await db
+      .selectFrom('migrations')
+      .select('id')
+      .where('id', '=', migrationId)
+      .executeTakeFirst();
+
+    if (applied) {
+      return; // Migration already applied
+    }
+
+    // Run migration
+    await migrationFn();
+
+    // Record migration
+    await db
+      .insertInto('migrations')
+      .values({
+        id: migrationId,
+        applied_at: new Date().toISOString(),
+      })
+      .execute();
+
+    this.logger.log(`Migration ${migrationId} applied`);
   }
 
   // ==================== Task Operations ====================
@@ -360,7 +562,7 @@ export class KyselyAdapter implements IStorageAdapter {
 
     for (const task of tasks) {
       const contentHash = createHash('sha256').update(task.content).digest('hex');
-      
+
       await db
         .insertInto('tasks')
         .values({
@@ -383,23 +585,25 @@ export class KyselyAdapter implements IStorageAdapter {
           raw_data: JSON.stringify(task),
           last_synced_at: now,
         })
-        .onConflict(oc => oc.column('id').doUpdateSet({
-          content: task.content,
-          description: task.description || null,
-          project_id: task.projectId || null,
-          parent_id: task.parentId || null,
-          priority: task.priority,
-          due_string: task.due?.string || null,
-          due_date: task.due?.date || null,
-          due_datetime: task.due?.datetime || null,
-          due_timezone: task.due?.timezone || null,
-          labels: JSON.stringify(task.labels || []),
-          is_completed: task.isCompleted ? 1 : 0,
-          completed_at: task.completedAt || null,
-          content_hash: contentHash,
-          raw_data: JSON.stringify(task),
-          last_synced_at: now,
-        }))
+        .onConflict((oc) =>
+          oc.column('id').doUpdateSet({
+            content: task.content,
+            description: task.description || null,
+            project_id: task.projectId || null,
+            parent_id: task.parentId || null,
+            priority: task.priority,
+            due_string: task.due?.string || null,
+            due_date: task.due?.date || null,
+            due_datetime: task.due?.datetime || null,
+            due_timezone: task.due?.timezone || null,
+            labels: JSON.stringify(task.labels || []),
+            is_completed: task.isCompleted ? 1 : 0,
+            completed_at: task.completedAt || null,
+            content_hash: contentHash,
+            raw_data: JSON.stringify(task),
+            last_synced_at: now,
+          }),
+        )
         .execute();
     }
 
@@ -408,7 +612,7 @@ export class KyselyAdapter implements IStorageAdapter {
 
   async getTasks(filters: TaskFilters = {}): Promise<Task[]> {
     const db = this.getDb();
-    
+
     let query = db
       .selectFrom('tasks as t')
       .leftJoin('task_metadata as m', 't.id', 'm.task_id')
@@ -426,6 +630,8 @@ export class KyselyAdapter implements IStorageAdapter {
         'm.classification_source',
         'm.recommended_category',
         'm.recommendation_applied',
+        'm.requires_driving',
+        'm.time_constraint',
       ]);
 
     if (filters.projectId) {
@@ -440,17 +646,23 @@ export class KyselyAdapter implements IStorageAdapter {
     if (filters.completed !== undefined) {
       query = query.where('t.is_completed', '=', filters.completed ? 1 : 0);
     }
+    if (filters.requiresDriving !== undefined) {
+      query = query.where('m.requires_driving', '=', filters.requiresDriving ? 1 : 0);
+    }
+    if (filters.timeConstraint) {
+      query = query.where('m.time_constraint', '=', filters.timeConstraint);
+    }
     if (filters.limit) {
       query = query.limit(filters.limit);
     }
 
     const rows = await query.execute();
-    return rows.map(row => this.rowToTask(row));
+    return rows.map((row) => this.rowToTask(row));
   }
 
   async getTask(taskId: string): Promise<Task | null> {
     const db = this.getDb();
-    
+
     const row = await db
       .selectFrom('tasks as t')
       .leftJoin('task_metadata as m', 't.id', 'm.task_id')
@@ -468,6 +680,8 @@ export class KyselyAdapter implements IStorageAdapter {
         'm.classification_source',
         'm.recommended_category',
         'm.recommendation_applied',
+        'm.requires_driving',
+        'm.time_constraint',
       ])
       .where('t.id', '=', taskId)
       .executeTakeFirst();
@@ -484,6 +698,25 @@ export class KyselyAdapter implements IStorageAdapter {
     if (updates.projectId !== undefined) updateData.project_id = updates.projectId;
     if (updates.priority !== undefined) updateData.priority = updates.priority;
     if (updates.labels !== undefined) updateData.labels = JSON.stringify(updates.labels);
+    if (updates.isCompleted !== undefined) updateData.is_completed = updates.isCompleted ? 1 : 0;
+    if (updates.completedAt !== undefined) updateData.completed_at = updates.completedAt;
+
+    // Handle due date fields
+    if (updates.due !== undefined) {
+      if (updates.due === null) {
+        // Clear due date
+        updateData.due_string = null;
+        updateData.due_date = null;
+        updateData.due_datetime = null;
+        updateData.due_timezone = null;
+      } else {
+        // Update due date fields
+        updateData.due_string = updates.due.string || null;
+        updateData.due_date = updates.due.date || null;
+        updateData.due_datetime = updates.due.datetime || null;
+        updateData.due_timezone = updates.due.timezone || null;
+      }
+    }
 
     if (Object.keys(updateData).length === 0) {
       return false;
@@ -500,18 +733,15 @@ export class KyselyAdapter implements IStorageAdapter {
 
   async deleteTask(taskId: string): Promise<boolean> {
     const db = this.getDb();
-    
-    const result = await db
-      .deleteFrom('tasks')
-      .where('id', '=', taskId)
-      .executeTakeFirst();
+
+    const result = await db.deleteFrom('tasks').where('id', '=', taskId).executeTakeFirst();
 
     return (result.numDeletedRows ?? 0n) > 0n;
   }
 
   async queryTasksByMetadata(criteria: Partial<TaskMetadata>): Promise<Task[]> {
     const db = this.getDb();
-    
+
     let query = db
       .selectFrom('tasks as t')
       .innerJoin('task_metadata as m', 't.id', 'm.task_id')
@@ -529,6 +759,8 @@ export class KyselyAdapter implements IStorageAdapter {
         'm.classification_source',
         'm.recommended_category',
         'm.recommendation_applied',
+        'm.requires_driving',
+        'm.time_constraint',
       ])
       .where('t.is_completed', '=', 0);
 
@@ -547,9 +779,15 @@ export class KyselyAdapter implements IStorageAdapter {
     if (criteria.size) {
       query = query.where('m.size', '=', criteria.size);
     }
+    if (criteria.requiresDriving !== undefined) {
+      query = query.where('m.requires_driving', '=', criteria.requiresDriving ? 1 : 0);
+    }
+    if (criteria.timeConstraint) {
+      query = query.where('m.time_constraint', '=', criteria.timeConstraint);
+    }
 
     const rows = await query.execute();
-    return rows.map(row => this.rowToTask(row));
+    return rows.map((row) => this.rowToTask(row));
   }
 
   // ==================== Task Metadata ====================
@@ -571,27 +809,33 @@ export class KyselyAdapter implements IStorageAdapter {
         needs_supplies: metadata.needsSupplies ? 1 : 0,
         can_delegate: metadata.canDelegate ? 1 : 0,
         energy_level: metadata.energyLevel || null,
+        requires_driving: metadata.requiresDriving ? 1 : 0,
+        time_constraint: metadata.timeConstraint || null,
         created_at: now,
         updated_at: now,
       })
-      .onConflict(oc => oc.column('task_id').doUpdateSet({
-        category: metadata.category || null,
-        time_estimate: metadata.timeEstimate || null,
-        time_estimate_minutes: metadata.timeEstimateMinutes || null,
-        size: metadata.size || null,
-        ai_confidence: metadata.aiConfidence || null,
-        ai_reasoning: metadata.aiReasoning || null,
-        needs_supplies: metadata.needsSupplies ? 1 : 0,
-        can_delegate: metadata.canDelegate ? 1 : 0,
-        energy_level: metadata.energyLevel || null,
-        updated_at: now,
-      }))
+      .onConflict((oc) =>
+        oc.column('task_id').doUpdateSet({
+          category: metadata.category || null,
+          time_estimate: metadata.timeEstimate || null,
+          time_estimate_minutes: metadata.timeEstimateMinutes || null,
+          size: metadata.size || null,
+          ai_confidence: metadata.aiConfidence || null,
+          ai_reasoning: metadata.aiReasoning || null,
+          needs_supplies: metadata.needsSupplies ? 1 : 0,
+          can_delegate: metadata.canDelegate ? 1 : 0,
+          energy_level: metadata.energyLevel || null,
+          requires_driving: metadata.requiresDriving ? 1 : 0,
+          time_constraint: metadata.timeConstraint || null,
+          updated_at: now,
+        }),
+      )
       .execute();
   }
 
   async getTaskMetadata(taskId: string): Promise<TaskMetadata | null> {
     const db = this.getDb();
-    
+
     const row = await db
       .selectFrom('task_metadata')
       .selectAll()
@@ -613,10 +857,17 @@ export class KyselyAdapter implements IStorageAdapter {
       classificationSource: (row.classification_source as 'ai' | 'manual') || undefined,
       recommendedCategory: row.recommended_category || undefined,
       recommendationApplied: row.recommendation_applied === 1,
+      requiresDriving: (row as any).requires_driving === 1,
+      timeConstraint: ((row as any).time_constraint as TimeConstraint) || undefined,
     };
   }
 
-  async saveFieldMetadata(taskId: string, fieldName: string, value: any, classifiedAt: Date): Promise<void> {
+  async saveFieldMetadata(
+    taskId: string,
+    fieldName: string,
+    value: any,
+    classifiedAt: Date,
+  ): Promise<void> {
     const db = this.getDb();
     const now = new Date().toISOString();
     const classifiedAtStr = classifiedAt.toISOString();
@@ -637,7 +888,7 @@ export class KyselyAdapter implements IStorageAdapter {
     await db
       .insertInto('task_metadata')
       .values({ task_id: taskId, updated_at: now })
-      .onConflict(oc => oc.column('task_id').doNothing())
+      .onConflict((oc) => oc.column('task_id').doNothing())
       .execute();
 
     // Build update based on field name
@@ -661,16 +912,15 @@ export class KyselyAdapter implements IStorageAdapter {
         updateData[fieldName] = dbValue;
     }
 
-    await db
-      .updateTable('task_metadata')
-      .set(updateData)
-      .where('task_id', '=', taskId)
-      .execute();
+    await db.updateTable('task_metadata').set(updateData).where('task_id', '=', taskId).execute();
   }
 
-  async getFieldMetadata(taskId: string, fieldName: string): Promise<{ value: any; classifiedAt: Date } | null> {
+  async getFieldMetadata(
+    taskId: string,
+    fieldName: string,
+  ): Promise<{ value: any; classifiedAt: Date } | null> {
     const db = this.getDb();
-    
+
     const row = await db
       .selectFrom('task_metadata')
       .selectAll()
@@ -706,7 +956,7 @@ export class KyselyAdapter implements IStorageAdapter {
 
   async getLastSyncedState(taskId: string): Promise<{ taskState: any; syncedAt: Date } | null> {
     const db = this.getDb();
-    
+
     const row = await db
       .selectFrom('task_metadata')
       .select(['last_synced_state', 'last_synced_at'])
@@ -736,7 +986,7 @@ export class KyselyAdapter implements IStorageAdapter {
     await db
       .insertInto('task_metadata')
       .values({ task_id: taskId, updated_at: now })
-      .onConflict(oc => oc.column('task_id').doNothing())
+      .onConflict((oc) => oc.column('task_id').doNothing())
       .execute();
 
     await db
@@ -752,12 +1002,15 @@ export class KyselyAdapter implements IStorageAdapter {
 
   // ==================== Task History ====================
 
-  async saveTaskCompletion(taskId: string, metadata: {
-    completedAt?: Date;
-    actualDuration?: number;
-    category?: string;
-    context?: any;
-  }): Promise<void> {
+  async saveTaskCompletion(
+    taskId: string,
+    metadata: {
+      completedAt?: Date;
+      actualDuration?: number;
+      category?: string;
+      context?: any;
+    },
+  ): Promise<void> {
     const db = this.getDb();
     const task = await this.getTask(taskId);
 
@@ -778,24 +1031,25 @@ export class KyselyAdapter implements IStorageAdapter {
       .execute();
   }
 
-  async getTaskHistory(filters: {
-    category?: string;
-    startDate?: Date;
-    endDate?: Date;
-    limit?: number;
-  } = {}): Promise<Array<{
-    taskId: string;
-    content: string;
-    completedAt: Date;
-    actualDuration?: number;
-    category?: string;
-  }>> {
+  async getTaskHistory(
+    filters: {
+      category?: string;
+      startDate?: Date;
+      endDate?: Date;
+      limit?: number;
+    } = {},
+  ): Promise<
+    Array<{
+      taskId: string;
+      content: string;
+      completedAt: Date;
+      actualDuration?: number;
+      category?: string;
+    }>
+  > {
     const db = this.getDb();
-    
-    let query = db
-      .selectFrom('task_history')
-      .selectAll()
-      .orderBy('completed_at', 'desc');
+
+    let query = db.selectFrom('task_history').selectAll().orderBy('completed_at', 'desc');
 
     if (filters.category) {
       query = query.where('category', '=', filters.category);
@@ -812,7 +1066,7 @@ export class KyselyAdapter implements IStorageAdapter {
 
     const rows = await query.execute();
 
-    return rows.map(row => ({
+    return rows.map((row) => ({
       taskId: row.task_id,
       content: row.content,
       completedAt: new Date(row.completed_at),
@@ -862,12 +1116,621 @@ export class KyselyAdapter implements IStorageAdapter {
     const commonPatterns = Array.from(wordFreq.entries())
       .sort((a, b) => b[1] - a[1])
       .slice(0, 10)
-      .map(entry => entry[0]);
+      .map((entry) => entry[0]);
 
     return {
       count: stats?.count || 0,
       avgDuration: stats?.avgDuration || 0,
       commonPatterns,
+    };
+  }
+
+  /**
+   * Get pre-computed statistics for task insights
+   * All aggregations done in SQL for accuracy and efficiency
+   */
+  async getTaskInsightStats(): Promise<TaskInsightStats> {
+    const db = this.getDb();
+    const now = new Date();
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+
+    // === BACKLOG PROJECT EXCLUSION ===
+    // These are long-term idea storage projects that shouldn't count in productivity metrics.
+    // Get IDs of backlog projects to exclude from productivity metrics
+    const backlogProjectRows = await db
+      .selectFrom('projects')
+      .select('id')
+      .where((eb) =>
+        eb.or([
+          eb('name', '=', 'Big Ideas'),
+          eb('name', '=', 'Inspiration'),
+          eb('name', 'like', '%Home Renovation%'),
+          eb('name', 'like', '%Home Improvement%'),
+        ]),
+      )
+      .execute();
+
+    const backlogProjectIds = backlogProjectRows.map((r) => r.id);
+
+    this.logger.log(
+      `Excluding ${backlogProjectIds.length} backlog projects from productivity metrics`,
+    );
+
+    // Helper to check if we have backlog projects to exclude
+    const hasBacklogExclusions = backlogProjectIds.length > 0;
+
+    // 1. Get total active tasks count (excluding backlog projects)
+    let activeCountQuery = db
+      .selectFrom('tasks')
+      .select(sql<number>`COUNT(*)`.as('count'))
+      .where('is_completed', '=', 0);
+
+    if (hasBacklogExclusions) {
+      activeCountQuery = activeCountQuery.where((eb) =>
+        eb.or([eb('project_id', 'is', null), eb('project_id', 'not in', backlogProjectIds)]),
+      );
+    }
+
+    const activeCountResult = await activeCountQuery.executeTakeFirst();
+    const totalActive = Number(activeCountResult?.count || 0);
+
+    // 2. Get completed tasks count (last 30 days)
+    const completedCountResult = await db
+      .selectFrom('task_history')
+      .select(sql<number>`COUNT(*)`.as('count'))
+      .where('completed_at', '>=', thirtyDaysAgo.toISOString())
+      .executeTakeFirst();
+    const totalCompletedLast30Days = Number(completedCountResult?.count || 0);
+
+    // 3. Active tasks by project (excluding backlog projects)
+    // Group by actual project name, with "Inbox" for tasks with no project
+    let activeByProjectQuery = db
+      .selectFrom('tasks')
+      .leftJoin('projects', 'tasks.project_id', 'projects.id')
+      .select([
+        sql<string>`COALESCE(projects.name, 'Inbox')`.as('project_name'),
+        sql<number>`COUNT(*)`.as('count'),
+      ])
+      .where('tasks.is_completed', '=', 0);
+
+    if (hasBacklogExclusions) {
+      activeByProjectQuery = activeByProjectQuery.where((eb) =>
+        eb.or([
+          eb('tasks.project_id', 'is', null),
+          eb('tasks.project_id', 'not in', backlogProjectIds),
+        ]),
+      );
+    }
+
+    const activeByProjectRows = await activeByProjectQuery
+      .groupBy(sql`COALESCE(projects.name, 'Inbox')`)
+      .execute();
+
+    // Use activeByCategory name for compatibility with existing interface
+    const activeByCategory: Record<string, number> = {};
+    for (const row of activeByProjectRows) {
+      activeByCategory[row.project_name || 'Inbox'] = Number(row.count);
+    }
+
+    // 4. Completed tasks by project (last 30 days)
+    // Join task_history → tasks → projects to get actual project name
+    let completedByProjectQuery = db
+      .selectFrom('task_history')
+      .innerJoin('tasks', 'task_history.task_id', 'tasks.id')
+      .leftJoin('projects', 'tasks.project_id', 'projects.id')
+      .select([
+        sql<string>`COALESCE(projects.name, 'Inbox')`.as('project_name'),
+        sql<number>`COUNT(*)`.as('count'),
+      ])
+      .where('task_history.completed_at', '>=', thirtyDaysAgo.toISOString());
+
+    if (hasBacklogExclusions) {
+      completedByProjectQuery = completedByProjectQuery.where((eb) =>
+        eb.or([
+          eb('tasks.project_id', 'is', null),
+          eb('tasks.project_id', 'not in', backlogProjectIds),
+        ]),
+      );
+    }
+
+    const completedByProjectRows = await completedByProjectQuery
+      .groupBy(sql`COALESCE(projects.name, 'Inbox')`)
+      .execute();
+
+    const completedByCategory: Record<string, number> = {};
+    for (const row of completedByProjectRows) {
+      completedByCategory[row.project_name || 'Inbox'] = Number(row.count);
+    }
+
+    // 5. Age distribution of active tasks (excluding backlog projects)
+    let ageBucketsQuery = db
+      .selectFrom('tasks')
+      .select([
+        sql<number>`SUM(CASE WHEN created_at >= ${sevenDaysAgo.toISOString()} THEN 1 ELSE 0 END)`.as(
+          'recent',
+        ),
+        sql<number>`SUM(CASE WHEN created_at < ${sevenDaysAgo.toISOString()} AND created_at >= ${thirtyDaysAgo.toISOString()} THEN 1 ELSE 0 END)`.as(
+          'week',
+        ),
+        sql<number>`SUM(CASE WHEN created_at < ${thirtyDaysAgo.toISOString()} AND created_at >= ${ninetyDaysAgo.toISOString()} THEN 1 ELSE 0 END)`.as(
+          'month',
+        ),
+        sql<number>`SUM(CASE WHEN created_at < ${ninetyDaysAgo.toISOString()} THEN 1 ELSE 0 END)`.as(
+          'stale',
+        ),
+      ])
+      .where('is_completed', '=', 0);
+
+    if (hasBacklogExclusions) {
+      ageBucketsQuery = ageBucketsQuery.where((eb) =>
+        eb.or([eb('project_id', 'is', null), eb('project_id', 'not in', backlogProjectIds)]),
+      );
+    }
+
+    const ageBucketsResult = await ageBucketsQuery.executeTakeFirst();
+
+    const taskAgeBuckets = {
+      recent: Number(ageBucketsResult?.recent || 0),
+      week: Number(ageBucketsResult?.week || 0),
+      month: Number(ageBucketsResult?.month || 0),
+      stale: Number(ageBucketsResult?.stale || 0),
+    };
+
+    // 6. Average completion time by project
+    // Join task_history → tasks → projects to get actual project name
+    let avgCompletionQuery = db
+      .selectFrom('task_history')
+      .innerJoin('tasks', 'task_history.task_id', 'tasks.id')
+      .leftJoin('projects', 'tasks.project_id', 'projects.id')
+      .select([
+        sql<string>`COALESCE(projects.name, 'Inbox')`.as('project_name'),
+        sql<number>`AVG(task_history.actual_duration)`.as('avgDuration'),
+      ])
+      .where('task_history.actual_duration', 'is not', null);
+
+    if (hasBacklogExclusions) {
+      avgCompletionQuery = avgCompletionQuery.where((eb) =>
+        eb.or([
+          eb('tasks.project_id', 'is', null),
+          eb('tasks.project_id', 'not in', backlogProjectIds),
+        ]),
+      );
+    }
+
+    const avgCompletionRows = await avgCompletionQuery
+      .groupBy(sql`COALESCE(projects.name, 'Inbox')`)
+      .execute();
+
+    const avgCompletionTimeByCategory: Record<string, number | null> = {};
+    for (const row of avgCompletionRows) {
+      avgCompletionTimeByCategory[row.project_name || 'Inbox'] = row.avgDuration
+        ? Number(row.avgDuration)
+        : null;
+    }
+
+    // 7. Completion rates (excluding backlog projects for created task counts)
+    let tasksCreated7Query = db
+      .selectFrom('tasks')
+      .select(sql<number>`COUNT(*)`.as('count'))
+      .where('created_at', '>=', sevenDaysAgo.toISOString());
+
+    if (hasBacklogExclusions) {
+      tasksCreated7Query = tasksCreated7Query.where((eb) =>
+        eb.or([eb('project_id', 'is', null), eb('project_id', 'not in', backlogProjectIds)]),
+      );
+    }
+
+    const tasksCreatedLast7Days = await tasksCreated7Query.executeTakeFirst();
+
+    const tasksCompletedLast7Days = await db
+      .selectFrom('task_history')
+      .select(sql<number>`COUNT(*)`.as('count'))
+      .where('completed_at', '>=', sevenDaysAgo.toISOString())
+      .executeTakeFirst();
+
+    const created7 = Number(tasksCreatedLast7Days?.count || 0);
+    const completed7 = Number(tasksCompletedLast7Days?.count || 0);
+    const completionRateLast7Days = created7 > 0 ? completed7 / created7 : 0;
+
+    let tasksCreated30Query = db
+      .selectFrom('tasks')
+      .select(sql<number>`COUNT(*)`.as('count'))
+      .where('created_at', '>=', thirtyDaysAgo.toISOString());
+
+    if (hasBacklogExclusions) {
+      tasksCreated30Query = tasksCreated30Query.where((eb) =>
+        eb.or([eb('project_id', 'is', null), eb('project_id', 'not in', backlogProjectIds)]),
+      );
+    }
+
+    const tasksCreatedLast30Days = await tasksCreated30Query.executeTakeFirst();
+
+    const created30 = Number(tasksCreatedLast30Days?.count || 0);
+    const completionRateLast30Days = created30 > 0 ? totalCompletedLast30Days / created30 : 0;
+
+    // 8. Estimate coverage (excluding backlog projects)
+    let estimateCoverageQuery = db
+      .selectFrom('tasks')
+      .leftJoin('task_metadata', 'tasks.id', 'task_metadata.task_id')
+      .select([
+        sql<number>`SUM(CASE WHEN task_metadata.time_estimate IS NOT NULL THEN 1 ELSE 0 END)`.as(
+          'withEstimates',
+        ),
+        sql<number>`SUM(CASE WHEN task_metadata.time_estimate IS NULL THEN 1 ELSE 0 END)`.as(
+          'withoutEstimates',
+        ),
+      ])
+      .where('tasks.is_completed', '=', 0);
+
+    if (hasBacklogExclusions) {
+      estimateCoverageQuery = estimateCoverageQuery.where((eb) =>
+        eb.or([
+          eb('tasks.project_id', 'is', null),
+          eb('tasks.project_id', 'not in', backlogProjectIds),
+        ]),
+      );
+    }
+
+    const estimateCoverageResult = await estimateCoverageQuery.executeTakeFirst();
+
+    const tasksWithEstimates = Number(estimateCoverageResult?.withEstimates || 0);
+    const tasksWithoutEstimates = Number(estimateCoverageResult?.withoutEstimates || 0);
+
+    // 9. Due date analysis (excluding backlog projects)
+    const nowStr = now.toISOString().split('T')[0]; // YYYY-MM-DD
+    const sevenDaysFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
+      .toISOString()
+      .split('T')[0];
+
+    let overdueQuery = db
+      .selectFrom('tasks')
+      .select(sql<number>`COUNT(*)`.as('count'))
+      .where('is_completed', '=', 0)
+      .where('due_date', '<', nowStr)
+      .where('due_date', 'is not', null);
+
+    if (hasBacklogExclusions) {
+      overdueQuery = overdueQuery.where((eb) =>
+        eb.or([eb('project_id', 'is', null), eb('project_id', 'not in', backlogProjectIds)]),
+      );
+    }
+
+    const overdueResult = await overdueQuery.executeTakeFirst();
+    const overdueTasks = Number(overdueResult?.count || 0);
+
+    let dueSoonQuery = db
+      .selectFrom('tasks')
+      .select(sql<number>`COUNT(*)`.as('count'))
+      .where('is_completed', '=', 0)
+      .where('due_date', '>=', nowStr)
+      .where('due_date', '<=', sevenDaysFromNow);
+
+    if (hasBacklogExclusions) {
+      dueSoonQuery = dueSoonQuery.where((eb) =>
+        eb.or([eb('project_id', 'is', null), eb('project_id', 'not in', backlogProjectIds)]),
+      );
+    }
+
+    const dueSoonResult = await dueSoonQuery.executeTakeFirst();
+    const dueSoon = Number(dueSoonResult?.count || 0);
+
+    // 10. Top labels on active tasks
+    const labelRows = await db
+      .selectFrom('tasks')
+      .select([sql<string>`labels`.as('labels')])
+      .where('is_completed', '=', 0)
+      .where('labels', 'is not', null)
+      .execute();
+
+    const labelCounts = new Map<string, number>();
+    for (const row of labelRows) {
+      if (row.labels) {
+        try {
+          const labels = JSON.parse(row.labels as string);
+          if (Array.isArray(labels)) {
+            for (const label of labels) {
+              labelCounts.set(label, (labelCounts.get(label) || 0) + 1);
+            }
+          }
+        } catch {
+          // Ignore parse errors
+        }
+      }
+    }
+
+    const topLabels = Array.from(labelCounts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10)
+      .map(([label, count]) => ({ label, count }));
+
+    // 11. Stalest tasks (for archival suggestions)
+    // Excludes:
+    // - Backlog projects
+    // - Long-term categories (inspiration, big-ideas, someday-maybe, reference)
+    // - Recurring tasks (they're meant to be long-lived)
+    const longTermCategories = ['inspiration', 'big-ideas', 'someday-maybe', 'reference'];
+
+    // Check for recurring tasks - stored in raw_data JSON
+    // PostgreSQL/PGlite syntax: raw_data->'due'->>'is_recurring'
+    const isRecurringExpr = sql<string>`tasks.raw_data->'due'->>'is_recurring'`;
+
+    let stalestTasksQuery = db
+      .selectFrom('tasks')
+      .leftJoin('task_metadata', 'tasks.id', 'task_metadata.task_id')
+      .select([
+        'tasks.id',
+        'tasks.content',
+        'tasks.created_at',
+        sql<string>`COALESCE(task_metadata.category, 'inbox')`.as('category'),
+      ])
+      .where('tasks.is_completed', '=', 0)
+      .where('tasks.created_at', '<', ninetyDaysAgo.toISOString())
+      // Exclude long-term categories
+      .where((eb) =>
+        eb.or([
+          eb('task_metadata.category', 'is', null),
+          eb('task_metadata.category', 'not in', longTermCategories),
+        ]),
+      )
+      // Exclude recurring tasks
+      .where((eb) => eb.or([eb(isRecurringExpr, 'is', null), eb(isRecurringExpr, '!=', 'true')]));
+
+    if (hasBacklogExclusions) {
+      stalestTasksQuery = stalestTasksQuery.where((eb) =>
+        eb.or([
+          eb('tasks.project_id', 'is', null),
+          eb('tasks.project_id', 'not in', backlogProjectIds),
+        ]),
+      );
+    }
+
+    const stalestTasksRows = await stalestTasksQuery
+      .orderBy('tasks.created_at', 'asc')
+      .limit(10)
+      .execute();
+
+    const stalestTasks = stalestTasksRows.map((row) => ({
+      id: row.id,
+      content: row.content.substring(0, 100), // Truncate for prompt
+      ageInDays: row.created_at
+        ? Math.floor((now.getTime() - new Date(row.created_at).getTime()) / (1000 * 60 * 60 * 24))
+        : 0,
+      category: row.category || 'inbox',
+    }));
+
+    // 12. Completions by day of week (from task_history)
+    // PostgreSQL/PGlite: EXTRACT(DOW FROM ...) returns 0=Sunday
+    const dayOfWeekExpr = sql<string>`EXTRACT(DOW FROM completed_at::timestamp)`;
+
+    const dayOfWeekRows = await db
+      .selectFrom('task_history')
+      .select([dayOfWeekExpr.as('dayOfWeek'), sql<number>`COUNT(*)`.as('count')])
+      .where('completed_at', '>=', thirtyDaysAgo.toISOString())
+      .groupBy(dayOfWeekExpr)
+      .execute();
+
+    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const completionsByDayOfWeek: Record<string, number> = {};
+    for (const day of dayNames) {
+      completionsByDayOfWeek[day] = 0;
+    }
+    for (const row of dayOfWeekRows) {
+      const dayIndex = parseInt(String(row.dayOfWeek) || '0', 10);
+      if (dayIndex >= 0 && dayIndex < 7) {
+        completionsByDayOfWeek[dayNames[dayIndex]] = Number(row.count);
+      }
+    }
+
+    // 13. Daily completions for trend chart (last 30 days)
+    // PostgreSQL/PGlite: completed_at::date
+    const dateExpr = sql<string>`completed_at::date`;
+
+    const dailyCompletionsRows = await db
+      .selectFrom('task_history')
+      .select([dateExpr.as('date'), sql<number>`COUNT(*)`.as('count')])
+      .where('completed_at', '>=', thirtyDaysAgo.toISOString())
+      .groupBy(dateExpr)
+      .orderBy('date', 'asc')
+      .execute();
+
+    // Fill in missing dates with 0
+    const dailyCompletions: Array<{ date: string; count: number }> = [];
+    // Normalize the date format (PostgreSQL returns Date objects, SQLite returns strings)
+    const dateMap = new Map(
+      dailyCompletionsRows.map((r) => {
+        const dateVal: unknown = r.date;
+        const dateStr =
+          dateVal instanceof Date
+            ? dateVal.toISOString().split('T')[0]
+            : String(dateVal).split('T')[0];
+        return [dateStr, Number(r.count)];
+      }),
+    );
+    for (let i = 29; i >= 0; i--) {
+      const date = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
+      const dateStr = date.toISOString().split('T')[0];
+      dailyCompletions.push({
+        date: dateStr,
+        count: dateMap.get(dateStr) || 0,
+      });
+    }
+
+    // 14. Calculate streaks
+    let currentStreak = 0;
+    let longestStreak = 0;
+    let tempStreak = 0;
+    let lastCompletionDate: string | null = null;
+
+    // Get completion dates in order
+    const completionDatesRows = await db
+      .selectFrom('task_history')
+      .select(dateExpr.as('date'))
+      .groupBy(dateExpr)
+      .orderBy('date', 'desc')
+      .execute();
+
+    // Normalize dates (PostgreSQL returns Date objects, SQLite returns strings)
+    const normalizeDateStr = (d: unknown): string => {
+      if (d instanceof Date) return d.toISOString().split('T')[0];
+      return String(d).split('T')[0];
+    };
+
+    if (completionDatesRows.length > 0) {
+      lastCompletionDate = normalizeDateStr(completionDatesRows[0].date);
+
+      // Calculate current streak (consecutive days from today/yesterday)
+      const today = now.toISOString().split('T')[0];
+      const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+      const firstDateStr = normalizeDateStr(completionDatesRows[0].date);
+
+      let checkDate =
+        firstDateStr === today ? today : firstDateStr === yesterday ? yesterday : null;
+
+      if (checkDate) {
+        let currentCheckDate: string = checkDate;
+        for (const row of completionDatesRows) {
+          const rowDateStr = normalizeDateStr(row.date);
+          if (rowDateStr === currentCheckDate) {
+            currentStreak++;
+            const prevDate = new Date(new Date(currentCheckDate).getTime() - 24 * 60 * 60 * 1000);
+            currentCheckDate = prevDate.toISOString().split('T')[0];
+          } else {
+            break;
+          }
+        }
+      }
+
+      // Calculate longest streak
+      const sortedDates = completionDatesRows.map((r) => normalizeDateStr(r.date)).sort();
+      tempStreak = 1;
+      for (let i = 1; i < sortedDates.length; i++) {
+        const prevDate = new Date(sortedDates[i - 1]);
+        const currDate = new Date(sortedDates[i]);
+        const diffDays = Math.round(
+          (currDate.getTime() - prevDate.getTime()) / (24 * 60 * 60 * 1000),
+        );
+
+        if (diffDays === 1) {
+          tempStreak++;
+        } else {
+          longestStreak = Math.max(longestStreak, tempStreak);
+          tempStreak = 1;
+        }
+      }
+      longestStreak = Math.max(longestStreak, tempStreak, currentStreak);
+    }
+
+    // 15. Project velocity (avg days to complete by project)
+    // PostgreSQL/PGlite: EXTRACT(EPOCH FROM (t2 - t1)) / 86400
+    const avgDaysExpr = sql<number>`AVG(EXTRACT(EPOCH FROM (task_history.completed_at::timestamp - tasks.created_at::timestamp)) / 86400)`;
+
+    let velocityQuery = db
+      .selectFrom('task_history')
+      .innerJoin('tasks', 'task_history.task_id', 'tasks.id')
+      .leftJoin('projects', 'tasks.project_id', 'projects.id')
+      .select([
+        sql<string>`COALESCE(projects.name, 'Inbox')`.as('project_name'),
+        sql<number>`COUNT(*)`.as('completed'),
+        avgDaysExpr.as('avgDays'),
+      ])
+      .where('task_history.completed_at', '>=', thirtyDaysAgo.toISOString());
+
+    if (hasBacklogExclusions) {
+      velocityQuery = velocityQuery.where((eb) =>
+        eb.or([
+          eb('tasks.project_id', 'is', null),
+          eb('tasks.project_id', 'not in', backlogProjectIds),
+        ]),
+      );
+    }
+
+    const velocityRows = await velocityQuery
+      .groupBy(sql`COALESCE(projects.name, 'Inbox')`)
+      .execute();
+
+    const categoryVelocity: Record<
+      string,
+      { completed: number; avgDaysToComplete: number | null }
+    > = {};
+    for (const row of velocityRows) {
+      categoryVelocity[row.project_name || 'Inbox'] = {
+        completed: Number(row.completed),
+        avgDaysToComplete: row.avgDays ? Math.round(Number(row.avgDays) * 10) / 10 : null,
+      };
+    }
+
+    // 16. Procrastination stats (tasks with due dates)
+    // Use PostgreSQL/PGlite date casting for comparison
+    const completedDateExpr = 'task_history.completed_at::date';
+    const dueDateExpr = 'tasks.due_date::date';
+
+    const procrastinationRows = await db
+      .selectFrom('task_history')
+      .innerJoin('tasks', 'task_history.task_id', 'tasks.id')
+      .select([
+        sql<number>`SUM(CASE 
+          WHEN tasks.due_date IS NOT NULL AND ${sql.raw(completedDateExpr)} < ${sql.raw(dueDateExpr)} THEN 1 
+          ELSE 0 
+        END)`.as('onTime'),
+        sql<number>`SUM(CASE 
+          WHEN tasks.due_date IS NOT NULL AND ${sql.raw(completedDateExpr)} = ${sql.raw(dueDateExpr)} THEN 1 
+          ELSE 0 
+        END)`.as('lastMinute'),
+        sql<number>`SUM(CASE 
+          WHEN tasks.due_date IS NOT NULL AND ${sql.raw(completedDateExpr)} > ${sql.raw(dueDateExpr)} THEN 1 
+          ELSE 0 
+        END)`.as('late'),
+      ])
+      .where('task_history.completed_at', '>=', thirtyDaysAgo.toISOString())
+      .executeTakeFirst();
+
+    const procrastinationStats = {
+      completedOnTime: Number(procrastinationRows?.onTime || 0),
+      completedLastMinute: Number(procrastinationRows?.lastMinute || 0),
+      completedLate: Number(procrastinationRows?.late || 0),
+    };
+
+    // 17. Calculate productivity score (0-100)
+    // Factors: completion rate, streak, estimate coverage, overdue ratio, stale ratio
+    const completionScore = Math.min(completionRateLast30Days * 100, 40); // Max 40 points
+    const streakScore = Math.min(currentStreak * 5, 20); // Max 20 points
+    const estimateCoverage = totalActive > 0 ? tasksWithEstimates / totalActive : 0;
+    const estimateScore = estimateCoverage * 15; // Max 15 points
+    const overdueRatio = totalActive > 0 ? 1 - overdueTasks / totalActive : 1;
+    const overdueScore = overdueRatio * 15; // Max 15 points
+    const staleRatio = totalActive > 0 ? 1 - taskAgeBuckets.stale / totalActive : 1;
+    const staleScore = staleRatio * 10; // Max 10 points
+
+    const productivityScore = Math.round(
+      completionScore + streakScore + estimateScore + overdueScore + staleScore,
+    );
+
+    return {
+      totalActive,
+      totalCompletedLast30Days,
+      activeByCategory,
+      completedByCategory,
+      taskAgeBuckets,
+      avgCompletionTimeByCategory,
+      completionRateLast7Days,
+      completionRateLast30Days,
+      tasksWithEstimates,
+      tasksWithoutEstimates,
+      overdueTasks,
+      dueSoon,
+      topLabels,
+      stalestTasks,
+      // New behavioral metrics
+      completionsByDayOfWeek,
+      dailyCompletions,
+      currentStreak,
+      longestStreak,
+      lastCompletionDate,
+      productivityScore,
+      categoryVelocity,
+      procrastinationStats,
     };
   }
 
@@ -892,17 +1755,19 @@ export class KyselyAdapter implements IStorageAdapter {
           raw_data: JSON.stringify(project),
           last_synced_at: now,
         })
-        .onConflict(oc => oc.column('id').doUpdateSet({
-          name: project.name,
-          color: project.color || null,
-          parent_id: project.parentId || null,
-          order: project.order || 0,
-          is_shared: project.isShared ? 1 : 0,
-          is_favorite: project.isFavorite ? 1 : 0,
-          is_inbox_project: project.isInboxProject ? 1 : 0,
-          raw_data: JSON.stringify(project),
-          last_synced_at: now,
-        }))
+        .onConflict((oc) =>
+          oc.column('id').doUpdateSet({
+            name: project.name,
+            color: project.color || null,
+            parent_id: project.parentId || null,
+            order: project.order || 0,
+            is_shared: project.isShared ? 1 : 0,
+            is_favorite: project.isFavorite ? 1 : 0,
+            is_inbox_project: project.isInboxProject ? 1 : 0,
+            raw_data: JSON.stringify(project),
+            last_synced_at: now,
+          }),
+        )
         .execute();
     }
 
@@ -911,13 +1776,10 @@ export class KyselyAdapter implements IStorageAdapter {
 
   async getProjects(): Promise<Project[]> {
     const db = this.getDb();
-    
-    const rows = await db
-      .selectFrom('projects')
-      .selectAll()
-      .execute();
 
-    return rows.map(row => ({
+    const rows = await db.selectFrom('projects').selectAll().execute();
+
+    return rows.map((row) => ({
       id: row.id,
       name: row.name,
       color: row.color || undefined,
@@ -944,13 +1806,15 @@ export class KyselyAdapter implements IStorageAdapter {
           is_favorite: label.isFavorite ? 1 : 0,
           last_synced_at: now,
         })
-        .onConflict(oc => oc.column('id').doUpdateSet({
-          name: label.name,
-          color: label.color || null,
-          order: label.order || 0,
-          is_favorite: label.isFavorite ? 1 : 0,
-          last_synced_at: now,
-        }))
+        .onConflict((oc) =>
+          oc.column('id').doUpdateSet({
+            name: label.name,
+            color: label.color || null,
+            order: label.order || 0,
+            is_favorite: label.isFavorite ? 1 : 0,
+            last_synced_at: now,
+          }),
+        )
         .execute();
     }
 
@@ -959,13 +1823,10 @@ export class KyselyAdapter implements IStorageAdapter {
 
   async getLabels(): Promise<Label[]> {
     const db = this.getDb();
-    
-    const rows = await db
-      .selectFrom('labels')
-      .selectAll()
-      .execute();
 
-    return rows.map(row => ({
+    const rows = await db.selectFrom('labels').selectAll().execute();
+
+    return rows.map((row) => ({
       id: row.id,
       name: row.name,
       color: row.color || undefined,
@@ -978,7 +1839,7 @@ export class KyselyAdapter implements IStorageAdapter {
 
   async getLastSyncTime(): Promise<Date | null> {
     const db = this.getDb();
-    
+
     const row = await db
       .selectFrom('sync_state')
       .select('value')
@@ -999,16 +1860,18 @@ export class KyselyAdapter implements IStorageAdapter {
         value: timestamp.toISOString(),
         updated_at: now,
       })
-      .onConflict(oc => oc.column('key').doUpdateSet({
-        value: timestamp.toISOString(),
-        updated_at: now,
-      }))
+      .onConflict((oc) =>
+        oc.column('key').doUpdateSet({
+          value: timestamp.toISOString(),
+          updated_at: now,
+        }),
+      )
       .execute();
   }
 
   async getSyncToken(): Promise<string> {
     const db = this.getDb();
-    
+
     const row = await db
       .selectFrom('sync_state')
       .select('value')
@@ -1029,10 +1892,12 @@ export class KyselyAdapter implements IStorageAdapter {
         value: token,
         updated_at: now,
       })
-      .onConflict(oc => oc.column('key').doUpdateSet({
-        value: token,
-        updated_at: now,
-      }))
+      .onConflict((oc) =>
+        oc.column('key').doUpdateSet({
+          value: token,
+          updated_at: now,
+        }),
+      )
       .execute();
   }
 
@@ -1069,33 +1934,34 @@ export class KyselyAdapter implements IStorageAdapter {
       .execute();
   }
 
-  async getAIInteractions(filters: {
-    interactionType?: string;
-    taskId?: string;
-    success?: boolean;
-    startDate?: Date;
-    endDate?: Date;
-    limit?: number;
-  } = {}): Promise<Array<{
-    id: number;
-    interactionType: string;
-    taskId?: string;
-    inputContext?: any;
-    promptUsed?: string;
-    aiResponse?: any;
-    actionTaken?: string;
-    success: boolean;
-    errorMessage?: string;
-    latencyMs?: number;
-    modelUsed?: string;
-    createdAt: Date;
-  }>> {
+  async getAIInteractions(
+    filters: {
+      interactionType?: string;
+      taskId?: string;
+      success?: boolean;
+      startDate?: Date;
+      endDate?: Date;
+      limit?: number;
+    } = {},
+  ): Promise<
+    Array<{
+      id: number;
+      interactionType: string;
+      taskId?: string;
+      inputContext?: any;
+      promptUsed?: string;
+      aiResponse?: any;
+      actionTaken?: string;
+      success: boolean;
+      errorMessage?: string;
+      latencyMs?: number;
+      modelUsed?: string;
+      createdAt: Date;
+    }>
+  > {
     const db = this.getDb();
-    
-    let query = db
-      .selectFrom('ai_interactions')
-      .selectAll()
-      .orderBy('created_at', 'desc');
+
+    let query = db.selectFrom('ai_interactions').selectAll().orderBy('created_at', 'desc');
 
     if (filters.interactionType) {
       query = query.where('interaction_type', '=', filters.interactionType);
@@ -1118,25 +1984,29 @@ export class KyselyAdapter implements IStorageAdapter {
 
     const rows = await query.execute();
 
-    return rows.map(row => ({
+    return rows.map((row) => ({
       id: row.id,
       interactionType: row.interaction_type,
       taskId: row.task_id || undefined,
-      inputContext: row.input_context ? (() => {
-        try {
-          return JSON.parse(row.input_context as string);
-        } catch (e) {
-          return undefined;
-        }
-      })() : undefined,
+      inputContext: row.input_context
+        ? (() => {
+            try {
+              return JSON.parse(row.input_context as string);
+            } catch (e) {
+              return undefined;
+            }
+          })()
+        : undefined,
       promptUsed: row.prompt_used || undefined,
-      aiResponse: row.ai_response ? (() => {
-        try {
-          return JSON.parse(row.ai_response as string);
-        } catch (e) {
-          return undefined;
-        }
-      })() : undefined,
+      aiResponse: row.ai_response
+        ? (() => {
+            try {
+              return JSON.parse(row.ai_response as string);
+            } catch (e) {
+              return undefined;
+            }
+          })()
+        : undefined,
       actionTaken: row.action_taken || undefined,
       success: row.success === 1,
       errorMessage: row.error_message || undefined,
@@ -1148,35 +2018,34 @@ export class KyselyAdapter implements IStorageAdapter {
 
   // ==================== Views Operations ====================
 
-  async getViews(): Promise<Array<{
-    id: number;
-    name: string;
-    slug: string;
-    filterConfig: any;
-    isDefault: boolean;
-    orderIndex: number;
-  }>> {
+  async getViews(): Promise<
+    Array<{
+      id: number;
+      name: string;
+      slug: string;
+      filterConfig: any;
+      isDefault: boolean;
+      orderIndex: number;
+    }>
+  > {
     const db = this.getDb();
-    
-    const rows = await db
-      .selectFrom('views')
-      .selectAll()
-      .orderBy('order_index', 'asc')
-      .execute();
 
-    return rows.map(row => ({
+    const rows = await db.selectFrom('views').selectAll().orderBy('order_index', 'asc').execute();
+
+    return rows.map((row) => ({
       id: row.id,
       name: row.name,
       slug: row.slug,
-      filterConfig: typeof row.filter_config === 'string' 
-        ? (() => {
-            try {
-              return JSON.parse(row.filter_config);
-            } catch (e) {
-              return {};
-            }
-          })()
-        : row.filter_config,
+      filterConfig:
+        typeof row.filter_config === 'string'
+          ? (() => {
+              try {
+                return JSON.parse(row.filter_config);
+              } catch (e) {
+                return {};
+              }
+            })()
+          : row.filter_config,
       isDefault: row.is_default === 1,
       orderIndex: row.order_index,
     }));
@@ -1191,15 +2060,15 @@ export class KyselyAdapter implements IStorageAdapter {
     orderIndex: number;
   } | null> {
     const db = this.getDb();
-    
+
     let query = db.selectFrom('views').selectAll();
-    
+
     if (typeof slugOrId === 'number') {
       query = query.where('id', '=', slugOrId);
     } else {
       query = query.where('slug', '=', slugOrId);
     }
-    
+
     const row = await query.executeTakeFirst();
 
     if (!row) return null;
@@ -1208,15 +2077,16 @@ export class KyselyAdapter implements IStorageAdapter {
       id: row.id,
       name: row.name,
       slug: row.slug,
-      filterConfig: typeof row.filter_config === 'string' 
-        ? (() => {
-            try {
-              return JSON.parse(row.filter_config);
-            } catch (e) {
-              return {};
-            }
-          })()
-        : row.filter_config,
+      filterConfig:
+        typeof row.filter_config === 'string'
+          ? (() => {
+              try {
+                return JSON.parse(row.filter_config);
+              } catch (e) {
+                return {};
+              }
+            })()
+          : row.filter_config,
       isDefault: row.is_default === 1,
       orderIndex: row.order_index,
     };
@@ -1244,7 +2114,7 @@ export class KyselyAdapter implements IStorageAdapter {
       .select(sql<number>`MAX(order_index)`.as('max'))
       .executeTakeFirst();
 
-    const orderIndex = data.orderIndex ?? ((maxOrder?.max ?? -1) + 1);
+    const orderIndex = data.orderIndex ?? (maxOrder?.max ?? -1) + 1;
 
     const result = await db
       .insertInto('views')
@@ -1276,9 +2146,10 @@ export class KyselyAdapter implements IStorageAdapter {
         id: created.id,
         name: created.name,
         slug: created.slug,
-        filterConfig: typeof created.filter_config === 'string'
-          ? JSON.parse(created.filter_config)
-          : created.filter_config,
+        filterConfig:
+          typeof created.filter_config === 'string'
+            ? JSON.parse(created.filter_config)
+            : created.filter_config,
         isDefault: created.is_default === 1,
         orderIndex: created.order_index,
       };
@@ -1288,29 +2159,34 @@ export class KyselyAdapter implements IStorageAdapter {
       id: result.id,
       name: result.name,
       slug: result.slug,
-      filterConfig: typeof result.filter_config === 'string'
-        ? JSON.parse(result.filter_config)
-        : result.filter_config,
+      filterConfig:
+        typeof result.filter_config === 'string'
+          ? JSON.parse(result.filter_config)
+          : result.filter_config,
       isDefault: result.is_default === 1,
       orderIndex: result.order_index,
     };
   }
 
-  async updateView(slugOrId: string | number, data: {
-    name?: string;
-    filterConfig?: any;
-    orderIndex?: number;
-  }): Promise<boolean> {
+  async updateView(
+    slugOrId: string | number,
+    data: {
+      name?: string;
+      filterConfig?: any;
+      orderIndex?: number;
+    },
+  ): Promise<boolean> {
     const db = this.getDb();
     const now = new Date().toISOString();
 
     const updateData: Record<string, any> = { updated_at: now };
     if (data.name !== undefined) updateData.name = data.name;
-    if (data.filterConfig !== undefined) updateData.filter_config = JSON.stringify(data.filterConfig);
+    if (data.filterConfig !== undefined)
+      updateData.filter_config = JSON.stringify(data.filterConfig);
     if (data.orderIndex !== undefined) updateData.order_index = data.orderIndex;
 
     let query = db.updateTable('views').set(updateData);
-    
+
     if (typeof slugOrId === 'number') {
       query = query.where('id', '=', slugOrId);
     } else {
@@ -1323,9 +2199,9 @@ export class KyselyAdapter implements IStorageAdapter {
 
   async deleteView(slugOrId: string | number): Promise<boolean> {
     const db = this.getDb();
-    
+
     let query = db.deleteFrom('views');
-    
+
     if (typeof slugOrId === 'number') {
       query = query.where('id', '=', slugOrId);
     } else {
@@ -1339,6 +2215,151 @@ export class KyselyAdapter implements IStorageAdapter {
     return (result.numDeletedRows ?? 0n) > 0n;
   }
 
+  // ==================== Cached Insights ====================
+
+  async getCachedInsights<T>(cacheKey: string): Promise<{
+    data: T;
+    generatedAt: string;
+    expiresAt: string;
+  } | null> {
+    const db = this.getDb();
+    const now = new Date().toISOString();
+
+    const row = await db
+      .selectFrom('cached_insights')
+      .select(['data', 'generated_at', 'expires_at'])
+      .where('cache_key', '=', cacheKey)
+      .where('expires_at', '>', now) // Only return if not expired
+      .executeTakeFirst();
+
+    if (!row) {
+      return null;
+    }
+
+    // Parse data if stored as string (SQLite) vs JSONB (PostgreSQL)
+    const data = typeof row.data === 'string' ? JSON.parse(row.data) : row.data;
+
+    return {
+      data: data as T,
+      generatedAt: row.generated_at,
+      expiresAt: row.expires_at,
+    };
+  }
+
+  async setCachedInsights<T>(cacheKey: string, data: T, ttlHours: number = 24): Promise<void> {
+    const db = this.getDb();
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + ttlHours * 60 * 60 * 1000);
+
+    const dataStr = JSON.stringify(data);
+
+    // Upsert: delete existing and insert new
+    await db.deleteFrom('cached_insights').where('cache_key', '=', cacheKey).execute();
+
+    await db
+      .insertInto('cached_insights')
+      .values({
+        cache_key: cacheKey,
+        data: dataStr,
+        generated_at: now.toISOString(),
+        expires_at: expiresAt.toISOString(),
+      })
+      .execute();
+
+    this.logger.log(`Cached insights for key '${cacheKey}', expires at ${expiresAt.toISOString()}`);
+  }
+
+  async invalidateCachedInsights(cacheKey: string): Promise<void> {
+    const db = this.getDb();
+
+    await db.deleteFrom('cached_insights').where('cache_key', '=', cacheKey).execute();
+
+    this.logger.log(`Invalidated cached insights for key '${cacheKey}'`);
+  }
+
+  // ==================== App Configuration ====================
+
+  async getConfig(key: string): Promise<string | null> {
+    const db = this.getDb();
+
+    const row = await db
+      .selectFrom('app_config')
+      .select(['value', 'encrypted'])
+      .where('key', '=', key)
+      .executeTakeFirst();
+
+    if (!row) {
+      return null;
+    }
+
+    // Decryption is handled by services that need it (SetupService)
+    // This method returns raw values
+    return row.value;
+  }
+
+  async setConfig(key: string, value: string, encrypted: boolean = false): Promise<void> {
+    const db = this.getDb();
+
+    await db
+      .insertInto('app_config')
+      .values({
+        key,
+        value,
+        encrypted: encrypted ? 1 : 0,
+      })
+      .onConflict((oc) =>
+        oc.column('key').doUpdateSet({
+          value,
+          updated_at: new Date().toISOString(),
+        }),
+      )
+      .execute();
+  }
+
+  async getConfigs(keys: string[]): Promise<Record<string, string | null>> {
+    const db = this.getDb();
+
+    const rows = await db
+      .selectFrom('app_config')
+      .select(['key', 'value'])
+      .where('key', 'in', keys)
+      .execute();
+
+    const result: Record<string, string | null> = {};
+    for (const key of keys) {
+      const row = rows.find((r) => r.key === key);
+      result[key] = row?.value || null;
+    }
+
+    return result;
+  }
+
+  async hasConfig(key: string): Promise<boolean> {
+    const db = this.getDb();
+
+    const row = await db
+      .selectFrom('app_config')
+      .select('key')
+      .where('key', '=', key)
+      .executeTakeFirst();
+
+    return !!row;
+  }
+
+  // ==================== System Information ====================
+
+  getDialect(): 'pglite' | 'postgres' {
+    return this.options.dialect;
+  }
+
+  getConnectionInfo(): { dialect: 'pglite' | 'postgres'; path?: string; connectionString?: string } {
+    return {
+      dialect: this.options.dialect,
+      path: this.options.pglitePath,
+      connectionString: this.options.connectionString,
+    };
+  }
+
   // ==================== Helper Methods ====================
 
   private rowToTask(row: any): Task {
@@ -1349,14 +2370,19 @@ export class KyselyAdapter implements IStorageAdapter {
       projectId: row.project_id || undefined,
       parentId: row.parent_id || undefined,
       priority: row.priority,
-      labels: row.labels && typeof row.labels === 'string' && row.labels.trim() ? (() => {
-        try {
-          return JSON.parse(row.labels);
-        } catch (e) {
-          // If JSON parse fails, return empty array
-          return [];
-        }
-      })() : (Array.isArray(row.labels) ? row.labels : []),
+      labels:
+        row.labels && typeof row.labels === 'string' && row.labels.trim()
+          ? (() => {
+              try {
+                return JSON.parse(row.labels);
+              } catch (e) {
+                // If JSON parse fails, return empty array
+                return [];
+              }
+            })()
+          : Array.isArray(row.labels)
+            ? row.labels
+            : [],
       due: row.due_date
         ? {
             date: row.due_date,
@@ -1370,23 +2396,26 @@ export class KyselyAdapter implements IStorageAdapter {
       updatedAt: row.last_synced_at || undefined,
       isCompleted: row.is_completed === 1,
       completedAt: row.completed_at || undefined,
-      metadata: row.category
-        ? {
-            category: row.category,
-            timeEstimate: row.time_estimate || undefined,
-            timeEstimateMinutes: row.time_estimate_minutes || undefined,
-            size: row.size || undefined,
-            aiConfidence: row.ai_confidence || undefined,
-            aiReasoning: row.ai_reasoning || undefined,
-            needsSupplies: row.needs_supplies === 1,
-            canDelegate: row.can_delegate === 1,
-            energyLevel: row.energy_level || undefined,
-            classificationSource: row.classification_source || undefined,
-            recommendedCategory: row.recommended_category || undefined,
-            recommendationApplied: row.recommendation_applied === 1,
-          }
-        : undefined,
+      // Include metadata if ANY metadata field is present (not just category)
+      metadata:
+        row.category || row.time_estimate_minutes || row.time_estimate || row.size
+          ? {
+              category: row.category || undefined,
+              timeEstimate: row.time_estimate || undefined,
+              timeEstimateMinutes: row.time_estimate_minutes || undefined,
+              size: row.size || undefined,
+              aiConfidence: row.ai_confidence || undefined,
+              aiReasoning: row.ai_reasoning || undefined,
+              needsSupplies: row.needs_supplies === 1,
+              canDelegate: row.can_delegate === 1,
+              energyLevel: row.energy_level || undefined,
+              classificationSource: row.classification_source || undefined,
+              recommendedCategory: row.recommended_category || undefined,
+              recommendationApplied: row.recommendation_applied === 1,
+              requiresDriving: row.requires_driving === 1,
+              timeConstraint: (row.time_constraint as TimeConstraint) || undefined,
+            }
+          : undefined,
     };
   }
 }
-

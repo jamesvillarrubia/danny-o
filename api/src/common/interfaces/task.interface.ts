@@ -51,6 +51,16 @@ export interface TaskDue {
   isRecurring: boolean;
 }
 
+/**
+ * Time constraint options for scheduling tasks
+ * - business-hours: Must be done Mon-Fri 9am-5pm (banks, offices, calls)
+ * - weekdays-only: Must be done Mon-Fri but not time-restricted
+ * - evenings: Best done after work hours
+ * - weekends: Best done Sat/Sun
+ * - anytime: No scheduling constraints
+ */
+export type TimeConstraint = 'business-hours' | 'weekdays-only' | 'evenings' | 'weekends' | 'anytime';
+
 export interface TaskMetadata {
   category?: string;
   timeEstimate?: string;
@@ -65,10 +75,17 @@ export interface TaskMetadata {
   recommendedCategory?: string;
   recommendationApplied?: boolean;
   categoryClassifiedAt?: Date;
+  
+  // Scheduling fields
+  requiresDriving?: boolean;
+  timeConstraint?: TimeConstraint;
+  
   // Legacy field names for backward compatibility (snake_case from DB)
   category_classified_at?: Date;
   classification_source?: 'ai' | 'manual';
   recommended_category?: string;
+  requires_driving?: boolean;
+  time_constraint?: TimeConstraint;
 }
 
 export interface Project {
@@ -101,6 +118,10 @@ export interface TaskFilters {
   priority?: number;
   completed?: boolean;
   limit?: number;
+  
+  // Scheduling filters
+  requiresDriving?: boolean;
+  timeConstraint?: TimeConstraint;
 }
 
 export interface CreateTaskDto {
@@ -122,6 +143,9 @@ export interface UpdateTaskDto {
   dueString?: string;
   dueDate?: string;
   labels?: string[];
+  // Duration fields for Todoist time blocking
+  duration?: number;
+  durationUnit?: 'minute' | 'day';
 }
 
 export interface TaskHistory {
@@ -132,5 +156,109 @@ export interface TaskHistory {
   category?: string;
   actualDuration?: number;
   context?: string;
+}
+
+/**
+ * Pre-computed statistics for task insights
+ * These are aggregated in the database, not by the AI
+ */
+export interface TaskInsightStats {
+  // Overview counts
+  totalActive: number;
+  totalCompletedLast30Days: number;
+
+  // Active tasks by category
+  activeByCategory: Record<string, number>;
+  
+  // Completed tasks by category (last 30 days)
+  completedByCategory: Record<string, number>;
+
+  // Age distribution of active tasks
+  taskAgeBuckets: {
+    recent: number;      // < 7 days old
+    week: number;        // 7-30 days old
+    month: number;       // 30-90 days old
+    stale: number;       // 90+ days old
+  };
+
+  // Completion metrics
+  avgCompletionTimeByCategory: Record<string, number | null>;
+  completionRateLast7Days: number;  // tasks completed / tasks created
+  completionRateLast30Days: number;
+
+  // Estimate coverage
+  tasksWithEstimates: number;
+  tasksWithoutEstimates: number;
+
+  // Due date analysis
+  overdueTasks: number;
+  dueSoon: number; // due in next 7 days
+
+  // Top labels on active tasks
+  topLabels: Array<{ label: string; count: number }>;
+
+  // Stale task examples (for AI to suggest archiving)
+  stalestTasks: Array<{ id: string; content: string; ageInDays: number; category: string }>;
+
+  // === Behavioral Patterns ===
+  
+  // Completion patterns by day of week (0=Sunday, 6=Saturday)
+  completionsByDayOfWeek: Record<string, number>;
+  
+  // Daily completion counts for trend chart (last 30 days)
+  dailyCompletions: Array<{ date: string; count: number }>;
+  
+  // Streaks and momentum
+  currentStreak: number;           // Consecutive days with at least 1 completion
+  longestStreak: number;           // Best streak ever
+  lastCompletionDate: string | null;
+  
+  // Productivity score (0-100 based on multiple factors)
+  productivityScore: number;
+  
+  // Category velocity - how fast tasks get done per category
+  categoryVelocity: Record<string, {
+    completed: number;
+    avgDaysToComplete: number | null;
+  }>;
+
+  // Tasks completed close to or after due date (procrastination indicator)
+  procrastinationStats: {
+    completedOnTime: number;      // Before due date
+    completedLastMinute: number;  // Within 24h of due
+    completedLate: number;        // After due date
+  };
+}
+
+/**
+ * Comprehensive insights response including AI analysis
+ */
+export interface ComprehensiveInsights {
+  // Pre-computed statistics
+  stats: TaskInsightStats;
+  
+  // AI-generated analysis
+  aiAnalysis: {
+    summary: string;
+    keyFindings: Array<{
+      title: string;
+      description: string;
+      type: 'positive' | 'warning' | 'neutral';
+      significance: 'high' | 'medium' | 'low';
+    }>;
+    habits: {
+      good: string[];
+      needsWork: string[];
+    };
+    recommendations: Array<{
+      action: string;
+      reasoning: string;
+      priority: 'now' | 'soon' | 'later';
+    }>;
+  };
+  
+  // Metadata
+  generatedAt: string;
+  periodDays: number;
 }
 

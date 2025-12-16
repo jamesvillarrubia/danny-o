@@ -62,6 +62,22 @@ export class MockTaskProvider implements ITaskProvider {
     return updated;
   }
 
+  async updateTaskDuration(taskId: string, durationMinutes: number): Promise<Task> {
+    const task = await this.getTask(taskId);
+    // In mock, we just store duration as metadata (Todoist stores it natively)
+    const updated = {
+      ...task,
+      updatedAt: new Date().toISOString(),
+      // Store in metadata for testing purposes
+      metadata: {
+        ...task.metadata,
+        timeEstimateMinutes: durationMinutes,
+      },
+    };
+    this.tasks.set(taskId, updated);
+    return updated;
+  }
+
   async closeTask(taskId: string): Promise<boolean> {
     const task = this.tasks.get(taskId);
     if (!task) return false;

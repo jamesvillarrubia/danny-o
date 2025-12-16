@@ -4,21 +4,28 @@
  * Checks if the Todoist API is accessible and responding.
  */
 
-import { Injectable, Inject } from '@nestjs/common';
+import { Injectable, Inject, Optional } from '@nestjs/common';
 import { HealthIndicator, HealthIndicatorResult, HealthCheckError } from '@nestjs/terminus';
 import { ITaskProvider } from '../../common/interfaces';
 
 @Injectable()
 export class TodoistHealthIndicator extends HealthIndicator {
   constructor(
-    @Inject('ITaskProvider') 
-    private readonly taskProvider: ITaskProvider,
+    @Optional() @Inject('ITaskProvider') 
+    private readonly taskProvider?: ITaskProvider,
   ) {
     super();
   }
 
   async isHealthy(key: string): Promise<HealthIndicatorResult> {
     try {
+      // If provider is not configured, skip the health check
+      if (!this.taskProvider) {
+        return this.getStatus(key, true, {
+          message: 'Todoist API not configured (mocked)',
+        });
+      }
+      
       // Attempt to fetch a small number of tasks to verify API connectivity
       // This is a lightweight operation that confirms authentication and connectivity
       await this.taskProvider.getTasks({ limit: 1 });

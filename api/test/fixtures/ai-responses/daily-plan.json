@@ -1,0 +1,44 @@
+{
+  "description": "Static daily plan response for deterministic testing",
+  "promptType": "daily-plan",
+  "response": {
+    "summary": "Focused workday with 3 priority tasks",
+    "notes": "Start with high-priority work tasks, save errands for afternoon",
+    "today": {
+      "tasks": [
+        {
+          "taskId": "task_1",
+          "scheduledTime": "09:00",
+          "duration": "2 hours",
+          "reasoning": "High priority, best done during peak focus time"
+        },
+        {
+          "taskId": "task_2",
+          "scheduledTime": "11:00",
+          "duration": "1 hour",
+          "reasoning": "Medium priority, can be done after first task"
+        },
+        {
+          "taskId": "task_3",
+          "scheduledTime": "14:00",
+          "duration": "30 minutes",
+          "reasoning": "Quick task, good for post-lunch energy dip"
+        }
+      ],
+      "totalTime": "3.5 hours"
+    },
+    "thisWeek": {
+      "tasks": [],
+      "reasoning": "All tasks fit in today's schedule"
+    },
+    "needsSupplies": {
+      "tasks": [],
+      "shoppingList": [],
+      "suggestion": ""
+    },
+    "delegateToSpouse": {
+      "tasks": [],
+      "reasoning": ""
+    }
+  }
+}

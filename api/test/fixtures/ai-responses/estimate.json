@@ -1,0 +1,11 @@
+{
+  "description": "Static time estimation response for deterministic testing",
+  "promptType": "estimate",
+  "response": {
+    "estimate": "30-45 minutes",
+    "timeEstimateMinutes": 37,
+    "size": "M",
+    "confidence": 0.80,
+    "reasoning": "Medium complexity task requiring focused effort. Based on similar task patterns, this typically takes 30-45 minutes to complete."
+  }
+}

@@ -2,6 +2,9 @@
 /dist
 /node_modules
 
+# PGlite memory database
+:memory:/
+
 # Logs
 logs
 *.log
@@ -35,3 +38,6 @@ lerna-debug.log*
 !.vscode/extensions.json
 .vercel
 .env*.local
+
+# Database backups (local)
+/backups

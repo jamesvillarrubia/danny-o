@@ -11,11 +11,17 @@
  * - DELETE /v1/tasks/:taskId   - Delete a task
  * 
  * Custom Methods (RPC-style with :verb suffix):
- * - POST   /v1/tasks:sync           - Sync with Todoist
- * - POST   /v1/tasks/:taskId:complete - Complete a task
- * - POST   /v1/tasks:search         - Search tasks
- * - POST   /v1/tasks:batchUpdate    - Batch update tasks
- * - POST   /v1/tasks:resetTestState - Reset test state (for step-ci)
+ * - POST   /v1/tasks:sync             - Sync with Todoist
+ * - POST   /v1/tasks/:taskId/complete - Complete a task
+ * - POST   /v1/tasks/:taskId/reopen   - Reopen a completed task (undo)
+ * - POST   /v1/tasks:search           - Search tasks
+ * - POST   /v1/tasks:batchUpdate      - Batch update tasks
+ * - POST   /v1/tasks:resetTestState   - Reset test state (for step-ci)
+ * 
+ * URL Enrichment Methods:
+ * - GET    /v1/tasks/:taskId/analyze-url - Analyze task for URL enrichment (dry run)
+ * - POST   /v1/tasks/:taskId/enrich-url  - Enrich a task with URL context
+ * - POST   /v1/tasks/enrich-urls         - Batch enrich URL-heavy tasks
  */
 
 import {
@@ -36,6 +42,7 @@ import {
 } from '@nestjs/common';
 import { SyncService } from '../../../task/services/sync.service';
 import { EnrichmentService } from '../../../task/services/enrichment.service';
+import { UrlEnrichmentService, UrlEnrichmentResult } from '../../../task/services/url-enrichment.service';
 import { IStorageAdapter, ITaskProvider, Task } from '../../../common/interfaces';
 import {
   ListTasksQueryDto,
@@ -50,6 +57,7 @@ import {
   SyncResponseDto,
   SearchTasksResponseDto,
   CompleteTaskResponseDto,
+  ReopenTaskResponseDto,
   BatchUpdateResponseDto,
 } from '../../dto';
 
@@ -60,8 +68,9 @@ export class TasksController {
   constructor(
     @Inject('IStorageAdapter') private readonly storage: IStorageAdapter,
     @Inject('ITaskProvider') private readonly taskProvider: ITaskProvider,
-    private readonly syncService: SyncService,
-    private readonly enrichmentService: EnrichmentService,
+    @Inject(SyncService) private readonly syncService: SyncService,
+    @Inject(EnrichmentService) private readonly enrichmentService: EnrichmentService,
+    @Inject(UrlEnrichmentService) private readonly urlEnrichmentService: UrlEnrichmentService,
   ) {}
 
   // ==========================================================================
@@ -86,7 +95,7 @@ export class TasksController {
 
     // Apply offset for pagination
     const offset = query.offset ?? 0;
-    const paginatedTasks = tasks.slice(offset, offset + (query.limit ?? 50));
+    const paginatedTasks = tasks.slice(offset, offset + (query.limit ?? 1000));
 
     return {
       tasks: paginatedTasks.map(this.mapTaskToResponse),
@@ -123,10 +132,15 @@ export class TasksController {
   /**
    * Create a new task
    * POST /v1/tasks
+   * 
+   * If enrichUrls is true and the task contains URLs, will automatically
+   * fetch URL content and enrich the description with context.
    */
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  async createTask(@Body() body: CreateTaskDto): Promise<TaskResponseDto> {
+  async createTask(@Body() body: CreateTaskDto & { 
+    enrichUrls?: boolean;
+  }): Promise<TaskResponseDto & { urlEnrichment?: UrlEnrichmentResult }> {
     this.logger.log(`Creating task: ${body.content}`);
 
     const task = await this.syncService.createTask({
@@ -139,7 +153,40 @@ export class TasksController {
       labels: body.labels,
     });
 
-    return this.mapTaskToResponse(task);
+    // Check if URL enrichment is requested and task qualifies
+    let urlEnrichment: UrlEnrichmentResult | undefined;
+    if (body.enrichUrls !== false) {
+      // Auto-enrich if task needs it (default behavior)
+      const needsEnrichment = this.urlEnrichmentService.needsEnrichment(task);
+      if (needsEnrichment) {
+        this.logger.log(`Task ${task.id} qualifies for URL enrichment, processing...`);
+        try {
+          urlEnrichment = await this.urlEnrichmentService.enrichTask(task, {
+            applyChanges: true,
+            includeQuestions: true,
+          });
+          
+          // If enriched, fetch the updated task
+          if (urlEnrichment.enriched) {
+            const enrichedTask = await this.storage.getTask(task.id);
+            if (enrichedTask) {
+              return {
+                ...this.mapTaskToResponse(enrichedTask),
+                urlEnrichment,
+              };
+            }
+          }
+        } catch (error: any) {
+          this.logger.warn(`URL enrichment failed for task ${task.id}: ${error.message}`);
+          // Don't fail task creation if enrichment fails
+        }
+      }
+    }
+
+    return {
+      ...this.mapTaskToResponse(task),
+      urlEnrichment,
+    };
   }
 
   /**
@@ -175,8 +222,10 @@ export class TasksController {
     // Update other fields in Todoist
     const { category, ...todoistUpdates } = body;
     if (Object.keys(todoistUpdates).length > 0) {
-      await this.taskProvider.updateTask(taskId, todoistUpdates);
-      await this.storage.updateTask(taskId, todoistUpdates);
+      // Update in Todoist and get the updated task with properly formatted fields
+      const updatedTaskFromTodoist = await this.taskProvider.updateTask(taskId, todoistUpdates);
+      // Sync the updated task to local storage
+      await this.storage.updateTask(taskId, updatedTaskFromTodoist);
     }
 
     const updatedTask = await this.storage.getTask(taskId);
@@ -284,6 +333,36 @@ export class TasksController {
   }
 
   /**
+   * Reopen a completed task (undo completion)
+   * POST /v1/tasks/:taskId/reopen
+   */
+  @Post(':taskId/reopen')
+  @HttpCode(HttpStatus.OK)
+  async reopenTask(
+    @Param('taskId') taskId: string,
+  ): Promise<ReopenTaskResponseDto> {
+    this.logger.log(`Reopening task: ${taskId}`);
+
+    const existingTask = await this.storage.getTask(taskId);
+    if (!existingTask) {
+      throw new NotFoundException({
+        error: {
+          code: 404,
+          message: `Task ${taskId} not found`,
+          status: 'NOT_FOUND',
+        },
+      });
+    }
+
+    await this.syncService.reopenTask(taskId);
+
+    return {
+      taskId,
+      reopenedAt: new Date().toISOString(),
+    };
+  }
+
+  /**
    * Search tasks
    * POST /v1/tasks/search
    */
@@ -377,6 +456,141 @@ export class TasksController {
       reset: true,
       message: 'Test state reset successfully',
     };
+  }
+
+  // ==========================================================================
+  // URL Enrichment Methods
+  // ==========================================================================
+
+  /**
+   * Find and enrich all tasks that need URL enrichment
+   * POST /v1/tasks/enrich-urls
+   * 
+   * Batch operation to find URL-heavy tasks and enrich them.
+   * NOTE: This static route MUST come before parameterized :taskId routes.
+   */
+  @Post('enrich-urls')
+  @HttpCode(HttpStatus.OK)
+  async enrichAllUrlTasks(
+    @Body() body: {
+      limit?: number;
+      applyChanges?: boolean;
+      includeQuestions?: boolean;
+    } = {},
+  ): Promise<{
+    found: number;
+    enriched: number;
+    failed: number;
+    results: UrlEnrichmentResult[];
+  }> {
+    this.logger.log('Finding and enriching URL-heavy tasks');
+
+    const tasksNeedingEnrichment = await this.urlEnrichmentService.findTasksNeedingEnrichment();
+    const limit = body.limit ?? 10;
+    const tasksToProcess = tasksNeedingEnrichment.slice(0, limit);
+
+    this.logger.log(`Found ${tasksNeedingEnrichment.length} tasks needing enrichment, processing ${tasksToProcess.length}`);
+
+    const results = await this.urlEnrichmentService.enrichTasks(tasksToProcess, {
+      applyChanges: body.applyChanges ?? true,
+      includeQuestions: body.includeQuestions ?? true,
+    });
+
+    const enrichedCount = results.filter(r => r.enriched).length;
+    const failedCount = results.filter(r => !r.enriched && r.error).length;
+
+    return {
+      found: tasksNeedingEnrichment.length,
+      enriched: enrichedCount,
+      failed: failedCount,
+      results,
+    };
+  }
+
+  /**
+   * Analyze a task for URL enrichment (dry run)
+   * GET /v1/tasks/:taskId/analyze-url
+   * 
+   * Returns analysis of whether the task would benefit from URL enrichment
+   * without making any changes.
+   */
+  @Get(':taskId/analyze-url')
+  async analyzeTaskUrl(@Param('taskId') taskId: string): Promise<{
+    taskId: string;
+    needsEnrichment: boolean;
+    analysis: {
+      urls: string[];
+      urlRatio: number;
+      enrichmentScore: number;
+      isUrlHeavy: boolean;
+      hasLightDescription: boolean;
+    };
+  }> {
+    this.logger.log(`Analyzing task ${taskId} for URL enrichment`);
+
+    const task = await this.storage.getTask(taskId);
+    if (!task) {
+      throw new NotFoundException({
+        error: {
+          code: 404,
+          message: `Task ${taskId} not found`,
+          status: 'NOT_FOUND',
+        },
+      });
+    }
+
+    const analysis = this.urlEnrichmentService.analyzeTask(task);
+
+    return {
+      taskId,
+      needsEnrichment: this.urlEnrichmentService.needsEnrichment(task),
+      analysis: {
+        urls: analysis.urls,
+        urlRatio: analysis.urlRatio,
+        enrichmentScore: analysis.enrichmentScore,
+        isUrlHeavy: analysis.isUrlHeavy,
+        hasLightDescription: analysis.hasLightDescription,
+      },
+    };
+  }
+
+  /**
+   * Enrich a single task with URL context
+   * POST /v1/tasks/:taskId/enrich-url
+   * 
+   * Fetches URL content, generates AI summary and clarifying questions,
+   * and updates the task description.
+   */
+  @Post(':taskId/enrich-url')
+  @HttpCode(HttpStatus.OK)
+  async enrichTaskUrl(
+    @Param('taskId') taskId: string,
+    @Body() body: { 
+      force?: boolean;
+      applyChanges?: boolean;
+      includeQuestions?: boolean;
+    } = {},
+  ): Promise<UrlEnrichmentResult> {
+    this.logger.log(`Enriching task ${taskId} with URL context`);
+
+    const task = await this.storage.getTask(taskId);
+    if (!task) {
+      throw new NotFoundException({
+        error: {
+          code: 404,
+          message: `Task ${taskId} not found`,
+          status: 'NOT_FOUND',
+        },
+      });
+    }
+
+    const result = await this.urlEnrichmentService.enrichTask(task, {
+      force: body.force ?? false,
+      applyChanges: body.applyChanges ?? true,
+      includeQuestions: body.includeQuestions ?? true,
+    });
+
+    return result;
   }
 
   // ==========================================================================

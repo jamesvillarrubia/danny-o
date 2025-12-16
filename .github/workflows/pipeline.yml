@@ -21,7 +21,7 @@ env:
   FETCH_DEPTH_AFFECTED: "100"
   FETCH_DEPTH_VERSIONING: "0"
   NODE_VERSION: "24"
-  PNPM_VERSION: "10"
+  PNPM_VERSION: "9.15.3"
 
 on:
   workflow_dispatch:
@@ -152,8 +152,43 @@ jobs:
           cache: 'pnpm'
           cache-dependency-path: api/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
-      - run: pnpm lint
-      - run: pnpm test
+      
+      # Static analysis
+      - name: Lint
+        run: pnpm lint
+      
+      # Unit tests (pure logic, algorithms)
+      - name: Unit Tests
+        run: pnpm test
+      
+      # Contract tests (API boundary tests via Step-CI)
+      - name: Build for Contract Tests
+        run: pnpm build
+      - name: Contract Tests
+        run: |
+          # Start server in background with mocks
+          RUN_MODE=http USE_MOCKS=true PGLITE_PATH=:memory: node dist/main.js &
+          SERVER_PID=$!
+          
+          # Wait for server to be ready
+          sleep 8
+          
+          # Run contract tests (individual workflow files for stability)
+          # Run both and fail if either fails
+          HEALTH_PASS=0
+          TASKS_PASS=0
+          
+          npx stepci run step-ci/workflows/blueprint/health.yaml && HEALTH_PASS=1 || HEALTH_PASS=0
+          npx stepci run step-ci/workflows/blueprint/tasks.yaml && TASKS_PASS=1 || TASKS_PASS=0
+          
+          # Cleanup
+          kill $SERVER_PID 2>/dev/null || true
+          
+          # Exit with failure if either test failed
+          if [[ $HEALTH_PASS -eq 0 ]] || [[ $TASKS_PASS -eq 0 ]]; then
+            echo "::error::Contract tests failed (health: $HEALTH_PASS, tasks: $TASKS_PASS)"
+            exit 1
+          fi
 
   test-web:
     needs: [ changes ]
@@ -218,9 +253,19 @@ jobs:
           echo "test-web: ${{ needs.test-web.result }}"
           echo "test-extension: ${{ needs.test-extension.result }}"
           
-          # Fail if any required test failed (not skipped, not success)
+          # Fail if ANY test failed (not skipped, not success)
           if [[ "${{ needs.test-api.result }}" == "failure" ]]; then
             echo "::error::test-api failed"
+            exit 1
+          fi
+          
+          if [[ "${{ needs.test-web.result }}" == "failure" ]]; then
+            echo "::error::test-web failed"
+            exit 1
+          fi
+          
+          if [[ "${{ needs.test-extension.result }}" == "failure" ]]; then
+            echo "::error::test-extension failed"
             exit 1
           fi
           
@@ -279,19 +324,46 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.commitSha || github.sha }}
-      - uses: superfly/flyctl-action/setup-flyctl@master
+      - uses: superfly/flyctl-actions/setup-flyctl@master
       - name: Deploy to Fly.io (dev)
         working-directory: api
         run: flyctl deploy --app danny-tasks-api-dev --remote-only
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
+  deploy-web-dev:
+    needs: [ changes, gate ]
+    if: ${{
+        always() &&
+        github.ref_name == 'develop' &&
+        github.event_name == 'push' &&
+        needs.gate.result == 'success' &&
+        needs.changes.outputs.web == 'true'
+      }}
+    runs-on: ubuntu-latest
+    environment: development
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.commitSha || github.sha }}
+      - name: Deploy to Vercel (preview)
+        working-directory: web
+        run: |
+          npm i -g vercel
+          vercel pull --yes --environment=preview --token=${{ secrets.VERCEL_TOKEN }}
+          vercel build --token=${{ secrets.VERCEL_TOKEN }}
+          vercel deploy --prebuilt --token=${{ secrets.VERCEL_TOKEN }} > deployment-url.txt
+          echo "Deployed to: $(cat deployment-url.txt)"
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
   #=============================================================================
   # STAGE 5: PROMOTE (develop only, after tag AND deploy-api-dev)
   #=============================================================================
 
   promote:
-    needs: [ version, tag, deploy-api-dev ]
+    needs: [ version, tag, deploy-api-dev, deploy-web-dev ]
     if: ${{
         always() &&
         github.ref_name == 'develop' &&
@@ -299,7 +371,8 @@ jobs:
         needs.version.result == 'success' &&
         needs.version.outputs.version != '' &&
         needs.tag.result == 'success' &&
-        (needs.deploy-api-dev.result == 'success' || needs.deploy-api-dev.result == 'skipped')
+        (needs.deploy-api-dev.result == 'success' || needs.deploy-api-dev.result == 'skipped') &&
+        (needs.deploy-web-dev.result == 'success' || needs.deploy-web-dev.result == 'skipped')
       }}
     runs-on: ubuntu-latest
     steps:
@@ -335,25 +408,55 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.commitSha || github.sha }}
-      - uses: superfly/flyctl-action/setup-flyctl@master
+      - uses: superfly/flyctl-actions/setup-flyctl@master
       - name: Deploy to Fly.io (prod)
         working-directory: api
         run: flyctl deploy --app danny-tasks-api-prod --remote-only
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
+  deploy-web-prod:
+    needs: [ changes, gate, version ]
+    if: ${{
+        always() &&
+        github.ref_name == 'main' &&
+        github.event_name == 'push' &&
+        needs.gate.result == 'success' &&
+        needs.version.result == 'success' &&
+        needs.version.outputs.version != '' &&
+        needs.changes.outputs.web == 'true'
+      }}
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.commitSha || github.sha }}
+      - name: Deploy to Vercel (production)
+        working-directory: web
+        run: |
+          npm i -g vercel
+          vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
+          vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
+          vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }} > deployment-url.txt
+          echo "Deployed to: $(cat deployment-url.txt)"
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
   #=============================================================================
   # STAGE 7: RELEASE (main only, after deploy-api-prod)
   #=============================================================================
 
   release:
-    needs: [ deploy-api-prod, version ]
+    needs: [ deploy-api-prod, deploy-web-prod, version ]
     if: ${{
         always() &&
         github.ref_name == 'main' &&
         needs.version.result == 'success' &&
         needs.version.outputs.version != '' &&
-        needs.deploy-api-prod.result == 'success'
+        needs.deploy-api-prod.result == 'success' &&
+        (needs.deploy-web-prod.result == 'success' || needs.deploy-web-prod.result == 'skipped')
       }}
     runs-on: ubuntu-latest
     steps:

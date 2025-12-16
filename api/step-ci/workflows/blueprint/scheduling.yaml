@@ -1,0 +1,109 @@
+# Scheduling Endpoints Blueprint Tests
+# 
+# Tests for scheduling-related metadata fields: requiresDriving and timeConstraint.
+# These tests verify the query filters and response formats for scheduling features.
+
+version: "1.1"
+name: Scheduling Blueprint
+
+tests:
+  # ===========================================================================
+  # Tasks Requiring Driving (for trip batching)
+  # ===========================================================================
+  
+  tasks_requiring_driving:
+    name: Tasks Requiring Driving
+    steps:
+      - name: GET /v1/tasks - filter by requiresDriving=true
+        http:
+          url: http://localhost:3000/api/v1/tasks?requiresDriving=true
+          method: GET
+          timeout: 5000
+          check:
+            status: 200
+
+      - name: GET /v1/tasks - filter by requiresDriving=false
+        http:
+          url: http://localhost:3000/api/v1/tasks?requiresDriving=false
+          method: GET
+          timeout: 5000
+          check:
+            status: 200
+
+  # ===========================================================================
+  # Tasks by Time Constraint (for scheduling)
+  # ===========================================================================
+
+  tasks_by_time_constraint:
+    name: Tasks by Time Constraint
+    steps:
+      - name: GET /v1/tasks - filter by timeConstraint=business-hours
+        http:
+          url: http://localhost:3000/api/v1/tasks?timeConstraint=business-hours
+          method: GET
+          timeout: 5000
+          check:
+            status: 200
+
+      - name: GET /v1/tasks - filter by timeConstraint=weekdays-only
+        http:
+          url: http://localhost:3000/api/v1/tasks?timeConstraint=weekdays-only
+          method: GET
+          timeout: 5000
+          check:
+            status: 200
+
+      - name: GET /v1/tasks - filter by timeConstraint=evenings
+        http:
+          url: http://localhost:3000/api/v1/tasks?timeConstraint=evenings
+          method: GET
+          timeout: 5000
+          check:
+            status: 200
+
+      - name: GET /v1/tasks - filter by timeConstraint=weekends
+        http:
+          url: http://localhost:3000/api/v1/tasks?timeConstraint=weekends
+          method: GET
+          timeout: 5000
+          check:
+            status: 200
+
+      - name: GET /v1/tasks - filter by timeConstraint=anytime
+        http:
+          url: http://localhost:3000/api/v1/tasks?timeConstraint=anytime
+          method: GET
+          timeout: 5000
+          check:
+            status: 200
+
+  # ===========================================================================
+  # Combined Scheduling Filters
+  # ===========================================================================
+
+  combined_scheduling_filters:
+    name: Combined Scheduling Filters
+    steps:
+      - name: GET /v1/tasks - filter driving + business-hours
+        http:
+          url: http://localhost:3000/api/v1/tasks?requiresDriving=true&timeConstraint=business-hours
+          method: GET
+          timeout: 5000
+          check:
+            status: 200
+
+      - name: GET /v1/tasks - filter driving + category
+        http:
+          url: http://localhost:3000/api/v1/tasks?requiresDriving=true&category=personal-family
+          method: GET
+          timeout: 5000
+          check:
+            status: 200
+
+      - name: GET /v1/tasks - filter weekend tasks with limit
+        http:
+          url: http://localhost:3000/api/v1/tasks?timeConstraint=weekends&limit=10
+          method: GET
+          timeout: 5000
+          check:
+            status: 200

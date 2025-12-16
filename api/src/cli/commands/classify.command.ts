@@ -10,11 +10,13 @@ import { IStorageAdapter } from '../../common/interfaces';
 import { AIOperationsService } from '../../ai/services/operations.service';
 import { EnrichmentService } from '../../task/services/enrichment.service';
 import { SyncService } from '../../task/services/sync.service';
+import { TimeEstimateDto } from '../../ai/dto';
 
 interface ClassifyOptions {
   all?: boolean;
   force?: boolean;
   debug?: boolean;
+  limit?: number;
 }
 
 @Injectable()
@@ -46,11 +48,21 @@ export class ClassifyCommand extends CommandRunner {
         return;
       }
 
-      console.log(`Found ${unclassified.length} unclassified task(s)\n`);
+      // Apply limit if specified
+      const tasksToProcess = options?.limit
+        ? unclassified.slice(0, options.limit)
+        : unclassified;
+
+      console.log(`Found ${unclassified.length} unclassified task(s)`);
+      if (options?.limit && unclassified.length > options.limit) {
+        console.log(`Processing first ${tasksToProcess.length} task(s)\n`);
+      } else {
+        console.log('');
+      }
 
       // Classify and enrich in batches
       const totalProcessed = await this.classifyAndEnrichBatches(
-        unclassified,
+        tasksToProcess,
         options?.debug || false,
       );
 
@@ -102,8 +114,18 @@ export class ClassifyCommand extends CommandRunner {
         
         const results = await this.aiOps.classifyTasks(batchWithComments);
 
+        // Also get time estimates for the batch
+        const timeEstimates = await this.aiOps.estimateTasksBatch(batchWithComments);
+        const timeEstimateMap = new Map(
+          timeEstimates
+            .filter((te): te is TimeEstimateDto => 'timeEstimate' in te)
+            .map(te => [te.taskId, te])
+        );
+
         for (const result of results) {
           try {
+            const timeEstimate = timeEstimateMap.get(result.taskId);
+            
             await this.enrichment.enrichTask(
               result.taskId,
               {
@@ -111,6 +133,11 @@ export class ClassifyCommand extends CommandRunner {
                 aiConfidence: result.confidence,
                 aiReasoning: result.reasoning,
                 classification_source: 'ai',
+                timeEstimate: timeEstimate?.timeEstimate,
+                timeEstimateMinutes: timeEstimate?.timeEstimateMinutes ?? undefined,
+                size: timeEstimate?.size,
+                requiresDriving: timeEstimate?.requiresDriving ?? result.requiresDriving,
+                timeConstraint: timeEstimate?.timeConstraint ?? result.timeConstraint,
               },
               { moveToProject: true }, // Actually move tasks to their category projects!
             );
@@ -119,6 +146,17 @@ export class ClassifyCommand extends CommandRunner {
             console.log(`✅ ${task.content}`);
             console.log(`   Project: ${result.category}`);
             console.log(`   Confidence: ${Math.round((result.confidence || 0) * 100)}%`);
+            if (timeEstimate?.needsBreakdown) {
+              console.log(`   ⚠️ Time: needs-breakdown (task too complex)`);
+            } else if (timeEstimate?.timeEstimate) {
+              console.log(`   Time: ${timeEstimate.timeEstimate} (${timeEstimate.size})`);
+            }
+            if (timeEstimate?.requiresDriving) {
+              console.log(`   🚗 Requires driving`);
+            }
+            if (timeEstimate?.timeConstraint && timeEstimate.timeConstraint !== 'anytime') {
+              console.log(`   ⏰ ${timeEstimate.timeConstraint}`);
+            }
             if (result.reasoning && debugMode) {
               console.log(`   ${result.reasoning}`);
             }
@@ -163,6 +201,14 @@ export class ClassifyCommand extends CommandRunner {
   })
   parseDebug(): boolean {
     return true;
+  }
+
+  @Option({
+    flags: '--limit <number>',
+    description: 'Limit number of tasks to classify',
+  })
+  parseLimit(val: string): number {
+    return parseInt(val, 10);
   }
 }
 

@@ -1,0 +1,41 @@
+## Problem
+
+The GATE job is generated with dependencies on test jobs (e.g., `test-api`, `test-extension`, `test-web`) even when no test jobs were actually created in the custom jobs section. This causes the workflow to fail because it references jobs that don't exist.
+
+## Current Behavior
+
+When running `pipecraft generate`, the GATE job is created with:
+```yaml
+gate:
+  needs: [ version, test-api, test-extension, test-web ]
+  if: ${{ ... needs.test-api.result ... needs.test-extension.result ... needs.test-web.result ... }}
+```
+
+However, if the user hasn't created these test jobs in the custom section, the workflow fails with errors like:
+- "Job 'test-api' not found"
+- "Job 'test-extension' not found"
+- "Job 'test-web' not found"
+
+## Expected Behavior
+
+The GATE job should:
+1. Only reference test jobs that actually exist in the workflow
+2. Dynamically detect which test jobs were created
+3. Or provide a way to configure which test jobs to gate on
+4. Handle the case where no test jobs exist gracefully
+
+## Impact
+
+- Workflows fail immediately if test jobs aren't created
+- Users must manually edit the GATE job to remove non-existent job references
+- Confusing error messages that don't clearly indicate the problem
+- Forces users to create placeholder test jobs even if they don't need them
+
+## Suggested Fix
+
+1. Detect which test jobs actually exist in the workflow before generating GATE dependencies
+2. Only include existing test jobs in the `needs` array
+3. Provide a configuration option to specify which jobs should be gated
+4. Make the GATE job optional or handle missing jobs gracefully
+5. Add validation that warns if GATE references non-existent jobs
+

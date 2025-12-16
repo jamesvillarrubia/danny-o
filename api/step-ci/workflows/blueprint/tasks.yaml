@@ -54,6 +54,30 @@ tests:
           check:
             status: 200
 
+      - name: GET /v1/tasks - 200 with requiresDriving filter
+        http:
+          url: http://localhost:3000/api/v1/tasks?requiresDriving=true
+          method: GET
+          timeout: 5000
+          check:
+            status: 200
+
+      - name: GET /v1/tasks - 200 with timeConstraint filter
+        http:
+          url: http://localhost:3000/api/v1/tasks?timeConstraint=business-hours
+          method: GET
+          timeout: 5000
+          check:
+            status: 200
+
+      - name: GET /v1/tasks - 200 with scheduling filters combined
+        http:
+          url: http://localhost:3000/api/v1/tasks?requiresDriving=true&timeConstraint=anytime
+          method: GET
+          timeout: 5000
+          check:
+            status: 200
+
   get_task:
     name: Get Single Task
     steps:

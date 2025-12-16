@@ -132,11 +132,39 @@ export class TodoistProvider implements ITaskProvider {
         delete updateData.dueDate;
       }
       
+      // Handle duration - Todoist API uses duration and duration_unit
+      if (updateData.duration !== undefined) {
+        updateData.duration = updateData.duration;
+        updateData.durationUnit = updateData.durationUnit || 'minute';
+      }
+      
       const task = await this.api.updateTask(taskId, updateData);
       this.logger.log(`Updated task ${taskId}`);
       return this.convertToTask(task);
     } catch (error) {
       this.logger.error(`Error updating task ${taskId}: ${error.message}`);
+      throw this.handleError(error);
+    }
+  }
+
+  /**
+   * Update task duration in Todoist (for time blocking)
+   * @param taskId The task ID
+   * @param durationMinutes Duration in minutes
+   */
+  async updateTaskDuration(taskId: string, durationMinutes: number): Promise<Task> {
+    try {
+      this.logger.log(`Updating task ${taskId} duration to ${durationMinutes} minutes`);
+      
+      const task = await this.api.updateTask(taskId, {
+        duration: durationMinutes,
+        durationUnit: 'minute',
+      });
+      
+      this.logger.log(`Updated task ${taskId} duration`);
+      return this.convertToTask(task);
+    } catch (error) {
+      this.logger.error(`Error updating task ${taskId} duration: ${error.message}`);
       throw this.handleError(error);
     }
   }

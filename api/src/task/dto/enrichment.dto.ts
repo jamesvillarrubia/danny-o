@@ -4,7 +4,8 @@
  * Data transfer objects for AI enrichment metadata.
  */
 
-import { IsArray, IsBoolean, IsNumber, IsObject, IsOptional, IsString, Max, Min } from 'class-validator';
+import { IsArray, IsBoolean, IsIn, IsNumber, IsObject, IsOptional, IsString, Max, Min } from 'class-validator';
+import { TimeConstraint } from '../../common/interfaces';
 
 export class TaskMetadataDto {
   @IsOptional()
@@ -65,6 +66,16 @@ export class TaskMetadataDto {
   @IsNumber()
   timeEstimateMinutes?: number;
 
+  // Scheduling fields
+  @IsOptional()
+  @IsBoolean()
+  requiresDriving?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @IsIn(['business-hours', 'weekdays-only', 'evenings', 'weekends', 'anytime'])
+  timeConstraint?: TimeConstraint;
+
   // Legacy field names for backward compatibility (snake_case from DB)
   @IsOptional()
   @IsObject()
@@ -77,6 +88,15 @@ export class TaskMetadataDto {
   @IsOptional()
   @IsString()
   recommended_category?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  requires_driving?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @IsIn(['business-hours', 'weekdays-only', 'evenings', 'weekends', 'anytime'])
+  time_constraint?: TimeConstraint;
 }
 
 export class EnrichmentOptionsDto {

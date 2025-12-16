@@ -12,10 +12,12 @@
 
 import 'dotenv/config'; // Load .env before anything else
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe } from '@nestjs/common';
+import { ValidationPipe, Logger, INestApplicationContext } from '@nestjs/common';
 import { AppModule } from './app.module';
 import { CommandFactory } from 'nest-commander';
 import { MCPServerService } from './mcp/services/mcp-server.service';
+import { VersionService } from './updates/version.service';
+import { BackupService } from './backups/backup.service';
 
 async function bootstrap() {
   const runMode = process.env.RUN_MODE || 'cli';
@@ -48,7 +50,22 @@ async function bootstrap() {
     console.error('[Bootstrap] Starting HTTP Server...');
     const app = await NestFactory.create(AppModule, {
       logger: ['error', 'warn', 'log'],
+      bodyParser: true,
+      rawBody: false,
     });
+
+    // Check for updates and run migrations if AUTO_UPDATE is enabled
+    if (process.env.AUTO_UPDATE !== 'false') {
+      await runAutoUpdate(app);
+    }
+
+    // Configure body parser limits (default is 100kb which is too small)
+    // - Chat messages with page context can include large HTML payloads
+    // - Task descriptions might be lengthy
+    app.use(
+      require('express').json({ limit: '10mb' }),
+      require('express').urlencoded({ limit: '10mb', extended: true })
+    );
 
     // Enable CORS for API access
     app.enableCors({
@@ -65,6 +82,9 @@ async function bootstrap() {
     app.useGlobalPipes(
       new ValidationPipe({
         transform: true,
+        transformOptions: {
+          enableImplicitConversion: true,
+        },
         whitelist: true,
         forbidNonWhitelisted: false,
       }),
@@ -80,6 +100,44 @@ async function bootstrap() {
     // Import CLIModule directly for nest-commander
     const { CLIModule } = await import('./cli/cli.module');
     await CommandFactory.run(CLIModule, ['error', 'warn', 'log']);
+  }
+}
+
+async function runAutoUpdate(app: INestApplicationContext): Promise<void> {
+  const logger = new Logger('AutoUpdate');
+
+  try {
+    const versionService = app.get(VersionService);
+    const backupService = app.get(BackupService);
+
+    const needsUpdate = await versionService.checkForUpdates();
+
+    if (needsUpdate) {
+      logger.log('Update detected, creating backup before migration...');
+
+      // Create backup if configured
+      const backupBeforeUpdate = process.env.BACKUP_BEFORE_UPDATE !== 'false';
+      if (backupBeforeUpdate) {
+        try {
+          const backupPath = await backupService.createBackup();
+          logger.log(`Backup created: ${backupPath}`);
+        } catch (error: any) {
+          logger.error(`Backup failed: ${error.message}`);
+          logger.warn('Continuing with update without backup (backup failed)');
+        }
+      }
+
+      // Migrations are already run during KyselyAdapter.initialize()
+      logger.log('Running migrations...');
+
+      // Update version in database
+      await versionService.updateVersion();
+      logger.log('Update complete!');
+    }
+  } catch (error: any) {
+    const logger = new Logger('AutoUpdate');
+    logger.error(`Auto-update failed: ${error.message}`);
+    // Don't fail startup, just log the error
   }
 }
 

@@ -5,7 +5,7 @@
  * Implementations: SQLite, PostgreSQL, etc.
  */
 
-import { Task, TaskMetadata, TaskHistory, Project, Label, TaskFilters } from './task.interface';
+import { Task, TaskMetadata, TaskHistory, Project, Label, TaskFilters, TaskInsightStats } from './task.interface';
 
 export interface SyncState {
   taskState: any;
@@ -110,6 +110,12 @@ export abstract class IStorageAdapter {
     avgDuration: number;
     commonPatterns: string[];
   }>;
+
+  /**
+   * Get pre-computed statistics for task insights
+   * Aggregations are done in SQL, not by the AI
+   */
+  abstract getTaskInsightStats(): Promise<TaskInsightStats>;
 
   // ==================== Projects & Labels ====================
 
@@ -255,4 +261,67 @@ export abstract class IStorageAdapter {
    * Delete a view (cannot delete default views)
    */
   abstract deleteView(slugOrId: string | number): Promise<boolean>;
+
+  // ==================== Cached Insights ====================
+
+  /**
+   * Get cached insights by key
+   * Returns null if cache doesn't exist or is expired
+   */
+  abstract getCachedInsights<T>(cacheKey: string): Promise<{
+    data: T;
+    generatedAt: string;
+    expiresAt: string;
+  } | null>;
+
+  /**
+   * Save insights to cache
+   * @param cacheKey Unique key for this cache entry (e.g., 'comprehensive-insights')
+   * @param data The data to cache
+   * @param ttlHours How long the cache is valid (default 24 hours)
+   */
+  abstract setCachedInsights<T>(cacheKey: string, data: T, ttlHours?: number): Promise<void>;
+
+  /**
+   * Invalidate cached insights by key
+   */
+  abstract invalidateCachedInsights(cacheKey: string): Promise<void>;
+
+  // ==================== App Configuration ====================
+
+  /**
+   * Get a configuration value by key
+   * Automatically decrypts if the value is marked as encrypted
+   */
+  abstract getConfig(key: string): Promise<string | null>;
+
+  /**
+   * Set a configuration value
+   * @param key Configuration key
+   * @param value Configuration value
+   * @param encrypted Whether to encrypt the value (for sensitive data like API keys)
+   */
+  abstract setConfig(key: string, value: string, encrypted?: boolean): Promise<void>;
+
+  /**
+   * Get multiple configuration values
+   */
+  abstract getConfigs(keys: string[]): Promise<Record<string, string | null>>;
+
+  /**
+   * Check if a configuration key exists
+   */
+  abstract hasConfig(key: string): Promise<boolean>;
+
+  // ==================== System Information ====================
+
+  /**
+   * Get the database dialect type (pglite or postgres)
+   */
+  abstract getDialect(): 'pglite' | 'postgres';
+
+  /**
+   * Get the database connection info (for backups and diagnostics)
+   */
+  abstract getConnectionInfo(): { dialect: 'pglite' | 'postgres'; path?: string; connectionString?: string };
 }

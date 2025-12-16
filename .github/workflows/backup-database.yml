@@ -1,0 +1,106 @@
+name: Backup Production Database
+
+on:
+  # Run daily at 2 AM UTC
+  schedule:
+    - cron: '0 2 * * *'
+  # Allow manual triggering
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'Database to backup'
+        required: false
+        default: 'prod'
+        type: choice
+        options:
+          - prod
+          - dev
+
+env:
+  NODE_VERSION: "22"
+  PNPM_VERSION: "9.15.3"
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    environment: production
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+          cache-dependency-path: api/pnpm-lock.yaml
+
+      - name: Install dependencies
+        working-directory: api
+        run: pnpm install --frozen-lockfile
+
+      - name: Export production database
+        working-directory: api
+        env:
+          DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
+        run: |
+          TARGET="${{ inputs.target || 'prod' }}"
+          TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+          OUTPUT="backup-${TARGET}-${TIMESTAMP}.sql"
+          
+          echo "Creating backup: ${OUTPUT}"
+          # Note: db:export was removed during PGlite migration
+          # For Neon/Postgres databases, use pg_dump directly
+          pg_dump "${DATABASE_URL}" -f "${OUTPUT}" --no-owner --no-acl
+          
+          # Store output filename for later steps
+          echo "BACKUP_FILE=${OUTPUT}" >> $GITHUB_ENV
+
+      - name: Upload backup as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: database-backup-${{ github.run_number }}
+          path: api/backup-*.sql
+          retention-days: 30
+          compression-level: 9
+
+      - name: Get backup file size
+        working-directory: api
+        run: |
+          SIZE=$(du -h "${{ env.BACKUP_FILE }}" | cut -f1)
+          echo "Backup size: ${SIZE}"
+          echo "BACKUP_SIZE=${SIZE}" >> $GITHUB_ENV
+
+      - name: Create backup summary
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY <<EOF
+          ## Database Backup Complete ✅
+          
+          - **Target:** ${{ inputs.target || 'prod' }}
+          - **File:** \`${{ env.BACKUP_FILE }}\`
+          - **Size:** ${{ env.BACKUP_SIZE }}
+          - **Timestamp:** $(date -u +'%Y-%m-%d %H:%M:%S UTC')
+          - **Retention:** 30 days
+          
+          ### Download
+          The backup is available as a workflow artifact and will be retained for 30 days.
+          
+          ### Restore
+          To restore this backup locally:
+          \`\`\`bash
+          # Download the artifact from this workflow run
+          # Then in api/ directory:
+          psql "${DATABASE_URL}" -f backup-prod-TIMESTAMP.sql
+          \`\`\`
+          EOF
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "::error::Database backup failed for ${{ inputs.target || 'prod' }}"

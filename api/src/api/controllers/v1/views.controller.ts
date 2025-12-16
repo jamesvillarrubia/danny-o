@@ -31,6 +31,7 @@ import {
   Inject,
   Logger,
 } from '@nestjs/common';
+import { Transform } from 'class-transformer';
 import { IStorageAdapter, Task, TaskFilters } from '../../../common/interfaces';
 
 // ==================== DTOs ====================
@@ -67,8 +68,11 @@ interface ViewResponseDto {
   orderIndex: number;
 }
 
-interface ViewTasksQueryDto {
+class ViewTasksQueryDto {
+  @Transform(({ value }) => value ? parseInt(value, 10) : undefined)
   limit?: number;
+  
+  @Transform(({ value }) => value ? parseInt(value, 10) : undefined)
   offset?: number;
 }
 
@@ -326,13 +330,13 @@ export class ViewsController {
     // Build base filters
     const filters: TaskFilters = {
       completed: config.completed ?? false,
-      limit: limit || config.limit || 50,
+      limit: limit || config.limit || 1000,
     };
 
-    // Priority filter
-    if (config.priority && config.priority.length > 0) {
-      // For now, use lowest priority (highest urgency)
-      filters.priority = Math.min(...config.priority);
+    // Priority filter - only use DB filter for single priority
+    // Multi-priority filtering is handled in-memory below since DB uses exact match
+    if (config.priority && config.priority.length === 1) {
+      filters.priority = config.priority[0];
     }
 
     // Category filter (if single category)
@@ -441,7 +445,7 @@ export class ViewsController {
     }
 
     // Apply limit
-    const finalLimit = limit || config.limit || 50;
+    const finalLimit = limit || config.limit || 1000;
     return tasks.slice(0, finalLimit);
   }
 

@@ -3,7 +3,7 @@
   "version": 2,
   "framework": null,
   "buildCommand": "cd web && if [ \"$VERCEL_ENV\" = \"preview\" ]; then VITE_API_URL=https://danny-tasks-api-dev.fly.dev pnpm build; else pnpm build; fi",
-  "installCommand": "cd web && pnpm install",
+  "installCommand": "corepack enable && cd web && corepack pnpm install --frozen-lockfile",
   "outputDirectory": "web/dist",
   "rewrites": [
     {

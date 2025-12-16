@@ -9,4 +9,5 @@ export * from './ai.controller';
 export * from './stats.controller';
 export * from './views.controller';
 export * from './chat.controller';
+export * from './settings.controller';
 

@@ -95,3 +95,20 @@ export interface Settings {
   theme?: 'light' | 'dark' | 'system';
 }
 
+// Sync types
+export interface SyncMode {
+  mode: 'standalone' | 'todoist';
+  todoistApiKeySet: boolean;
+}
+
+export interface OrphanedTasksReport {
+  localOnly: Task[];
+  todoistOnly: Task[];
+  requiresUserDecision: boolean;
+}
+
+export interface MergeDecision {
+  task: Task;
+  action: 'import_to_local' | 'push_to_todoist' | 'ignore';
+}
+

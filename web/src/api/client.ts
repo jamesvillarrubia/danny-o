@@ -180,3 +180,54 @@ export function getApiBaseUrl(): string {
   return API_BASE_URL || '(using proxy)';
 }
 
+// ==================== Sync Settings API ====================
+
+export interface SyncMode {
+  mode: 'standalone' | 'todoist';
+  todoistApiKeySet: boolean;
+}
+
+export async function getSyncMode(): Promise<SyncMode> {
+  return fetchApi<SyncMode>('/settings/sync-mode');
+}
+
+export async function setSyncMode(
+  mode: 'standalone' | 'todoist',
+  todoistApiKey?: string
+): Promise<{ success: boolean; mode: string }> {
+  return fetchApi<{ success: boolean; mode: string }>(
+    '/settings/sync-mode',
+    {
+      method: 'POST',
+      body: JSON.stringify({ mode, todoistApiKey }),
+    }
+  );
+}
+
+export interface OrphanedTasksReport {
+  localOnly: Task[];
+  todoistOnly: Task[];
+  requiresUserDecision: boolean;
+}
+
+export async function detectOrphans(): Promise<OrphanedTasksReport> {
+  return fetchApi<OrphanedTasksReport>('/sync/orphans');
+}
+
+export interface MergeDecision {
+  task: Task;
+  action: 'import_to_local' | 'push_to_todoist' | 'ignore';
+}
+
+export async function applyMergeDecisions(
+  decisions: MergeDecision[]
+): Promise<{ success: boolean; applied: number }> {
+  return fetchApi<{ success: boolean; applied: number }>(
+    '/sync/apply-merge-decisions',
+    {
+      method: 'POST',
+      body: JSON.stringify({ decisions }),
+    }
+  );
+}
+

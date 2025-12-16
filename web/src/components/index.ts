@@ -8,4 +8,7 @@ export * from './TaskList';
 export * from './TaskDetail';
 export * from './ChatInput';
 export * from './SettingsPanel';
+export * from './AppSettings';
+export * from './MergeConflictsModal';
+export * from './OfflineIndicator';
 

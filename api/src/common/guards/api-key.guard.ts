@@ -21,7 +21,7 @@ export class ApiKeyGuard implements CanActivate {
   constructor(
     private readonly configService: ConfigService,
     private readonly reflector: Reflector,
-    private readonly storage: IStorageAdapter,
+    @Inject('IStorageAdapter') private readonly storage: IStorageAdapter,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {

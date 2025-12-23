@@ -4,7 +4,7 @@
  * Manages application configuration including API key generation and confirmation.
  */
 
-import { Controller, Get, Post, Body, Logger } from '@nestjs/common';
+import { Controller, Get, Post, Body, Logger, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { IStorageAdapter } from '../common/interfaces/storage-adapter.interface';
 import { Public } from '../common/guards/api-key.guard';
@@ -16,7 +16,7 @@ export class ConfigController {
 
   constructor(
     private readonly configService: ConfigService,
-    private readonly storage: IStorageAdapter,
+    @Inject('IStorageAdapter') private readonly storage: IStorageAdapter,
   ) {}
 
   /**

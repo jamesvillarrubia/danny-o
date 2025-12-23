@@ -8,12 +8,12 @@ WORKDIR /app
 # Install pnpm
 RUN npm install -g pnpm
 
-# Copy workspace config and shared package
-COPY ../pnpm-workspace.yaml ../pnpm-workspace.yaml
-COPY ../packages/shared ../packages/shared
+# Copy workspace config and shared package (from root context)
+COPY pnpm-workspace.yaml ./
+COPY packages/shared ./packages/shared
 
-# Copy package files
-COPY package.json ./
+# Copy API package files
+COPY api/package.json ./
 
 # Install dependencies
 RUN pnpm install
@@ -27,9 +27,10 @@ RUN npm install -g pnpm
 
 # Copy dependencies from deps stage
 COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/packages ./packages
 
-# Copy source files
-COPY . .
+# Copy API source files
+COPY api/. .
 
 # Build the application
 RUN pnpm build

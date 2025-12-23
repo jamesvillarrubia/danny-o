@@ -1,0 +1,33 @@
+# Root .dockerignore for Fly.io monorepo deployments
+# Only include what's needed for API build
+
+# Exclude everything by default
+**/*
+
+# Include only necessary files for API
+!api/
+!packages/shared/
+!pnpm-workspace.yaml
+
+# Exclude unnecessary API subdirectories
+api/node_modules/
+api/.pnpm-store/
+api/data/
+api/test/
+api/step-ci/
+api/dist/
+api/*.md
+api/.git*/
+
+# Exclude web, docs, extension
+web/
+docs/
+extension/
+
+# Exclude root-level dev files
+node_modules/
+.pnpm-store/
+.git/
+.github/
+*.log
+.DS_Store

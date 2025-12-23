@@ -1,0 +1,13 @@
+# Exclude API backend (not needed for frontend deployment)
+api/
+
+# Exclude documentation site
+docs/
+
+# Exclude browser extension
+extension/
+
+# Exclude root config files not needed for deployment
+.github/
+*.md
+!web/

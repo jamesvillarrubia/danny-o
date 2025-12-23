@@ -2,7 +2,6 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "version": 2,
   "buildCommand": "pnpm --filter ./packages/shared build && pnpm --filter ./web build",
-  "installCommand": "corepack enable && pnpm install",
   "outputDirectory": "web/dist",
   "framework": null,
   "rewrites": [

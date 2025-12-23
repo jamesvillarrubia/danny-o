@@ -9,7 +9,9 @@
 import { Module, Global } from '@nestjs/common';
 import { ConfigModule as NestConfigModule } from '@nestjs/config';
 import { TaxonomyService } from './taxonomy/taxonomy.service';
+import { ConfigController } from './config.controller';
 import { validate } from './schemas/env.schema';
+import { StorageModule } from '../storage/storage.module';
 
 @Global()
 @Module({
@@ -20,7 +22,9 @@ import { validate } from './schemas/env.schema';
       cache: true,
       validate,
     }),
+    StorageModule,
   ],
+  controllers: [ConfigController],
   providers: [TaxonomyService],
   exports: [TaxonomyService],
 })

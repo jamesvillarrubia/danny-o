@@ -241,3 +241,43 @@ export async function applyMergeDecisions(
   );
 }
 
+// ==================== Config API ====================
+
+/**
+ * Get or generate the API key (public endpoint for first-time setup)
+ */
+export async function getOrGenerateApiKey(): Promise<{
+  apiKey: string;
+  confirmed: boolean;
+  firstTime: boolean;
+}> {
+  const apiBase = getApiBase();
+  const response = await fetch(`${apiBase}/config/api-key`);
+  
+  if (!response.ok) {
+    throw new Error('Failed to get API key');
+  }
+  
+  return response.json();
+}
+
+/**
+ * Confirm that the user has saved the API key
+ */
+export async function confirmApiKey(apiKey: string): Promise<{ success: boolean }> {
+  const apiBase = getApiBase();
+  const response = await fetch(`${apiBase}/config/api-key/confirm`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ apiKey }),
+  });
+  
+  if (!response.ok) {
+    throw new Error('Failed to confirm API key');
+  }
+  
+  return response.json();
+}
+

@@ -5,12 +5,14 @@
  * Used to protect the web API endpoints.
  */
 
-import { Injectable, CanActivate, ExecutionContext, UnauthorizedException, Logger } from '@nestjs/common';
+import { Injectable, CanActivate, ExecutionContext, UnauthorizedException, Logger, Inject, SetMetadata } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Request } from 'express';
 import { Reflector } from '@nestjs/core';
+import { IStorageAdapter } from '../interfaces/storage-adapter.interface';
 
 export const IS_PUBLIC_KEY = 'isPublic';
+export const Public = () => SetMetadata(IS_PUBLIC_KEY, true);
 
 @Injectable()
 export class ApiKeyGuard implements CanActivate {
@@ -19,9 +21,10 @@ export class ApiKeyGuard implements CanActivate {
   constructor(
     private readonly configService: ConfigService,
     private readonly reflector: Reflector,
+    private readonly storage: IStorageAdapter,
   ) {}
 
-  canActivate(context: ExecutionContext): boolean {
+  async canActivate(context: ExecutionContext): Promise<boolean> {
     // Check if endpoint is marked as public
     const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
       context.getHandler(),
@@ -35,9 +38,15 @@ export class ApiKeyGuard implements CanActivate {
     const request = context.switchToHttp().getRequest();
     const apiKey = request.headers['x-api-key'] as string;
 
-    const expectedKey = this.configService.get<string>('DANNY_API_KEY');
+    // Check environment variable first
+    let expectedKey = this.configService.get<string>('DANNY_API_KEY');
+    
+    // If not in env, check storage
+    if (!expectedKey) {
+      expectedKey = await this.storage.getConfig('danny_api_key');
+    }
 
-    // If no API key is configured, allow all requests (development mode)
+    // If no API key is configured anywhere, allow all requests (development mode)
     if (!expectedKey) {
       this.logger.warn('DANNY_API_KEY not set - API is unprotected');
       return true;

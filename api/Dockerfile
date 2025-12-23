@@ -9,11 +9,10 @@ WORKDIR /app
 RUN npm install -g pnpm
 
 # Copy package files
-COPY package.json pnpm-lock.yaml ./
-COPY .npmrc* .nvmrc* ./
+COPY package.json ./
 
-# Install dependencies
-RUN pnpm install --frozen-lockfile
+# Install dependencies (no lockfile in monorepo api subdirectory)
+RUN pnpm install
 
 # Stage 2: Builder
 FROM node:24-alpine AS builder

@@ -18,7 +18,7 @@ const ENVIRONMENTS = {
   },
   production: {
     name: 'Production',
-    webUrl: 'https://danny-o-james-villarrubias-projects.vercel.app',
+    webUrl: 'https://danny-o-git-main-james-villarrubias-projects.vercel.app',
     apiUrl: 'https://danny-tasks-api.fly.dev'
   }
 };

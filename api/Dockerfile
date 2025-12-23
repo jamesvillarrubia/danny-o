@@ -35,9 +35,6 @@ COPY api/. .
 # Build the application
 RUN pnpm build
 
-# Remove dev dependencies
-RUN pnpm prune --prod
-
 # Stage 3: Runner (Production)
 FROM node:24-alpine AS runner
 WORKDIR /app

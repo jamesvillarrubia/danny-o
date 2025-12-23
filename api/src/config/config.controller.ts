@@ -10,7 +10,7 @@ import { IStorageAdapter } from '../common/interfaces/storage-adapter.interface'
 import { Public } from '../common/guards/api-key.guard';
 import { randomBytes } from 'crypto';
 
-@Controller('api/v1/config')
+@Controller('v1/config')
 export class ConfigController {
   private readonly logger = new Logger(ConfigController.name);
 

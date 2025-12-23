@@ -18,7 +18,7 @@ const ENVIRONMENTS = {
   },
   production: {
     name: 'Production',
-    webUrl: 'https://danny-o.vercel.app',
+    webUrl: 'https://danny-tasks.vercel.app',
     apiUrl: 'https://danny-tasks-api.fly.dev'
   }
 };

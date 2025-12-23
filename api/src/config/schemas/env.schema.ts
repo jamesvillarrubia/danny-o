@@ -37,8 +37,8 @@ export class EnvironmentVariables {
   NODE_ENV?: 'development' | 'production' | 'test';
 
   @IsOptional()
-  @IsEnum(['cli', 'mcp'])
-  RUN_MODE?: 'cli' | 'mcp';
+  @IsEnum(['cli', 'mcp', 'http', 'api'])
+  RUN_MODE?: 'cli' | 'mcp' | 'http' | 'api';
 
   @IsOptional()
   @IsInt()

@@ -56,7 +56,6 @@ export default function App() {
     return (
       <Layout>
         <SettingsPanel
-          apiKey={settings.apiKey}
           onSave={(key) => {
             updateApiKey(key);
             setShowSettings(false);

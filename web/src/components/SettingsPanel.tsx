@@ -9,11 +9,10 @@ import { Key, Loader2, Check, AlertCircle, Copy, CheckCheck } from 'lucide-react
 import { getOrGenerateApiKey, confirmApiKey } from '../api/client';
 
 interface SettingsPanelProps {
-  apiKey: string;
   onSave: (apiKey: string) => void;
 }
 
-export function SettingsPanel({ apiKey, onSave }: SettingsPanelProps) {
+export function SettingsPanel({ onSave }: SettingsPanelProps) {
   const [generatedKey, setGeneratedKey] = useState<string>('');
   const [isFirstTime, setIsFirstTime] = useState(false);
   const [isLoading, setIsLoading] = useState(true);

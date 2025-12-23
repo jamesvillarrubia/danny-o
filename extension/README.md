@@ -36,16 +36,22 @@ Alternatively, use an online tool like [CloudConvert](https://cloudconvert.com/s
 
 ## Configuration
 
-### Set Danny URL
+### Environment Selection
 
-By default, the extension connects to `http://localhost:3001` for development.
+The extension includes an environment selector in the top-right corner of the side panel. You can switch between:
 
-For production:
-1. Click the Danny extension icon to open the side panel
-2. If it can't connect, click "Configure URL"
-3. Enter your Vercel deployment URL (e.g., `https://danny-tasks.vercel.app`)
+- **Local Development** - `http://localhost:5173` (default)
+- **Staging** - `https://danny-tasks-staging.vercel.app`
+- **Production** - `https://danny-o.vercel.app`
 
-The URL is stored in Chrome's local storage.
+### Custom Environments
+
+To configure a custom environment:
+1. Click the ⚙️ button next to the environment selector
+2. Enter the environment name, web URL, and API URL
+3. The custom environment will be saved and available in the dropdown
+
+Environment settings are stored in Chrome's local storage.
 
 ### API Key
 

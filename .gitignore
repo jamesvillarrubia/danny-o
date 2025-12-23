@@ -56,3 +56,8 @@ Thumbs.db
 # Cursor AI
 .cursor/
 
+# Vercel
+# Note: .vercel/project.json and .vercel/README.json should be committed for IaC
+# Only ignore sensitive files if any
+.vercel/*.env
+

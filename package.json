@@ -7,10 +7,13 @@
     "dev": "concurrently -n api,web -c blue,green \"pnpm --filter ./api start:http\" \"pnpm --filter ./web dev\"",
     "dev:api": "pnpm --filter ./api start:http",
     "dev:web": "pnpm --filter ./web dev",
-    "build": "pnpm --filter ./api build && pnpm --filter ./web build",
+    "dev:docs": "pnpm --filter ./docs start",
+    "build": "pnpm --filter ./packages/shared build && pnpm --filter ./api build && pnpm --filter ./web build",
+    "build:shared": "pnpm --filter ./packages/shared build",
     "build:api": "pnpm --filter ./api build",
     "build:web": "pnpm --filter ./web build",
-    "install:all": "pnpm install && pnpm --filter ./api install && pnpm --filter ./web install",
+    "build:docs": "pnpm --filter ./docs build",
+    "install:all": "pnpm install && pnpm --filter ./packages/shared install && pnpm --filter ./api install && pnpm --filter ./web install && pnpm --filter ./docs install",
     "test": "pnpm --filter ./api test && pnpm --filter ./web lint",
     "test:api": "pnpm --filter ./api test",
     "lint": "pnpm --filter ./api lint && pnpm --filter ./web lint",
@@ -23,5 +26,6 @@
   "engines": {
     "node": ">=22.0.0",
     "pnpm": ">=8.0.0"
-  }
+  },
+  "packageManager": "pnpm@8.15.0"
 }

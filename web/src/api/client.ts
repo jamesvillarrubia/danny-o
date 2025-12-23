@@ -9,9 +9,27 @@ import type { Task, View, ChatResponse, ListTasksResponse, ListViewsResponse } f
 /**
  * API base URL - uses environment variable in production, proxy in development
  * Set VITE_API_URL in your .env file or Vercel environment variables
+ * Can also be overridden via ?apiUrl query parameter (for extension use)
  */
-const API_BASE_URL = import.meta.env.VITE_API_URL || '';
-const API_BASE = `${API_BASE_URL}/api/v1`;
+function resolveApiBaseUrl(): string {
+  // Check for query parameter first (for extension/environment switching)
+  const urlParams = new URLSearchParams(window.location.search);
+  const queryApiUrl = urlParams.get('apiUrl');
+  if (queryApiUrl) {
+    return queryApiUrl;
+  }
+  
+  // Fall back to environment variable
+  return import.meta.env.VITE_API_URL || '';
+}
+
+/**
+ * Get the current API base URL (dynamically reads from URL params)
+ */
+function getApiBase(): string {
+  const baseUrl = resolveApiBaseUrl();
+  return baseUrl ? `${baseUrl}/api/v1` : '/api/v1';
+}
 
 /**
  * Get the API key from localStorage
@@ -28,8 +46,9 @@ async function fetchApi<T>(
   options: RequestInit = {}
 ): Promise<T> {
   const apiKey = getApiKey();
+  const apiBase = getApiBase();
 
-  const response = await fetch(`${API_BASE}${endpoint}`, {
+  const response = await fetch(`${apiBase}${endpoint}`, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
@@ -161,7 +180,8 @@ export function clearApiKey(): void {
  */
 export async function testApiKey(key: string): Promise<boolean> {
   try {
-    const response = await fetch(`${API_BASE}/views`, {
+    const apiBase = getApiBase();
+    const response = await fetch(`${apiBase}/views`, {
       headers: {
         'Content-Type': 'application/json',
         'x-api-key': key,
@@ -175,17 +195,18 @@ export async function testApiKey(key: string): Promise<boolean> {
 
 /**
  * Get the current API base URL (for debugging)
+ * This function re-reads the URL to handle dynamic changes
  */
 export function getApiBaseUrl(): string {
-  return API_BASE_URL || '(using proxy)';
+  return resolveApiBaseUrl() || '(using proxy)';
 }
 
 // ==================== Sync Settings API ====================
 
-export interface SyncMode {
-  mode: 'standalone' | 'todoist';
-  todoistApiKeySet: boolean;
-}
+import type { SyncMode, OrphanedTasksReport, MergeDecision } from '../types';
+
+// Re-export types for convenience
+export type { SyncMode, OrphanedTasksReport, MergeDecision };
 
 export async function getSyncMode(): Promise<SyncMode> {
   return fetchApi<SyncMode>('/settings/sync-mode');
@@ -204,19 +225,8 @@ export async function setSyncMode(
   );
 }
 
-export interface OrphanedTasksReport {
-  localOnly: Task[];
-  todoistOnly: Task[];
-  requiresUserDecision: boolean;
-}
-
 export async function detectOrphans(): Promise<OrphanedTasksReport> {
   return fetchApi<OrphanedTasksReport>('/sync/orphans');
-}
-
-export interface MergeDecision {
-  task: Task;
-  action: 'import_to_local' | 'push_to_todoist' | 'ignore';
 }
 
 export async function applyMergeDecisions(

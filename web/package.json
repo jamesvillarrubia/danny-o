@@ -10,6 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@danny-tasks/shared": "workspace:*",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
     "lucide-react": "^0.513.0",
@@ -32,5 +33,6 @@
     "typescript": "~5.8.3",
     "typescript-eslint": "^8.33.1",
     "vite": "^6.3.5"
-  }
+  },
+  "packageManager": "pnpm@8.15.0"
 }

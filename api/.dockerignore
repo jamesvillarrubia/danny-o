@@ -1,0 +1,73 @@
+# Dependencies
+node_modules
+.pnpm-store
+npm-debug.log
+pnpm-debug.log
+yarn-error.log
+
+# Monorepo (other packages deployed separately)
+../web
+../packages
+../docs
+../extension
+
+# Build outputs
+dist
+build
+*.tsbuildinfo
+
+# Tests
+test
+coverage
+*.spec.ts
+*.test.ts
+jest.config.js
+jest-e2e.json
+
+# Documentation
+*.md
+docs
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Data (mounted as volume or runtime-generated)
+data
+
+# Logs
+logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# CI/CD
+.github
+.gitlab-ci.yml
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Misc
+*.bak
+*.tmp
+temp
+tmp
+

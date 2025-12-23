@@ -8,10 +8,14 @@ WORKDIR /app
 # Install pnpm
 RUN npm install -g pnpm
 
+# Copy workspace config and shared package
+COPY ../pnpm-workspace.yaml ../pnpm-workspace.yaml
+COPY ../packages/shared ../packages/shared
+
 # Copy package files
 COPY package.json ./
 
-# Install dependencies (no lockfile in monorepo api subdirectory)
+# Install dependencies
 RUN pnpm install
 
 # Stage 2: Builder

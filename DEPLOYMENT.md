@@ -152,8 +152,16 @@ flyctl secrets set -a danny-tasks-api-prod \
 
 ### Web (Vercel Environment Variables)
 
+**CRITICAL**: You must configure the API URL in Vercel for the frontend to work:
+
 Set in Vercel dashboard under Project Settings → Environment Variables:
-- `VITE_API_URL` - API base URL (optional, uses relative path by default)
+- `VITE_API_URL` - **REQUIRED** - API base URL
+  - Production: `https://danny-tasks-api-prod.fly.dev`
+  - Preview: `https://danny-tasks-api-dev.fly.dev`
+
+**After setting this variable, you must redeploy your Vercel application.**
+
+See `web/VERCEL_SETUP.md` for detailed step-by-step instructions.
 
 ## Deployment Optimization
 
@@ -297,3 +305,4 @@ develop branch push
 3. **Test on develop first** - Never push directly to main
 4. **Monitor health checks** - API has `/health` endpoints
 5. **Review logs after deployment** - Check for startup errors
+

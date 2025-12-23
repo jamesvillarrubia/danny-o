@@ -1308,6 +1308,54 @@ export class KyselyAdapter implements IStorageAdapter {
     return (result.numDeletedRows ?? 0n) > 0n;
   }
 
+  // ==================== Configuration ====================
+
+  async getConfig(key: string): Promise<string | null> {
+    const db = this.getDb();
+    
+    const row = await db
+      .selectFrom('sync_state')
+      .select('value')
+      .where('key', '=', `config:${key}`)
+      .executeTakeFirst();
+
+    return row?.value || null;
+  }
+
+  async setConfig(key: string, value: string, encrypted?: boolean): Promise<void> {
+    const db = this.getDb();
+    const now = new Date().toISOString();
+
+    // Note: In a production app, you'd want to actually encrypt sensitive values
+    // For now, we just store them (the "encrypted" flag is for future implementation)
+    const storedValue = encrypted && value ? `encrypted:${value}` : value;
+
+    await db
+      .insertInto('sync_state')
+      .values({
+        key: `config:${key}`,
+        value: storedValue,
+        updated_at: now,
+      })
+      .onConflict(oc => oc.column('key').doUpdateSet({
+        value: storedValue,
+        updated_at: now,
+      }))
+      .execute();
+  }
+
+  async hasConfig(key: string): Promise<boolean> {
+    const db = this.getDb();
+    
+    const row = await db
+      .selectFrom('sync_state')
+      .select('value')
+      .where('key', '=', `config:${key}`)
+      .executeTakeFirst();
+
+    return !!(row?.value && row.value.length > 0);
+  }
+
   // ==================== Helper Methods ====================
 
   private rowToTask(row: any): Task {

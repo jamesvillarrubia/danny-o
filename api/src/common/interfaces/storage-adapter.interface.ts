@@ -255,4 +255,24 @@ export abstract class IStorageAdapter {
    * Delete a view (cannot delete default views)
    */
   abstract deleteView(slugOrId: string | number): Promise<boolean>;
+
+  // ==================== Configuration ====================
+
+  /**
+   * Get a configuration value by key
+   */
+  abstract getConfig(key: string): Promise<string | null>;
+
+  /**
+   * Set a configuration value
+   * @param key Configuration key
+   * @param value Configuration value
+   * @param encrypted Whether to encrypt the value (for sensitive data like API keys)
+   */
+  abstract setConfig(key: string, value: string, encrypted?: boolean): Promise<void>;
+
+  /**
+   * Check if a configuration key exists and has a non-empty value
+   */
+  abstract hasConfig(key: string): Promise<boolean>;
 }

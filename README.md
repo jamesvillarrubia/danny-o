@@ -52,19 +52,35 @@ tasks/
 - [Todoist API key](https://todoist.com/prefs/integrations)
 - [Claude API key](https://console.anthropic.com/)
 
-### Development
+### Run the Full Stack
 
 ```bash
-# API (backend)
-cd api
+# Install all dependencies
 pnpm install
-cp .env.example .env  # Edit with your API keys
-pnpm start:http
 
-# Web (frontend) - in another terminal
-cd web
-pnpm install
+# Set up API environment variables
+cp api/.env.example api/.env
+# Edit api/.env with your API keys (TODOIST_API_KEY, CLAUDE_API_KEY)
+
+# Run everything (API + Web)
 pnpm dev
+```
+
+This will start:
+- **API** on `http://localhost:3000`
+- **Web** on `http://localhost:5173` (or next available port)
+
+### Run Individual Services
+
+```bash
+# API only
+pnpm dev:api
+
+# Web only
+pnpm dev:web
+
+# Documentation site
+pnpm dev:docs
 ```
 
 ### CLI Commands
@@ -167,9 +183,16 @@ npx tsc --noEmit            # Type checking
 - **API** → [Fly.io](https://fly.io) (container deployment)
 - **Web** → [Vercel](https://vercel.com) (static/SSR)
 
-See [api/DEPLOYMENT.md](./api/DEPLOYMENT.md) for full deployment guide.
+**🚀 Quick Deploy**: Use our [interactive deployment wizard](https://yourusername.github.io/tasks/deployment) to deploy to Railway, Render, or Fly.io with one click!
+
+See [api/DEPLOYMENT.md](./api/DEPLOYMENT.md) for full deployment guide, or visit our [documentation site](https://yourusername.github.io/tasks) for detailed guides.
 
 ## Documentation
+
+- **[📚 Full Documentation](https://yourusername.github.io/tasks)** - Complete docs with deployment wizard
+- **[🚀 Deployment Wizard](https://yourusername.github.io/tasks/deployment)** - Interactive deployment guide
+
+### Local Documentation
 
 | Document | Description |
 |----------|-------------|

@@ -1,8 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "version": 2,
-  "buildCommand": "npx pnpm@8.15.0 --filter ./packages/shared build && npx pnpm@8.15.0 --filter ./web build",
-  "installCommand": "npx pnpm@8.15.0 install",
+  "buildCommand": "pnpm --filter ./packages/shared build && pnpm --filter ./web build",
   "outputDirectory": "web/dist",
   "framework": null,
   "rewrites": [

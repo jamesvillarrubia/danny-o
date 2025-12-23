@@ -1,0 +1,41 @@
+{
+  "name": "@danny-tasks/shared",
+  "version": "2.0.0",
+  "description": "Shared types and utilities for Danny Tasks monorepo",
+  "main": "./dist/cjs/index.js",
+  "module": "./dist/esm/index.js",
+  "types": "./dist/cjs/index.d.ts",
+  "exports": {
+    ".": {
+      "require": "./dist/cjs/index.js",
+      "import": "./dist/esm/index.js",
+      "types": "./dist/cjs/index.d.ts"
+    },
+    "./domain": {
+      "require": "./dist/cjs/domain/index.js",
+      "import": "./dist/esm/domain/index.js",
+      "types": "./dist/cjs/domain/index.d.ts"
+    },
+    "./api": {
+      "require": "./dist/cjs/api/index.js",
+      "import": "./dist/esm/api/index.js",
+      "types": "./dist/cjs/api/index.d.ts"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "pnpm build:cjs && pnpm build:esm",
+    "build:cjs": "tsc -p tsconfig.cjs.json",
+    "build:esm": "tsc -p tsconfig.esm.json",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.1.3"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  }
+}

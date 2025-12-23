@@ -13,8 +13,8 @@ services:
     environment:
       - NODE_ENV=development
       - RUN_MODE=cli
-      - DATABASE_TYPE=sqlite
-      - DATABASE_URL=/app/data/tasks.db
+      - DATABASE_TYPE=pglite
+      - PGLITE_PATH=/app/data/tasks.db
       - TODOIST_API_KEY=${TODOIST_API_KEY}
       - CLAUDE_API_KEY=${CLAUDE_API_KEY}
     volumes:

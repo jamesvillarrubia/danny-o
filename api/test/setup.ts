@@ -8,8 +8,8 @@ import { beforeAll, afterAll } from 'vitest';
 
 // Set test environment variables
 process.env.NODE_ENV = 'test';
-process.env.DATABASE_TYPE = 'sqlite';
-process.env.DATABASE_PATH = ':memory:';
+process.env.DATABASE_TYPE = 'pglite';
+process.env.PGLITE_PATH = './data/test.db';
 
 // Mock environment variables if not set
 if (!process.env.TODOIST_API_KEY) {

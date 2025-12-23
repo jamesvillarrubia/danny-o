@@ -32,5 +32,10 @@
     }
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "test"]
+  "exclude": ["node_modules", "dist", "test"],
+  "references": [
+    {
+      "path": "../packages/shared/tsconfig.base.json"
+    }
+  ]
 }

@@ -8,7 +8,7 @@ import { useState, useEffect } from 'react';
 import { Settings, RefreshCw, Check, AlertCircle, Cloud, CloudOff, Loader2 } from 'lucide-react';
 import { getSyncMode, setSyncMode, detectOrphans, applyMergeDecisions, syncTasks } from '../api/client';
 import { MergeConflictsModal } from './MergeConflictsModal';
-import type { SyncMode, OrphanedTasksReport, MergeDecision } from '../api/client';
+import type { SyncMode, OrphanedTasksReport, MergeDecision } from '../types';
 
 interface AppSettingsProps {
   onClose?: () => void;

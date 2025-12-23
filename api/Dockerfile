@@ -5,9 +5,8 @@
 FROM node:24-alpine AS deps
 WORKDIR /app
 
-# Install pnpm and build tools for native modules (better-sqlite3)
-RUN npm install -g pnpm && \
-    apk add --no-cache python3 make g++
+# Install pnpm
+RUN npm install -g pnpm
 
 # Copy package files
 COPY package.json pnpm-lock.yaml ./
@@ -53,7 +52,7 @@ COPY --from=builder --chown=nestjs:nodejs /app/package.json ./package.json
 COPY --from=builder --chown=nestjs:nodejs /app/config ./config
 COPY --from=builder --chown=nestjs:nodejs /app/scripts ./scripts
 
-# Create data directory for SQLite (if used)
+# Create data directory for PGlite (if used)
 RUN mkdir -p /app/data && chown -R nestjs:nodejs /app/data
 
 # Switch to non-root user

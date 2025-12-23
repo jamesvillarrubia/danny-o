@@ -6,7 +6,7 @@
  * by implementing these methods.
  */
 
-import { Task, Project, Label, TaskFilters, CreateTaskDto, UpdateTaskDto, Comment } from './task.interface';
+import type { Task, Project, Label, TaskFilters, CreateTaskDto, UpdateTaskDto, Comment } from '@danny-tasks/shared';
 
 export interface ITaskProvider {
   /**

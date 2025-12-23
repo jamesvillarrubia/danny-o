@@ -28,6 +28,11 @@
       "@/*": ["./src/*"]
     }
   },
-  "include": ["src"]
+  "include": ["src"],
+  "references": [
+    {
+      "path": "../packages/shared"
+    }
+  ]
 }
 

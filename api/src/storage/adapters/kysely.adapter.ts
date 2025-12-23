@@ -2,12 +2,11 @@
  * Kysely Storage Adapter
  * 
  * Unified database adapter using Kysely for type-safe queries.
- * Supports both SQLite (local dev) and PostgreSQL (Neon prod).
+ * Supports both PGlite (embedded Postgres) and PostgreSQL (remote/cloud).
  */
 
 import { Injectable, Logger } from '@nestjs/common';
-import { Kysely, SqliteDialect, PostgresDialect, sql } from 'kysely';
-import BetterSqlite3 from 'better-sqlite3';
+import { Kysely, PostgresDialect, sql } from 'kysely';
 import { Pool } from 'pg';
 import { dirname, resolve, join } from 'path';
 import { mkdirSync, existsSync, readdirSync, readFileSync } from 'fs';
@@ -17,12 +16,12 @@ import { IStorageAdapter } from '../../common/interfaces/storage-adapter.interfa
 import { Task, Project, Label, TaskFilters, TaskMetadata } from '../../common/interfaces/task.interface';
 import { Database } from '../database.types';
 
-export type DatabaseDialect = 'sqlite' | 'postgres';
+export type DatabaseDialect = 'pglite' | 'postgres';
 
 export interface KyselyAdapterOptions {
   dialect: DatabaseDialect;
-  // SQLite options
-  sqlitePath?: string;
+  // PGlite options
+  pglitePath?: string;
   // PostgreSQL options
   connectionString?: string;
 }
@@ -38,8 +37,8 @@ export class KyselyAdapter implements IStorageAdapter {
   }
 
   async initialize(): Promise<void> {
-    if (this.options.dialect === 'sqlite') {
-      await this.initializeSqlite();
+    if (this.options.dialect === 'pglite') {
+      await this.initializePGlite();
     } else {
       await this.initializePostgres();
     }
@@ -53,25 +52,25 @@ export class KyselyAdapter implements IStorageAdapter {
     this.logger.log(`Kysely adapter initialized (${this.options.dialect})`);
   }
 
-  private async initializeSqlite(): Promise<void> {
-    const dbPath = this.options.sqlitePath;
-    if (!dbPath) {
-      throw new Error('SQLite path required for sqlite dialect');
-    }
-
+  private async initializePGlite(): Promise<void> {
+    const dbPath = this.options.pglitePath || './data/tasks.db';
+    
     // Ensure directory exists
     const dir = dirname(dbPath);
     mkdirSync(dir, { recursive: true });
 
-    const sqliteDb = new BetterSqlite3(dbPath);
-    sqliteDb.pragma('journal_mode = WAL');
-    sqliteDb.pragma('foreign_keys = ON');
+    // Dynamically import PGlite
+    const { PGlite } = await import('@electric-sql/pglite');
+    const pglite = new PGlite(dbPath);
 
+    // PGlite provides a pg-compatible Pool interface
     this.db = new Kysely<Database>({
-      dialect: new SqliteDialect({ database: sqliteDb }),
+      dialect: new PostgresDialect({
+        pool: pglite as any, // PGlite is Pool-compatible
+      }),
     });
 
-    this.logger.log(`SQLite database initialized at ${dbPath}`);
+    this.logger.log(`PGlite database initialized at ${dbPath}`);
   }
 
   private async initializePostgres(): Promise<void> {
@@ -1230,7 +1229,7 @@ export class KyselyAdapter implements IStorageAdapter {
       .returning(['id', 'name', 'slug', 'filter_config', 'is_default', 'order_index'])
       .executeTakeFirst();
 
-    // For SQLite which doesn't support RETURNING well, fetch the created view
+    // Fallback: if RETURNING doesn't work, fetch the created view
     if (!result) {
       const created = await db
         .selectFrom('views')

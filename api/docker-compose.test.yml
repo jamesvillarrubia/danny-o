@@ -18,8 +18,8 @@ services:
       - NODE_ENV=test
       - RUN_MODE=http
       - USE_MOCKS=true
-      - DATABASE_TYPE=sqlite
-      - DATABASE_URL=:memory:
+      - DATABASE_TYPE=pglite
+      - PGLITE_PATH=/app/data/test.db
       - TODOIST_API_TOKEN=mock_token
       - ANTHROPIC_API_KEY=mock_key
       - PORT=3000

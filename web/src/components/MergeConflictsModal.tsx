@@ -7,31 +7,7 @@
 
 import { useState } from 'react';
 import { X, Download, Upload, EyeOff, AlertTriangle } from 'lucide-react';
-
-interface Task {
-  id: string;
-  content: string;
-  description?: string;
-  projectId: string;
-  priority: number;
-  labels?: string[];
-  due?: {
-    date: string;
-    string?: string;
-  };
-  createdAt: string;
-}
-
-interface OrphanedTasksReport {
-  localOnly: Task[];
-  todoistOnly: Task[];
-  requiresUserDecision: boolean;
-}
-
-interface MergeDecision {
-  task: Task;
-  action: 'import_to_local' | 'push_to_todoist' | 'ignore';
-}
+import type { Task, OrphanedTasksReport, MergeDecision } from '../types';
 
 interface MergeConflictsModalProps {
   orphans: OrphanedTasksReport;

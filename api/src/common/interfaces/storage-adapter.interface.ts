@@ -5,7 +5,7 @@
  * Implementations: SQLite, PostgreSQL, etc.
  */
 
-import { Task, TaskMetadata, TaskHistory, Project, Label, TaskFilters } from './task.interface';
+import type { Task, TaskMetadata, TaskHistory, Project, Label, TaskFilters } from '@danny-tasks/shared';
 
 export interface SyncState {
   taskState: any;

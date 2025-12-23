@@ -5,7 +5,9 @@
 primary_region = 'iad'
 
 [build]
-  dockerfile = 'Dockerfile'
+  dockerfile = 'api/Dockerfile'
+  build-target = ''
+  [build.args]
 
 [env]
   NODE_ENV = 'production'

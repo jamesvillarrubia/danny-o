@@ -43,7 +43,8 @@ export class ApiKeyGuard implements CanActivate {
     
     // If not in env, check storage
     if (!expectedKey) {
-      expectedKey = await this.storage.getConfig('danny_api_key');
+      const storedKey = await this.storage.getConfig('danny_api_key');
+      expectedKey = storedKey || undefined;
     }
 
     // If no API key is configured anywhere, allow all requests (development mode)

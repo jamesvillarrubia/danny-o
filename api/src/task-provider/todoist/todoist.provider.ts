@@ -33,7 +33,14 @@ export class TodoistProvider implements ITaskProvider {
 
   async getTasks(filters?: TaskFilters): Promise<Task[]> {
     try {
-      this.logger.log('Fetching all tasks with pagination...');
+      const limit = filters?.limit;
+      const fetchAll = !limit || limit > 50; // Only paginate if no limit or limit > 50
+      
+      if (fetchAll) {
+        this.logger.log('Fetching all tasks with pagination...');
+      } else {
+        this.logger.log(`Fetching up to ${limit} tasks...`);
+      }
 
       const params: any = {};
       if (filters?.projectId) params.projectId = filters.projectId;
@@ -61,14 +68,22 @@ export class TodoistProvider implements ITaskProvider {
         cursor = (response as any)?.nextCursor || null;
         pageCount++;
 
-        if (cursor) {
+        if (cursor && fetchAll) {
           this.logger.log(
             `Fetched page ${pageCount}: ${tasks.length} tasks (total: ${allTasks.length})`,
           );
         }
-      } while (cursor);
+        
+        // Stop early if we've reached the limit
+        if (limit && allTasks.length >= limit) {
+          allTasks = allTasks.slice(0, limit);
+          break;
+        }
+      } while (cursor && fetchAll);
 
-      this.logger.log(`Fetched ${allTasks.length} total tasks across ${pageCount} page(s)`);
+      if (fetchAll) {
+        this.logger.log(`Fetched ${allTasks.length} total tasks across ${pageCount} page(s)`);
+      }
 
       return allTasks.map((t) => this.convertToTask(t));
     } catch (error) {

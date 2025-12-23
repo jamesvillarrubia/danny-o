@@ -38,16 +38,20 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Build shared package (required for API/Web types)
+        working-directory: ./packages/shared
+        run: pnpm build
+
+      - name: Type check Shared
+        working-directory: ./packages/shared
+        run: pnpm exec tsc --noEmit
+
       - name: Type check API
         working-directory: ./api
         run: pnpm exec tsc --noEmit
 
       - name: Type check Web
         working-directory: ./web
-        run: pnpm exec tsc --noEmit
-
-      - name: Type check Shared
-        working-directory: ./packages/shared
         run: pnpm exec tsc --noEmit
 
   # Job 1: API Unit & Integration Tests

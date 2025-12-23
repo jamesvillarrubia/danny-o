@@ -32,10 +32,10 @@
     }
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "test"],
-  "references": [
-    {
-      "path": "../packages/shared/tsconfig.base.json"
-    }
+  "exclude": [
+    "node_modules",
+    "dist",
+    "test",
+    "src/task/services/recurrence.service.ts"
   ]
 }

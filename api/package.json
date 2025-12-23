@@ -18,6 +18,7 @@
     "cli": "tsx src/main.ts",
     "mcp": "RUN_MODE=mcp tsx src/main.ts",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:cov": "vitest run --coverage",

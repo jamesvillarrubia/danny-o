@@ -18,7 +18,13 @@
     "test:api": "pnpm --filter ./api test",
     "lint": "pnpm --filter ./api lint && pnpm --filter ./web lint",
     "lint:api": "pnpm --filter ./api lint",
-    "lint:web": "pnpm --filter ./web lint"
+    "lint:web": "pnpm --filter ./web lint",
+    "typecheck": "pnpm --filter ./packages/shared typecheck && pnpm --filter ./api typecheck && pnpm --filter ./web typecheck",
+    "typecheck:api": "pnpm --filter ./api typecheck",
+    "typecheck:web": "pnpm --filter ./web typecheck",
+    "typecheck:shared": "pnpm --filter ./packages/shared typecheck",
+    "predeploy": "pnpm typecheck && pnpm lint",
+    "deploy:fly": "cd api && flyctl deploy --app danny-tasks-api-prod --config fly.toml"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"

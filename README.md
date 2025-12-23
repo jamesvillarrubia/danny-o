@@ -181,11 +181,35 @@ npx tsc --noEmit            # Type checking
 ## Deployment
 
 - **API** → [Fly.io](https://fly.io) (container deployment)
-- **Web** → [Vercel](https://vercel.com) (static/SSR)
+- **Web** → [Vercel](https://vercel.com) (static frontend)
 
-**🚀 Quick Deploy**: Use our [interactive deployment wizard](https://yourusername.github.io/tasks/deployment) to deploy to Railway, Render, or Fly.io with one click!
+### Automated Pipeline
 
-See [api/DEPLOYMENT.md](./api/DEPLOYMENT.md) for full deployment guide, or visit our [documentation site](https://yourusername.github.io/tasks) for detailed guides.
+Deployments are automatic via GitHub Actions + Pipecraft:
+
+```bash
+git push origin develop  # → Deploys to dev/preview
+# (Auto PR created to main)
+git push origin main     # → Deploys to production
+```
+
+### Manual Deployment
+
+```bash
+# Pre-flight checks (run first!)
+pnpm predeploy
+
+# Deploy API to Fly.io
+pnpm deploy:fly
+
+# Deploy Web to Vercel (handled by Git push + Vercel integration)
+```
+
+See **[DEPLOYMENT.md](./DEPLOYMENT.md)** for complete deployment guide including:
+- Pipeline architecture and flow
+- Required secrets setup
+- Troubleshooting
+- Rollback procedures
 
 ## Documentation
 

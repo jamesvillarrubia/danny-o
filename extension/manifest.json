@@ -22,7 +22,8 @@
   },
   "permissions": [
     "sidePanel",
-    "storage"
+    "storage",
+    "clipboardWrite"
   ],
   "background": {
     "service_worker": "background.js"

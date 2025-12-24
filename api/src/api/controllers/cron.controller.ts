@@ -24,7 +24,7 @@ export class CronController {
     private readonly aiOps: AIOperationsService,
     private readonly enrichmentService: EnrichmentService,
   ) {
-    this.cronSecret = this.configService.get<string>('CRON_SECRET');
+    this.cronSecret = this.configService?.get<string>('CRON_SECRET');
   }
 
   /**

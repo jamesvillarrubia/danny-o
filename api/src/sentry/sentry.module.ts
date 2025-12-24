@@ -26,8 +26,8 @@ export class SentryModule implements OnModuleInit {
   constructor(private readonly configService: ConfigService) {}
 
   onModuleInit() {
-    const dsn = this.configService.get<string>('SENTRY_DSN');
-    const environment = this.configService.get<string>('NODE_ENV', 'development');
+    const dsn = this.configService?.get<string>('SENTRY_DSN');
+    const environment = this.configService?.get<string>('NODE_ENV', 'development') || 'development';
 
     if (!dsn) {
       this.logger.warn('SENTRY_DSN not configured - error tracking disabled');

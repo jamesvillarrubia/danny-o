@@ -46,11 +46,33 @@ export function SettingsPanel({ onSave }: SettingsPanelProps) {
 
   const handleCopy = async () => {
     try {
+      // Try modern clipboard API first
       await navigator.clipboard.writeText(generatedKey);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
-      setError('Failed to copy to clipboard');
+      // Fallback for iframes/extensions: use execCommand
+      try {
+        const textArea = document.createElement('textarea');
+        textArea.value = generatedKey;
+        textArea.style.position = 'fixed';
+        textArea.style.left = '-999999px';
+        textArea.style.top = '-999999px';
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        const successful = document.execCommand('copy');
+        document.body.removeChild(textArea);
+        
+        if (successful) {
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2000);
+        } else {
+          setError('Please manually select and copy the key (Ctrl+C / Cmd+C)');
+        }
+      } catch (fallbackErr) {
+        setError('Please manually select and copy the key (Ctrl+C / Cmd+C)');
+      }
     }
   };
 
@@ -116,7 +138,8 @@ export function SettingsPanel({ onSave }: SettingsPanelProps) {
                 type="text"
                 value={generatedKey}
                 readOnly
-                className="w-full pl-10 pr-12 py-3 border border-zinc-300 rounded-lg bg-zinc-50 font-mono text-sm"
+                onClick={(e) => e.currentTarget.select()}
+                className="w-full pl-10 pr-12 py-3 border border-zinc-300 rounded-lg bg-zinc-50 font-mono text-sm cursor-text select-all"
               />
               <button
                 type="button"

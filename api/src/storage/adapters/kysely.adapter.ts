@@ -59,15 +59,13 @@ export class KyselyAdapter implements IStorageAdapter {
     const dir = dirname(dbPath);
     mkdirSync(dir, { recursive: true });
 
-    // Dynamically import PGlite
-    const { PGlite } = await import('@electric-sql/pglite');
-    const pglite = new PGlite(dbPath);
+    // Use proper PGlite dialect for Kysely
+    const { KyselyPGlite } = await import('kysely-pglite');
+    
+    const kyselyPglite = await KyselyPGlite.create(dbPath);
 
-    // PGlite provides a pg-compatible Pool interface
     this.db = new Kysely<Database>({
-      dialect: new PostgresDialect({
-        pool: pglite as any, // PGlite is Pool-compatible
-      }),
+      dialect: kyselyPglite.dialect,
     });
 
     this.logger.log(`PGlite database initialized at ${dbPath}`);
@@ -118,7 +116,8 @@ export class KyselyAdapter implements IStorageAdapter {
 
   private async createSchema(): Promise<void> {
     const db = this.getDb();
-    const isPg = this.options.dialect === 'postgres';
+    // PGlite uses PostgreSQL syntax, so treat it as Postgres
+    const isPg = this.options.dialect === 'postgres' || this.options.dialect === 'pglite';
 
     // Tasks table
     await db.schema

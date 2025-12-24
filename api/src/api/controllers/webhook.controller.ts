@@ -33,7 +33,7 @@ export class WebhookController {
     private readonly syncService: SyncService,
     private readonly aiOps: AIOperationsService,
   ) {
-    this.webhookSecret = this.configService.get<string>('TODOIST_WEBHOOK_SECRET');
+    this.webhookSecret = this.configService?.get<string>('TODOIST_WEBHOOK_SECRET');
   }
 
   @Post('todoist')

@@ -1366,7 +1366,14 @@ export class KyselyAdapter implements IStorageAdapter {
       projectId: row.project_id || undefined,
       parentId: row.parent_id || undefined,
       priority: row.priority,
-      labels: row.labels ? JSON.parse(row.labels) : [],
+      labels: row.labels && typeof row.labels === 'string' && row.labels.trim() ? (() => {
+        try {
+          return JSON.parse(row.labels);
+        } catch (e) {
+          // If JSON parse fails, return empty array
+          return [];
+        }
+      })() : (Array.isArray(row.labels) ? row.labels : []),
       due: row.due_date
         ? {
             date: row.due_date,

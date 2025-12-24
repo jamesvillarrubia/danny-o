@@ -115,6 +115,8 @@ async function loadDanny() {
       }
     }, 10000);
     
+    // Set iframe permissions for clipboard access
+    frameEl.setAttribute('allow', 'clipboard-write');
     frameEl.src = url.toString();
     
     // Listen for successful load

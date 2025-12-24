@@ -27,6 +27,9 @@ import { ProjectsController } from './controllers/v1/projects.controller';
 import { LabelsController } from './controllers/v1/labels.controller';
 import { AIController } from './controllers/v1/ai.controller';
 import { StatsController } from './controllers/v1/stats.controller';
+import { ViewsController } from './controllers/v1/views.controller';
+import { SettingsController } from './controllers/v1/settings.controller';
+import { ChatController } from './controllers/v1/chat.controller';
 // Modules
 import { TaskModule } from '../task/task.module';
 import { AIModule } from '../ai/ai.module';
@@ -47,6 +50,9 @@ import { AIModule } from '../ai/ai.module';
     LabelsController,
     AIController,
     StatsController,
+    ViewsController,
+    SettingsController,
+    ChatController,
   ],
 })
 export class ApiModule {}

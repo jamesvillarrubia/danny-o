@@ -13,13 +13,13 @@ const ENVIRONMENTS = {
   },
   staging: {
     name: 'Staging',
-    webUrl: 'https://danny-tasks-staging.vercel.app',
-    apiUrl: 'https://danny-tasks-api-staging.fly.dev'
+    webUrl: 'https://danny-o-git-develop.vercel.app',
+    apiUrl: 'https://danny-tasks-api-dev.fly.dev'
   },
   production: {
     name: 'Production',
     webUrl: 'https://danny-o.vercel.app',
-    apiUrl: 'https://danny-tasks-api.fly.dev'
+    apiUrl: 'https://danny-tasks-api-prod.fly.dev'
   }
 };
 

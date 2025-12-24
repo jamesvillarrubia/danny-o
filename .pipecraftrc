@@ -15,6 +15,12 @@
     }
   ],
   "domains": {
+    "shared": {
+      "paths": ["packages/shared"],
+      "type": "library",
+      "testCommand": "pnpm typecheck",
+      "buildCommand": "pnpm build"
+    },
     "api": {
       "paths": ["api"],
       "type": "backend",

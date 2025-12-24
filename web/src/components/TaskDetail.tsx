@@ -51,7 +51,8 @@ export function TaskDetail({ task, onClose, onComplete }: TaskDetailProps) {
     try {
       const minutes = completionMinutes ? parseInt(completionMinutes, 10) : undefined;
       await completeTask(task.id, { actualMinutes: minutes });
-      onComplete(task.id);
+      onClose(); // Close the detail panel immediately
+      onComplete(task.id); // Trigger refetch
     } catch (err) {
       console.error('Failed to complete task:', err);
     } finally {
@@ -115,6 +116,8 @@ export function TaskDetail({ task, onClose, onComplete }: TaskDetailProps) {
                 value={completionMinutes}
                 onChange={(e) => setCompletionMinutes(e.target.value)}
                 placeholder="Minutes"
+                step="5"
+                min="0"
                 className="flex-1 px-3 py-2 border border-danny-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-danny-500"
               />
               <button

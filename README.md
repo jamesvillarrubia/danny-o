@@ -236,3 +236,4 @@ See **[DEPLOYMENT.md](./DEPLOYMENT.md)** for complete deployment guide including
 ## License
 
 MIT
+# Trigger Vercel redeploy to apply VITE_API_URL

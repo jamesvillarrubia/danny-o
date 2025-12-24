@@ -39,7 +39,7 @@ env:
   FETCH_DEPTH_AFFECTED: "100"
   FETCH_DEPTH_VERSIONING: "0"
   NODE_VERSION: "24"
-  PNPM_VERSION: "9"
+  PNPM_VERSION: "9.15.0"
 
 on:
   workflow_dispatch:

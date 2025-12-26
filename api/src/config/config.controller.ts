@@ -27,7 +27,7 @@ export class ConfigController {
   @Get('api-key')
   async getApiKey(): Promise<{ apiKey: string; confirmed: boolean; firstTime: boolean }> {
     // Check if API key is set via environment variable
-    const envKey = this.configService.get<string>('DANNY_API_KEY');
+    const envKey = this.configService?.get<string>('DANNY_API_KEY');
     
     if (envKey) {
       // If set via env, consider it confirmed

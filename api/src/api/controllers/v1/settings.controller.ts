@@ -4,12 +4,11 @@
  * Manages application-wide settings including sync mode configuration.
  */
 
-import { Controller, Get, Post, Body, UseGuards, Inject, Logger } from '@nestjs/common';
-import { ApiKeyGuard, Public } from '../../../common/guards/api-key.guard';
+import { Controller, Get, Post, Body, Inject, Logger } from '@nestjs/common';
+import { Public } from '../../../common/guards/api-key.guard';
 import { IStorageAdapter } from '../../../common/interfaces/storage-adapter.interface';
 import { SyncService } from '../../../task/services/sync.service';
 
-@UseGuards(ApiKeyGuard)
 @Controller('v1/settings')
 export class SettingsController {
   private readonly logger = new Logger(SettingsController.name);

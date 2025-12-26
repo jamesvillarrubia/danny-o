@@ -42,39 +42,52 @@ export class SettingsController {
     @Body('mode') mode: 'standalone' | 'todoist',
     @Body('todoistApiKey') todoistApiKey?: string,
   ) {
-    this.logger.log(`Setting sync mode to: ${mode}`);
+    try {
+      this.logger.log(`Setting sync mode to: ${mode}`);
 
-    // Validate mode
-    if (!mode || !['standalone', 'todoist'].includes(mode)) {
-      throw new Error('Invalid sync mode. Must be "standalone" or "todoist"');
-    }
-
-    // Save mode
-    await this.storage.setConfig('TASK_PROVIDER_MODE', mode);
-
-    // Handle Todoist mode
-    if (mode === 'todoist') {
-      if (!todoistApiKey || todoistApiKey.trim().length === 0) {
-        throw new Error('Todoist API key is required for Todoist sync mode');
+      // Validate mode
+      if (!mode || !['standalone', 'todoist'].includes(mode)) {
+        throw new Error('Invalid sync mode. Must be "standalone" or "todoist"');
       }
-      
-      // Save API key (encrypted)
-      await this.storage.setConfig('TODOIST_API_KEY', todoistApiKey, true);
-      this.logger.log('Todoist API key saved (encrypted)');
-      
-      // Start sync service if not already running
-      this.syncService.start();
-    } else {
-      // Standalone mode: clear API key and stop sync
-      await this.storage.setConfig('TODOIST_API_KEY', '', true);
-      this.syncService.stop();
-      this.logger.log('Sync service stopped');
-    }
 
-    return { 
-      success: true, 
-      mode 
-    };
+      // Save mode
+      await this.storage.setConfig('TASK_PROVIDER_MODE', mode);
+
+      // Handle Todoist mode
+      if (mode === 'todoist') {
+        if (!todoistApiKey || todoistApiKey.trim().length === 0) {
+          throw new Error('Todoist API key is required for Todoist sync mode');
+        }
+        
+        // Save API key (encrypted)
+        await this.storage.setConfig('TODOIST_API_KEY', todoistApiKey, true);
+        this.logger.log('Todoist API key saved (encrypted)');
+        
+        // Start sync service if not already running
+        try {
+          this.syncService.start();
+        } catch (err) {
+          this.logger.warn(`Failed to start sync service: ${err.message}`);
+        }
+      } else {
+        // Standalone mode: clear API key and stop sync
+        await this.storage.setConfig('TODOIST_API_KEY', '', true);
+        try {
+          this.syncService.stop();
+          this.logger.log('Sync service stopped');
+        } catch (err) {
+          this.logger.warn(`Failed to stop sync service: ${err.message}`);
+        }
+      }
+
+      return { 
+        success: true, 
+        mode 
+      };
+    } catch (error) {
+      this.logger.error(`Failed to set sync mode: ${error.message}`, error.stack);
+      throw error;
+    }
   }
 }
 

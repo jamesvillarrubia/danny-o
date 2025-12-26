@@ -8,7 +8,7 @@
 const ENVIRONMENTS = {
   local: {
     name: 'Local Development',
-    webUrl: 'http://localhost:5173',
+    webUrl: 'http://localhost:3001',
     apiUrl: 'http://localhost:3000'
   },
   staging: {

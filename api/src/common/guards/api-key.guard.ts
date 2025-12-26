@@ -26,7 +26,7 @@ export class ApiKeyGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     // Check if endpoint is marked as public
-    const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
+    const isPublic = this.reflector?.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
       context.getHandler(),
       context.getClass(),
     ]);
@@ -39,7 +39,7 @@ export class ApiKeyGuard implements CanActivate {
     const apiKey = request.headers['x-api-key'] as string;
 
     // Check environment variable first
-    let expectedKey = this.configService.get<string>('DANNY_API_KEY');
+    let expectedKey = this.configService?.get<string>('DANNY_API_KEY');
     
     // If not in env, check storage
     if (!expectedKey) {

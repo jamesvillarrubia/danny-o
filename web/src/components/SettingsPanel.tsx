@@ -139,7 +139,7 @@ export function SettingsPanel({ onSave }: SettingsPanelProps) {
                 value={generatedKey}
                 readOnly
                 onClick={(e) => e.currentTarget.select()}
-                className="w-full pl-10 pr-12 py-3 border border-zinc-300 rounded-lg bg-zinc-50 font-mono text-sm cursor-text select-all"
+                className="w-full pl-10 pr-12 py-3 border border-zinc-300 rounded-lg bg-zinc-50 font-mono text-sm text-zinc-900 cursor-text select-all"
               />
               <button
                 type="button"

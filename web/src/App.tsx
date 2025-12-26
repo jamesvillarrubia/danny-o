@@ -11,6 +11,7 @@ import { TaskDetail } from './components/TaskDetail';
 import { ChatInput } from './components/ChatInput';
 import { ViewSelector } from './components/ViewSelector';
 import { SettingsPanel } from './components/SettingsPanel';
+import { AppSettings } from './components/AppSettings';
 import { useTasks } from './hooks/useTasks';
 import { useViews } from './hooks/useViews';
 import { useSettings } from './hooks/useSettings';
@@ -67,42 +68,46 @@ export default function App() {
 
   return (
     <Layout onSettingsClick={() => setShowSettings(true)}>
-      <div className="flex flex-col h-full">
-        {/* View Selector */}
-        <ViewSelector
-          views={views}
-          currentView={currentView}
-          onViewChange={handleViewChange}
-          isLoading={viewsLoading}
-        />
+      {showSettings ? (
+        <AppSettings onClose={() => setShowSettings(false)} />
+      ) : (
+        <div className="flex flex-col h-full">
+          {/* View Selector */}
+          <ViewSelector
+            views={views}
+            currentView={currentView}
+            onViewChange={handleViewChange}
+            isLoading={viewsLoading}
+          />
 
-        {/* Main Content */}
-        <div className="flex-1 overflow-hidden flex">
-          {/* Task List */}
-          <div className={`flex-1 overflow-y-auto ${selectedTask ? 'hidden md:block md:w-1/2 lg:w-2/5' : 'w-full'}`}>
-            <TaskList
-              tasks={tasks}
-              isLoading={isLoading}
-              onTaskSelect={handleTaskSelect}
-              selectedTaskId={selectedTask?.id}
-            />
-          </div>
-
-          {/* Task Detail Panel */}
-          {selectedTask && (
-            <div className="w-full md:w-1/2 lg:w-3/5 border-l border-zinc-200 overflow-y-auto bg-white">
-              <TaskDetail
-                task={selectedTask}
-                onClose={handleTaskClose}
-                onComplete={handleTaskComplete}
+          {/* Main Content */}
+          <div className="flex-1 overflow-hidden flex">
+            {/* Task List */}
+            <div className={`flex-1 overflow-y-auto ${selectedTask ? 'hidden md:block md:w-1/2 lg:w-2/5' : 'w-full'}`}>
+              <TaskList
+                tasks={tasks}
+                isLoading={isLoading}
+                onTaskSelect={handleTaskSelect}
+                selectedTaskId={selectedTask?.id}
               />
             </div>
-          )}
-        </div>
 
-        {/* Chat Input */}
-        <ChatInput onResponse={handleChatResponse} />
-      </div>
+            {/* Task Detail Panel */}
+            {selectedTask && (
+              <div className="w-full md:w-1/2 lg:w-3/5 border-l border-zinc-200 overflow-y-auto bg-white">
+                <TaskDetail
+                  task={selectedTask}
+                  onClose={handleTaskClose}
+                  onComplete={handleTaskComplete}
+                />
+              </div>
+            )}
+          </div>
+
+          {/* Chat Input */}
+          <ChatInput onResponse={handleChatResponse} />
+        </div>
+      )}
     </Layout>
   );
 }

@@ -4,8 +4,11 @@
  * Provides offline support, background sync, and caching strategies.
  */
 
-const CACHE_NAME = 'danny-v1';
-const RUNTIME_CACHE = 'danny-runtime-v1';
+const SW_VERSION = 'v2';
+const CACHE_NAME = `danny-${SW_VERSION}`;
+const RUNTIME_CACHE = `danny-runtime-${SW_VERSION}`;
+
+console.log(`[Service Worker ${SW_VERSION}] Loading`);
 
 // Assets to cache on install
 const PRECACHE_ASSETS = [
@@ -16,23 +19,32 @@ const PRECACHE_ASSETS = [
 
 // Install event - cache essential assets
 self.addEventListener('install', (event) => {
+  console.log(`[Service Worker ${SW_VERSION}] Installing`);
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then((cache) => cache.addAll(PRECACHE_ASSETS))
-      .then(() => self.skipWaiting())
+      .then(() => {
+        console.log(`[Service Worker ${SW_VERSION}] Installed, skipping waiting`);
+        return self.skipWaiting();
+      })
   );
 });
 
 // Activate event - clean up old caches
 self.addEventListener('activate', (event) => {
+  console.log(`[Service Worker ${SW_VERSION}] Activating`);
   event.waitUntil(
     caches.keys().then((cacheNames) => {
+      console.log(`[Service Worker ${SW_VERSION}] Cleaning up old caches:`, cacheNames.filter((name) => name !== CACHE_NAME && name !== RUNTIME_CACHE));
       return Promise.all(
         cacheNames
           .filter((name) => name !== CACHE_NAME && name !== RUNTIME_CACHE)
           .map((name) => caches.delete(name))
       );
-    }).then(() => self.clients.claim())
+    }).then(() => {
+      console.log(`[Service Worker ${SW_VERSION}] Activated, claiming clients`);
+      return self.clients.claim();
+    })
   );
 });
 

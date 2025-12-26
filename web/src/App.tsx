@@ -52,8 +52,8 @@ export default function App() {
     refetch();
   }, [refetch]);
 
-  // Show settings if no API key configured
-  if (showSettings || !settings.apiKey) {
+  // Show API key setup if no API key configured
+  if (!settings.apiKey) {
     return (
       <Layout>
         <SettingsPanel

@@ -39,7 +39,7 @@ export async function registerServiceWorker(): Promise<ServiceWorkerRegistration
     // Register periodic sync if supported (for Todoist mode)
     if ('periodicSync' in registration) {
       try {
-        await (registration as any).periodicSync.register('danny-periodic-sync', {
+        await (registration as any).periodicSync.register('sync', {
           minInterval: 5 * 60 * 1000, // 5 minutes
         });
         console.log('Periodic sync registered');

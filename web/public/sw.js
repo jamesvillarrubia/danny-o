@@ -46,8 +46,8 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       fetch(request)
         .then((response) => {
-          // Clone and cache successful responses
-          if (response && response.status === 200) {
+          // Clone and cache successful GET responses only (Cache API doesn't support POST)
+          if (response && response.status === 200 && request.method === 'GET') {
             const responseClone = response.clone();
             caches.open(RUNTIME_CACHE).then((cache) => {
               cache.put(request, responseClone);
@@ -129,7 +129,7 @@ self.addEventListener('sync', (event) => {
 
 // Periodic Background Sync - auto-sync tasks if in Todoist mode
 self.addEventListener('periodicsync', (event) => {
-  if (event.tag === 'danny-periodic-sync') {
+  if (event.tag === 'sync') {
     event.waitUntil(performPeriodicSync());
   }
 });

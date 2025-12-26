@@ -107,6 +107,21 @@
       display: flex;
       gap: 8px;
       align-items: center;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s;
+    }
+    
+    #env-selector:hover,
+    #env-selector:focus-within {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    
+    /* Show on Alt+Shift key combo */
+    body.show-env-selector #env-selector {
+      opacity: 1;
+      pointer-events: auto;
     }
     
     #env-select {

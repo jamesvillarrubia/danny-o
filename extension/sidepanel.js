@@ -228,6 +228,13 @@ window.retryLoad = retryLoad;
 window.openSettings = openEnvironmentConfig;
 window.handleEnvironmentChange = handleEnvironmentChange;
 
+// Show/hide environment selector with Alt+Shift+E
+document.addEventListener('keydown', (e) => {
+  if (e.altKey && e.shiftKey && e.key.toLowerCase() === 'e') {
+    document.body.classList.toggle('show-env-selector');
+  }
+});
+
 // Initialize on startup
 (async () => {
   await populateEnvironmentSelector();

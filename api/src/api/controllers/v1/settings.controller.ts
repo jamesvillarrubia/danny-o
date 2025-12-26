@@ -5,7 +5,7 @@
  */
 
 import { Controller, Get, Post, Body, UseGuards, Inject, Logger } from '@nestjs/common';
-import { ApiKeyGuard } from '../../../common/guards/api-key.guard';
+import { ApiKeyGuard, Public } from '../../../common/guards/api-key.guard';
 import { IStorageAdapter } from '../../../common/interfaces/storage-adapter.interface';
 import { SyncService } from '../../../task/services/sync.service';
 
@@ -20,8 +20,9 @@ export class SettingsController {
   ) {}
 
   /**
-   * Get current sync mode configuration
+   * Get current sync mode configuration (public for initial setup)
    */
+  @Public()
   @Get('sync-mode')
   async getSyncMode() {
     const mode = await this.storage.getConfig('TASK_PROVIDER_MODE');
@@ -34,8 +35,9 @@ export class SettingsController {
   }
 
   /**
-   * Set sync mode (standalone or todoist)
+   * Set sync mode (standalone or todoist) - public for initial setup
    */
+  @Public()
   @Post('sync-mode')
   async setSyncMode(
     @Body('mode') mode: 'standalone' | 'todoist',
